@@ -12,7 +12,8 @@ async function checkAuth() {
         return;
     }
 
-    const BASE_URL = "https://viewless-anaya-unambulant.ngrok-free.dev"; // <-- твой ngrok-домен
+    // Используем текущий origin вместо хардкода
+    const BASE_URL = window.location.origin;
 
     try {
         const response = await fetch(`${BASE_URL}/api/auth?tg_id=${tgId}`);
