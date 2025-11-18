@@ -1,11 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from config import DATABASE_URL
 import logging
-
-# Базовый класс для моделей
-Base = declarative_base()
 
 # Создаём движок и сессию
 engine = create_async_engine(DATABASE_URL, echo=False)
@@ -21,7 +18,7 @@ async def get_session():
 async def init_db():
     """Создаёт все таблицы, если их ещё нет, и добавляет недостающие колонки"""
     # Импорт моделей здесь, чтобы они зарегистрировались в Base.metadata
-    from models import User, Channel, Giveaway, Winner, History, Comment, Participant
+    from models import User, Channel, Giveaway, Winner, History, Comment, Participant, Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
