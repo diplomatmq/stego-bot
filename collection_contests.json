@@ -1,0 +1,31 @@
+{
+  "1": {
+    "contest_id": 1,
+    "title": "Конкурс коллекций: пенис",
+    "topic": "Для участия в конкурсе необходимо:\n- Подписаться на канал создателя: t.me/monkeys_giveaways\n- Отправить коллекцию из 9 NFT",
+    "created_by": 793216884,
+    "created_at": "2025-11-13T23:05:24.056685+03:00",
+    "collections": [
+      {
+        "collection_number": 1,
+        "participant_user_id": 6335911487,
+        "participant_username": "",
+        "nft_links": [
+          "t.me/nft/JollyChimp-76542",
+          "t.me/nft/JollyChimp-76547",
+          "t.me/nft/JollyChimp-76544",
+          "t.me/nft/JollyChimp-76541",
+          "t.me/nft/JollyChimp-76548",
+          "t.me/nft/JollyChimp-76543",
+          "t.me/nft/JollyChimp-76546",
+          "t.me/nft/JollyChimp-76545",
+          "t.me/nft/JollyChimp-76540"
+        ],
+        "submitted_at": "2025-11-14T01:16:19.596847+03:00",
+        "votes": {}
+      }
+    ]
+  }
+}
+
+

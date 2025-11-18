@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Проверка доступа</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen text-center overflow-hidden" style="background: #000; margin: 0; padding: 0; width: 100vw; height: 100vh;">
+  <div id="loading" class="relative w-full h-full flex flex-col items-center justify-center" style="background: #000; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;">
+    <div class="flex flex-col items-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+      <p class="mt-4 text-white text-lg font-semibold">Проверка роли...</p>
+    </div>
+  </div>
+
+  <script>
+
+    async function checkRole() {
+      const params = new URLSearchParams(window.location.search);
+      const tgId = params.get("tg_id");
+
+      if (!tgId) {
+        const loadingDiv = document.getElementById("loading");
+        loadingDiv.innerHTML =
+          '<div class="relative z-10"><p class="text-red-500 text-lg font-semibold" style="text-shadow: 0 2px 8px rgba(0,0,0,0.8);">❌ Ошибка: отсутствует tg_id</p></div>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/auth?tg_id=${tgId}`);
+        const data = await res.json();
+
+        if (!data.authorized) {
+          document.body.innerHTML = `<p class='text-red-500 mt-8'>🚫 ${data.message}</p>`;
+          return;
+        }
+
+        let target = "user.html";
+        if (data.role === "creator") target = "creator.html";
+        else if (data.role === "admin") target = "admin.html";
+
+        window.location.href = `${target}?tg_id=${tgId}&role=${data.role}`;
+      } catch (err) {
+        console.error("Ошибка при авторизации:", err);
+        const loadingDiv = document.getElementById("loading");
+        loadingDiv.innerHTML =
+          '<div class="relative z-10"><p class="text-red-500 text-lg font-semibold" style="text-shadow: 0 2px 8px rgba(0,0,0,0.8);">⚠️ Ошибка при проверке пользователя</p></div>';
+      }
+    }
+
+    checkRole();
+  </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+#cloud-config
+# Cloud-init скрипт для автоматической настройки сервера
+# Использование: загрузите этот файл при создании VPS или выполните вручную
+
+# Обновление системы
+package_update: true
+package_upgrade: true
+
+# Установка необходимых пакетов
+packages:
+  - python3.13
+  - python3.13-venv
+  - python3.13-dev
+  - python3-pip
+  - git
+  - curl
+  - build-essential
+  - openssl
+  - nginx
+  - ufw
+
+# Создание пользователя для бота
+users:
+  - name: botuser
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC... # Замените на ваш SSH ключ
+
+# Настройка firewall
+runcmd:
+  - ufw allow 22/tcp
+  - ufw allow 8000/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+# Создание директории для бота
+write_files:
+  - path: /home/botuser/setup.sh
+    content: |
+      #!/bin/bash
+      cd /home/botuser
+      mkdir -p stego-bot
+      chown -R botuser:botuser /home/botuser/stego-bot
+    permissions: '0755'
+    owner: botuser:botuser
+
+# Выполнение скрипта настройки
+runcmd:
+  - /home/botuser/setup.sh
+
