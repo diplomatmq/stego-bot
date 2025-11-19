@@ -44,8 +44,15 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
     is_subscribed = True  # По умолчанию для создателя
     
     if telegram_id != CREATOR_ID:
+        import time as _time
+        subscription_check_started = _time.perf_counter()
         logging.info(f"🔍 Проверка подписки для пользователя {telegram_id} ({username}) при нажатии 'Проверить'")
         is_subscribed = await check_subscription_to_channel(bot, telegram_id, channel_username)
+        logging.info(
+            "⏱️ Subscription check for %s via callback took %.2f s",
+            telegram_id,
+            _time.perf_counter() - subscription_check_started,
+        )
         logging.info(f"📊 Результат проверки подписки при 'Проверить' для {telegram_id}: {is_subscribed}")
     
     if not is_subscribed:
@@ -79,6 +86,8 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
         logging.warning(f"Не удалось удалить сообщение: {e}")
     
     # Создаем/обновляем пользователя и показываем стандартное сообщение
+    import time as _time
+    db_started = _time.perf_counter()
     async with async_session() as session:
         result = await session.execute(select(User).where(User.telegram_id == telegram_id))
         user = result.scalars().first()
@@ -95,6 +104,7 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
                 user.username = username
                 await session.commit()
             logging.info(f"👤 Пользователь уже существует: {username} (ID: {telegram_id}, роль: {user.role})")
+    logging.info("⏱️ DB block for %s via callback took %.2f s", telegram_id, _time.perf_counter() - db_started)
 
     import time
     import os
@@ -137,8 +147,15 @@ async def cmd_start(message: types.Message):
     is_subscribed = True  # По умолчанию для создателя
     
     if telegram_id != CREATOR_ID:
+        import time as _time
+        subscription_check_started = _time.perf_counter()
         logging.info(f"🔍 Проверка подписки для пользователя {telegram_id} ({username}) при /start")
         is_subscribed = await check_subscription_to_channel(bot, telegram_id, channel_username)
+        logging.info(
+            "⏱️ Subscription check for %s took %.2f s",
+            telegram_id,
+            _time.perf_counter() - subscription_check_started,
+        )
         logging.info(f"📊 Результат проверки подписки при /start для {telegram_id}: {is_subscribed}")
     
     if not is_subscribed:
@@ -158,6 +175,8 @@ async def cmd_start(message: types.Message):
         return
 
     # Если подписан - создаем/обновляем пользователя и показываем стандартное сообщение
+    import time as _time
+    db_started = _time.perf_counter()
     async with async_session() as session:
         result = await session.execute(select(User).where(User.telegram_id == telegram_id))
         user = result.scalars().first()
@@ -174,6 +193,7 @@ async def cmd_start(message: types.Message):
                 user.username = username
                 await session.commit()
             logging.info(f"👤 Пользователь уже существует: {username} (ID: {telegram_id}, роль: {user.role})")
+    logging.info("⏱️ DB block for %s took %.2f s", telegram_id, _time.perf_counter() - db_started)
 
     import time
     import os
