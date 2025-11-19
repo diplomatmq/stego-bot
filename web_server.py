@@ -62,7 +62,6 @@ def get_file_with_no_cache(file_path: str) -> FileResponse:
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    response.headers["Content-Security-Policy"] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://telegram.org https://fonts.googleapis.com https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://telegram.org; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;"
     # Добавляем ETag на основе времени изменения файла
     if os.path.exists(file_path):
         mtime = os.path.getmtime(file_path)
@@ -147,22 +146,22 @@ async def auth_user(tg_id: int = Query(...)):
             bot = Bot(token=BOT_TOKEN)
             # Для пользователей используем get_chat_member или get_chat
             try:
-                user_info = await bot.get_chat(tg_id)
+                user_info = await asyncio.wait_for(bot.get_chat(tg_id), timeout=5.0)
                 username = getattr(user_info, 'username', None) or getattr(user_info, 'first_name', None)
-            except:
-                # Если get_chat не работает, пробуем через get_chat_member в каком-то канале
-                # Но это может не сработать, поэтому просто оставляем None
-                pass
+            except asyncio.TimeoutError:
+                logger.warning(f"Таймаут получения данных пользователя {tg_id} через Bot API, пропускаем username")
+            except Exception as inner_exc:
+                logger.warning(f"Не удалось получить username пользователя {tg_id}: {inner_exc}")
         except Exception as e:
-            logger.warning(f"Не удалось получить username для пользователя {tg_id}: {e}")
+            logger.warning(f"Не удалось инициализировать бота для пользователя {tg_id}: {e}")
         finally:
             if bot:
                 try:
                     session_bot = await bot.get_session()
                     if session_bot:
                         await session_bot.close()
-                except:
-                    pass
+                except Exception as close_exc:
+                    logger.warning(f"Ошибка при закрытии сессии бота (auth_user): {close_exc}")
         
         async with async_session() as session:
             result = await session.execute(select(User).where(User.telegram_id == tg_id))
