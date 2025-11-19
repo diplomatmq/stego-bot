@@ -106,13 +106,20 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
             cache_buster = int(time.time())
     except:
         cache_buster = int(time.time())
-    web_app = WebAppInfo(url=f"{WEBAPP_URL}?tg_id={telegram_id}&_v={cache_buster}")
+    logging.info("WEBAPP_URL env value: %s", WEBAPP_URL)
+    web_app_url = f"{WEBAPP_URL}?tg_id={telegram_id}&_v={cache_buster}"
+    logging.info("Constructed WebApp URL for %s: %s", telegram_id, web_app_url)
+    web_app = WebAppInfo(url=web_app_url)
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🚀 Открыть App", web_app=web_app)]
         ]
     )
+    try:
+        logging.info("Inline keyboard payload for %s: %s", telegram_id, kb.to_python())
+    except Exception as log_err:
+        logging.warning("Failed to serialize inline keyboard for %s: %s", telegram_id, log_err)
 
     await callback_query.message.answer(
         f"👋 Привет, {username}!\nТы успешно авторизован как *{user.role}*.",
@@ -178,13 +185,20 @@ async def cmd_start(message: types.Message):
             cache_buster = int(time.time())
     except:
         cache_buster = int(time.time())
-    web_app = WebAppInfo(url=f"{WEBAPP_URL}?tg_id={telegram_id}&_v={cache_buster}")
+    logging.info("WEBAPP_URL env value: %s", WEBAPP_URL)
+    web_app_url = f"{WEBAPP_URL}?tg_id={telegram_id}&_v={cache_buster}"
+    logging.info("Constructed WebApp URL for %s: %s", telegram_id, web_app_url)
+    web_app = WebAppInfo(url=web_app_url)
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🚀 Открыть App", web_app=web_app)]
         ]
     )
+    try:
+        logging.info("Inline keyboard payload for %s: %s", telegram_id, kb.to_python())
+    except Exception as log_err:
+        logging.warning("Failed to serialize inline keyboard for %s: %s", telegram_id, log_err)
 
     # Экранируем специальные символы Markdown
     safe_username = username.replace('*', '\\*').replace('_', '\\_').replace('[', '\\[').replace(']', '\\]')
