@@ -1303,15 +1303,13 @@ async def list_giveaways(admin_id: int = Query(None)):
                 def to_iso(value):
                     if not value:
                         return None
-            if isinstance(value, datetime):
-                msk_tz = pytz.timezone('Europe/Moscow')
-                value = value.replace(tzinfo=timezone.utc).astimezone(msk_tz)
-                return value.isoformat()
+                    if isinstance(value, datetime):
+                        msk_tz = pytz.timezone('Europe/Moscow')
+                        value = value.replace(tzinfo=timezone.utc).astimezone(msk_tz)
+                        return value.isoformat()
                     if isinstance(value, str):
-                        # If already ISO format, return as is
                         if 'T' in value or ' ' in value:
                             try:
-                                # Try to parse and return in ISO format
                                 dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
                                 return dt.isoformat()
                             except:
