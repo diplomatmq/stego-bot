@@ -15,6 +15,11 @@ import json
 import pytz
 
 logger = logging.getLogger(__name__)
+MSK_TZ = pytz.timezone('Europe/Moscow')
+
+
+def now_msk_naive():
+    return datetime.now(MSK_TZ).replace(tzinfo=None)
 
 # В aiogram 2.x GetDiscussionMessage доступен через bot.get_discussion_message()
 # Это основной способ получения связанного сообщения из группы обсуждения
@@ -538,7 +543,7 @@ async def select_winners_from_contest(contest_id: int, winners_count: int, bot: 
                     comment_link=None,  # Для конкурсов рисунков comment_link = None
                     prize_link=prize_link,
                     place=index + 1,
-                    created_at=datetime.now(timezone.utc)
+                    created_at=now_msk_naive()
                 )
                 session.add(winner)
                 winners_list.append({
@@ -697,7 +702,7 @@ async def select_winners_from_contest(contest_id: int, winners_count: int, bot: 
                             })
                 
                 # Обновляем время выбора победителей (naive UTC)
-                giveaway.winners_selected_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                giveaway.winners_selected_at = now_msk_naive()
                 
                 await session.commit()
                 await log_action(session, None, f"Выбраны победители для конкурса {contest_id} через Telethon")
@@ -759,7 +764,7 @@ async def select_winners_from_contest(contest_id: int, winners_count: int, bot: 
             winners_list.append({"comment_link": link})
         
         # Обновляем время выбора победителей (naive UTC)
-        giveaway.winners_selected_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        giveaway.winners_selected_at = now_msk_naive()
         
         await session.commit()
         await log_action(session, None, f"Выбраны победители для конкурса {contest_id}")
