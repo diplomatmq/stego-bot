@@ -1143,43 +1143,30 @@
         if (value instanceof Date) {
           d = value;
         } else if (typeof value === 'string') {
-          // Парсим строку с датой
-          // Если строка содержит timezone offset (+03:00, +00:00, Z и т.д.), 
-          // JavaScript правильно её интерпретирует
-          // Если строка не содержит timezone, считаем что это МСК время (naive datetime)
-          if (value.includes('Z') || value.match(/[+-]\d{2}:\d{2}$/)) {
-            // Есть timezone, парсим как есть
-            d = new Date(value);
+          const trimmed = value.trim();
+          if (!trimmed) return '';
+          if (trimmed.includes('Z') || trimmed.match(/[+-]\d{2}:\d{2}$/)) {
+            d = new Date(trimmed);
           } else {
-            // Нет timezone - это naive datetime, считаем что это МСК время
-            // Парсим компоненты и создаем дату в UTC, вычитая 3 часа (МСК = UTC+3)
-            const parts = value.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?/);
-            if (parts) {
-              const year = parseInt(parts[1]);
-              const month = parseInt(parts[2]) - 1; // месяцы в JS начинаются с 0
-              const day = parseInt(parts[3]);
-              const hour = parseInt(parts[4]);
-              const minute = parseInt(parts[5] || 0);
-              const second = parseInt(parts[6] || 0);
-              // Создаем дату в UTC, но интерпретируем компоненты как МСК
-              // МСК = UTC+3, поэтому вычитаем 3 часа из UTC
-              d = new Date(Date.UTC(year, month, day, hour - 3, minute, second));
-            } else {
-              // Если не удалось распарсить, пробуем стандартный парсинг
-              d = new Date(value);
+            let iso = trimmed.replace(' ', 'T');
+            if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(iso)) {
+              iso = `${iso}:00`;
             }
+            if (!iso.match(/[+-]\d{2}:\d{2}$/)) {
+              iso = `${iso}+03:00`;
+            }
+            d = new Date(iso);
           }
         } else {
           d = new Date(value);
         }
         if (Number.isNaN(d.getTime())) return '';
-        // Форматируем в МСК времени
         return new Intl.DateTimeFormat('ru-RU', {
           timeZone: 'Europe/Moscow',
-          year: 'numeric', 
-          month: '2-digit', 
+          year: 'numeric',
+          month: '2-digit',
           day: '2-digit',
-          hour: '2-digit', 
+          hour: '2-digit',
           minute: '2-digit'
         }).format(d);
       }
