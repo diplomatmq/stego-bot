@@ -1526,11 +1526,8 @@ async def select_winners(contest_id: int, winners_count: int = Query(default=1))
 async def get_winners(contest_id: int, current_user_id: int = Query(None)):
     """Получить список победителей конкурса.
 
-    Логика доступа:
-    - Если конкурс уже подтвержден (is_confirmed = True) — победителей видят все.
-    - Если конкурс еще не подтвержден:
-        * запросы БЕЗ параметра current_user_id видят пустой список (для креатора и обычных юзеров);
-        * запросы С параметром current_user_id (используется только в admin.html) видят реальных победителей.
+    В текущей версии победителей видят все (и админ, и креатор, и пользователи),
+    параметр current_user_id зарезервирован на будущее и сейчас не влияет на логику.
     """
     try:
         async with async_session() as session:
@@ -1553,16 +1550,6 @@ async def get_winners(contest_id: int, current_user_id: int = Query(None)):
             contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
             is_confirmed = getattr(giveaway, 'is_confirmed', False) if hasattr(giveaway, 'is_confirmed') else False
             winners_selected_at = giveaway.winners_selected_at.isoformat() if hasattr(giveaway, 'winners_selected_at') and giveaway.winners_selected_at else None
-
-            # Если конкурс ещё не подтвержден, скрываем победителей от всех запросов БЕЗ current_user_id.
-            # admin.html всегда передаёт current_user_id и должен видеть победителей сразу после выбора.
-            if not is_confirmed and current_user_id is None:
-                return {
-                    "winners": [],
-                    "is_confirmed": is_confirmed,
-                    "winners_selected_at": winners_selected_at,
-                    "contest_type": contest_type,
-                }
 
             logger.info(f"📊 Загружено {len(winners)} победителей для конкурса {contest_id} (тип: {contest_type}, post_link: {giveaway.post_link})")
             for w in winners:
