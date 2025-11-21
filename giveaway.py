@@ -1,7 +1,7 @@
 from aiogram import Dispatcher, types, Bot
 from aiogram.types import Message
 from aiogram.utils.exceptions import ChatNotFound, MessageNotModified
-from db import get_session, async_session
+from db import get_session, async_session, IS_SQLITE
 from models import Giveaway, Winner, Comment
 from telethon_comments import collect_comments_via_telethon, get_comments_file_path, pick_random_winners_from_file
 from helpers import log_action
@@ -1207,9 +1207,18 @@ async def check_all_giveaways_historical_comments(bot: Bot):
             from sqlalchemy import text
             
             # Проверяем наличие колонки discussion_group_link
-            result = await session.execute(text("PRAGMA table_info(giveaways)"))
-            columns_info = result.fetchall()
-            existing_columns = [row[1] for row in columns_info]
+            if IS_SQLITE:
+                result = await session.execute(text("PRAGMA table_info(giveaways)"))
+                columns_info = result.fetchall()
+                existing_columns = [row[1] for row in columns_info]
+            else:
+                result = await session.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'giveaways'
+                """))
+                columns_info = result.fetchall()
+                existing_columns = [row[0] for row in columns_info]
             has_discussion_group_link = 'discussion_group_link' in existing_columns
             
             # Формируем запрос с учетом наличия колонки
