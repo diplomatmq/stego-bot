@@ -2080,7 +2080,21 @@
             }
             
             // Проверяем, завершен ли конкурс
-            const isEnded = c.end_at && new Date(c.end_at) < new Date();
+            let isEnded = false;
+            if (c.end_at) {
+              try {
+                const endDate = new Date(c.end_at);
+                const now = new Date();
+                isEnded = endDate < now;
+                console.log(`Конкурс ${c.id}: end_at=${c.end_at}, parsed=${endDate.toISOString()}, now=${now.toISOString()}, isEnded=${isEnded}`);
+              } catch (e) {
+                console.error(`Ошибка парсинга даты окончания для конкурса ${c.id}:`, e);
+              }
+            } else {
+              // Если даты окончания нет (для рандом комментариев время не задаём),
+              // считаем, что конкурс можно завершать в любой момент
+              isEnded = true;
+            }
             
             // Определяем тип конкурса
             const contestType = c.contest_type || 'random_comment';
