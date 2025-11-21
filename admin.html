@@ -2202,7 +2202,7 @@
               }
             }
             
-            // Получаем победителей из уже загруженных данных
+            // Получаем победителей из уже загруженных данных (как в creator.html)
             let winnersHtml = '';
             let isConfirmed = false;
             try {
@@ -2210,17 +2210,6 @@
               isConfirmed = winnersData?.is_confirmed || false;
               
               if (winners && winners.length > 0) {
-                const rerollButtons = isConfirmed ? '' : `
-                  <button 
-                    onclick="rerollWinner(${c.id}, '${w.comment_link}')" 
-                    class="reroll-btn w-8 h-8 rounded-full bg-violet-600 hover:bg-violet-700 text-white flex items-center justify-center transition-all duration-200 ml-2 flex-shrink-0"
-                    data-winner-link="${w.comment_link}"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>`;
-                
                 winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                   <div class="text-xs text-gray-500 mb-2">🏆 Победители (${winners.length}):</div>
                   <div class="space-y-2">
@@ -2233,26 +2222,32 @@
                         prizeLink = 'https://' + prizeLink;
                       }
                       const prizeDisplay = prizeLink ? `<a href="${prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз ${place} места</a>` : '<span class="text-gray-500">Нет приза</span>';
+                      const winnerLink = w.comment_link || w.photo_link;
+                      // Для админов реролл всегда доступен до подтверждения
+                      const contestType = c.contest_type || 'random_comment';
+                      const showReroll = contestType !== 'drawing' && !isConfirmed;
                       return `
                       <div class="flex flex-col gap-1 text-sm p-2 rounded-lg bg-black/20 border border-violet-400/20">
                         <div class="flex items-center gap-2">
                           <span class="text-violet-400 font-bold flex-shrink-0">${place} место</span>
                           <span class="text-gray-300">${userDisplay}</span>
-                          ${isConfirmed ? '' : `
+                          ${showReroll ? `
                             <button 
-                              onclick="rerollWinner(${c.id}, '${w.comment_link}')" 
+                              onclick="rerollWinner(${c.id}, '${winnerLink}')" 
                               class="reroll-btn w-8 h-8 rounded-full bg-violet-600 hover:bg-violet-700 text-white flex items-center justify-center transition-all duration-200 flex-shrink-0 ml-auto"
-                              data-winner-link="${w.comment_link}"
+                              data-winner-link="${winnerLink}"
                               title="Рерандомизировать победителя"
                             >
                               <svg class="w-4 h-4 reroll-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                               </svg>
                             </button>
-                          `}
+                          ` : ''}
                         </div>
                         <div class="flex items-center gap-2 text-xs">
-                          <a href="${w.comment_link}" target="_blank" class="text-blue-400 hover:underline break-all flex-1 min-w-0">${w.comment_link}</a>
+                          ${winnerLink ? `
+                            <a href="${winnerLink}" target="_blank" class="text-blue-400 hover:underline break-all flex-1 min-w-0">${winnerLink}</a>
+                          ` : '<span class="text-gray-500">Ссылка не указана</span>'}
                         </div>
                         <div class="text-xs text-gray-400">
                           Приз: ${prizeDisplay}
@@ -2271,43 +2266,29 @@
                   ` : ''}
                 </div>`;
               } else if (isEnded && !isConfirmed && isRandomCommentContest) {
-                // Если уже запускали Telethon для этого конкурса, больше не показываем кнопку
-                if (telethonInProgress.has(Number(c.id))) {
-                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20 text-xs text-gray-400">
-                    ⏳ Комментарии собираются через Telethon. Ожидайте появления победителей.
-                  </div>`;
-                } else {
-                  // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
-                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                    <button 
-                      onclick="selectWinnersViaTelethon(${c.id})" 
-                      class="neon-button w-full py-2 rounded-lg text-sm"
-                      id="select-winners-btn-${c.id}"
-                    >
-                      🎲 Подвести итоги
-                    </button>
-                  </div>`;
-                }
+                // Показываем кнопку "Подвести итоги" для рандом‑комментов
+                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                  <button 
+                    onclick="selectWinnersViaTelethon(${c.id})" 
+                    class="neon-button w-full py-2 rounded-lg text-sm"
+                    id="select-winners-btn-${c.id}"
+                  >
+                    🎲 Подвести итоги
+                  </button>
+                </div>`;
               }
             } catch (e) {
               console.error('Ошибка загрузки победителей:', e);
               if (isEnded && !isConfirmed && isRandomCommentContest) {
-                if (telethonInProgress.has(Number(c.id))) {
-                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20 text-xs text-gray-400">
-                    ⏳ Комментарии собираются через Telethon. Ожидайте появления победителей.
-                  </div>`;
-                } else {
-                  // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
-                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                    <button 
-                      onclick="selectWinnersViaTelethon(${c.id})" 
-                      class="neon-button w-full py-2 rounded-lg text-sm"
-                      id="select-winners-btn-${c.id}"
-                    >
-                      🎲 Подвести итоги
-                    </button>
-                  </div>`;
-                }
+                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                  <button 
+                    onclick="selectWinnersViaTelethon(${c.id})" 
+                    class="neon-button w-full py-2 rounded-lg text см"
+                    id="select-winners-btn-${c.id}"
+                  >
+                    🎲 Подвести итоги
+                  </button>
+                </div>`;
               }
             }
             
