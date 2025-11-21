@@ -6,9 +6,10 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, Response
 from fastapi import UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import hashlib
 from sqlalchemy.future import select
-from db import async_session, init_db
+from db import async_session, init_db, IS_SQLITE
 from models import User
 from config import CREATOR_ID, BOT_TOKEN, TON_WALLET, CRYPTOBOT_API_TOKEN, CRYPTOBOT_API_URL
 import cryptobot
@@ -35,13 +36,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup_event():
-    """Инициализация базы данных при запуске сервера"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan-хук для инициализации БД при старте FastAPI"""
     await init_db()
     logger.info("✅ База данных инициализирована при запуске веб-сервера")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 ROOT_DIR = os.path.dirname(__file__)
 
@@ -108,7 +110,6 @@ async def check_subscription_to_channel_web(user_id: int, channel_username: str)
     """Проверяет подписку пользователя на канал (для веб-сервера)"""
     bot = None
     try:
-        import asyncio
         bot = Bot(token=BOT_TOKEN)
         # Добавляем таймаут 5 секунд для проверки подписки
         try:
@@ -194,7 +195,6 @@ async def auth_user(tg_id: int = Query(...)):
                 logger.info(f"🔍 Проверка подписки для пользователя {tg_id} при входе в приложение")
                 try:
                     # Добавляем общий таймаут для всей проверки подписки
-                    import asyncio
                     is_subscribed = await asyncio.wait_for(
                         check_subscription_to_channel_web(tg_id, channel_username),
                         timeout=5.0  # Уменьшаем таймаут до 5 секунд
@@ -1076,9 +1076,18 @@ async def create_giveaway(request: Request):
         if post_link and post_link.strip() and contest_type == "random_comment":
             try:
                 # Проверяем наличие колонки post_link
-                result = await session.execute(text("PRAGMA table_info(giveaways)"))
-                columns_info = result.fetchall()
-                existing_columns = {row[1]: row for row in columns_info}
+                if IS_SQLITE:
+                    result = await session.execute(text("PRAGMA table_info(giveaways)"))
+                    columns_info = result.fetchall()
+                    existing_columns = {row[1]: row for row in columns_info}
+                else:
+                    result = await session.execute(text("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'giveaways'
+                    """))
+                    columns_info = result.fetchall()
+                    existing_columns = {row[0]: row for row in columns_info}
                 
                 if 'post_link' in existing_columns:
                     # Используем прямой SQL запрос для проверки
@@ -1204,9 +1213,18 @@ async def list_giveaways(admin_id: int = Query(None)):
     async with async_session() as session:
         # Check which columns exist
         try:
-            result = await session.execute(text("PRAGMA table_info(giveaways)"))
-            columns_info = result.fetchall()
-            existing_columns = {row[1]: row for row in columns_info}
+            if IS_SQLITE:
+                result = await session.execute(text("PRAGMA table_info(giveaways)"))
+                columns_info = result.fetchall()
+                existing_columns = {row[1]: row for row in columns_info}
+            else:
+                result = await session.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'giveaways'
+                """))
+                columns_info = result.fetchall()
+                existing_columns = {row[0]: row for row in columns_info}
             
             # Build SELECT query with only existing columns
             base_cols = ['id', 'post_link', 'created_at']
