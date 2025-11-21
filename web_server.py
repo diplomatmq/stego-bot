@@ -1034,12 +1034,16 @@ async def create_giveaway(request: Request):
     created_by = data.get("created_by")
     prize_links = data.get("prize_links", [])  # Массив ссылок на NFT-подарки
     contest_type = data.get("contest_type", "random_comment")  # Тип конкурса: "random_comment", "drawing" или "collection"
-
-    if not all([name, end_date_str]):
-        return {"success": False, "message": "❌ Название и дата окончания обязательны"}
+ 
+    # Базовая валидация: всегда нужно название
+    if not name:
+        return {"success": False, "message": "❌ Название обязательно"}
     
     # Валидация полей в зависимости от типа конкурса
     if contest_type == "drawing":
+        # Для рисунков дата окончания голосования (end_date) обязательна
+        if not end_date_str:
+            return {"success": False, "message": "❌ Для конкурса рисунков обязательна дата окончания голосования (end_date)"}
         # Для конкурса рисунков:
         # - Обязательна дата окончания приема работ (submission_end_date)
         # - post_link НЕ обязателен (может быть пустым)
@@ -1056,7 +1060,7 @@ async def create_giveaway(request: Request):
     elif contest_type == "random_comment":
         # Для конкурса рандом комментариев:
         # - Обязательна ссылка на пост (post_link)
-        # - submission_end_date НЕ требуется
+        # - Время начала/окончания НЕ обязательно (можно подводить итоги вручную в любой момент)
         if not post_link or not post_link.strip():
             return {"success": False, "message": "❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)"}
         # submission_end_date не требуется для рандом комментариев
