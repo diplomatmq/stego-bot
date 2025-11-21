@@ -3296,6 +3296,8 @@
       if (submitContest) {
         submitContest.addEventListener('click', async () => {
           const contestType = currentContestType || "Рандомный комментарий";
+          // Внутренний тип для API
+          const apiContestType = contestType === "Рандомный комментарий" ? "random_comment" : contestType;
           
           // Для обычных конкурсов
           const postLink = document.getElementById('contest-post-link').value.trim();
@@ -3315,7 +3317,7 @@
           const winnersCount = parseInt(document.getElementById('contest-winners-count').value) || 1;
           const payload = {
             title: document.getElementById('contest-title').value.trim(),
-            contest_type: contestType,
+            contest_type: apiContestType,
             post_link: postLink,
             conditions: document.getElementById('contest-conditions').value.trim(),
             prize: '', // Пустое значение, так как призы будут добавлены отдельно
@@ -3331,25 +3333,23 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             });
+
+            if (!response || response.success === false || !response.id) {
+              const msg = (response && (response.message || response.detail)) || 'Не удалось создать конкурс';
+              alert('⚠️ ' + msg);
+              return;
+            }
+
             closeModal(contestModal);
             
             // Сохраняем ID созданного конкурса для добавления призов
-            if (response.id) {
-              window.currentContestId = response.id;
-              window.currentWinnersCount = winnersCount;
-              // Показываем модалку для ввода призов
-              openPrizesModal();
-            } else {
-              // Очищаем форму
-              document.getElementById('contest-title').value = '';
-              document.getElementById('contest-post-link').value = '';
-              document.getElementById('contest-conditions').value = '';
-              postLinkError.classList.add('hidden');
-              await loadContests();
-              showSection('contests-section');
-            }
+            window.currentContestId = response.id;
+            window.currentWinnersCount = winnersCount;
+            // Показываем модалку для ввода призов
+            openPrizesModal();
           } catch (e) {
-            alert('Ошибка при создании конкурса');
+            console.error('Ошибка при создании конкурса:', e);
+            alert('Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
           }
         });
       }
