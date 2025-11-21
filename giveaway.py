@@ -696,8 +696,8 @@ async def select_winners_from_contest(contest_id: int, winners_count: int, bot: 
                                 "prize_link": prize_link
                             })
                 
-                # Обновляем время выбора победителей
-                giveaway.winners_selected_at = datetime.now(timezone.utc)
+                # Обновляем время выбора победителей (naive UTC)
+                giveaway.winners_selected_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 
                 await session.commit()
                 await log_action(session, None, f"Выбраны победители для конкурса {contest_id} через Telethon")
@@ -758,8 +758,8 @@ async def select_winners_from_contest(contest_id: int, winners_count: int, bot: 
             logger.info(f"✅ Сохранен победитель для конкурса {contest_id}: {link}")
             winners_list.append({"comment_link": link})
         
-        # Обновляем время выбора победителей
-        giveaway.winners_selected_at = datetime.now(timezone.utc)
+        # Обновляем время выбора победителей (naive UTC)
+        giveaway.winners_selected_at = datetime.now(timezone.utc).replace(tzinfo=None)
         
         await session.commit()
         await log_action(session, None, f"Выбраны победители для конкурса {contest_id}")
