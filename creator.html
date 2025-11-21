@@ -2825,8 +2825,10 @@
             card.className = 'deletable-item rounded-lg border border-violet-400/30 p-3 bg-black/30';
             card.dataset.contestId = c.id;
             
-            const period = (c.start_at || c.end_at)
-              ? `<div class="text-xs text-gray-400 mt-1">${c.start_at ? 'Старт: ' + toMoscowDateTime(c.start_at) : ''} ${c.end_at ? ' · Конец: ' + toMoscowDateTime(c.end_at) : ''}</div>`
+            const startSource = c.start_at_local || c.start_at;
+            const endSource = c.end_at_local || c.end_at;
+            const period = (startSource || endSource)
+              ? `<div class="text-xs text-gray-400 mt-1">${startSource ? 'Старт: ' + toMoscowDateTime(startSource) : ''} ${endSource ? ' · Конец: ' + toMoscowDateTime(endSource) : ''}</div>`
               : '';
             
             const postLink = c.post_link 
@@ -4086,27 +4088,23 @@
         }
         
         // Форматируем даты для datetime-local
-        if (contest.start_at && startInput) {
-          try {
-            const startDate = new Date(contest.start_at);
-            if (!isNaN(startDate.getTime())) {
-              const startLocal = new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000);
-              startInput.value = startLocal.toISOString().slice(0, 16);
-            }
-          } catch (e) {
-            console.error('Ошибка форматирования даты начала:', e);
+        if (startInput) {
+          const startRaw = contest.start_at_local || contest.start_at || contest.start_date;
+          if (startRaw) {
+            const normalized = startRaw.length > 16 ? startRaw.slice(0, 16) : startRaw;
+            startInput.value = normalized;
+          } else {
+            startInput.value = '';
           }
         }
         
-        if ((contest.end_at || contest.end_date) && endInput) {
-          try {
-            const endDate = new Date(contest.end_at || contest.end_date);
-            if (!isNaN(endDate.getTime())) {
-              const endLocal = new Date(endDate.getTime() - endDate.getTimezoneOffset() * 60000);
-              endInput.value = endLocal.toISOString().slice(0, 16);
-            }
-          } catch (e) {
-            console.error('Ошибка форматирования даты окончания:', e);
+        if (endInput) {
+          const endRaw = contest.end_at_local || contest.end_at || contest.end_date;
+          if (endRaw) {
+            const normalized = endRaw.length > 16 ? endRaw.slice(0, 16) : endRaw;
+            endInput.value = normalized;
+          } else {
+            endInput.value = '';
           }
         }
         
