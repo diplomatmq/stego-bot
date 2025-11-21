@@ -764,9 +764,8 @@
           <input type="hidden" id="contest-winners-count" value="1" />
         </div>
         
-        <div class="grid grid-cols-2 gap-2">
-          <input id="contest-start" type="datetime-local" class="input-field w-full p-2 rounded" />
-          <input id="contest-end" type="datetime-local" class="input-field w-full p-2 rounded" />
+        <div class="p-3 rounded-md bg-violet-900/20 border border-violet-400/30 text-sm text-gray-300">
+          ⏱ Время больше не требуется — итог можно подводить вручную, когда хотите.
         </div>
       </div>
       <button id="submit-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить данные</button>
@@ -827,9 +826,8 @@
           <label class="block text-sm text-gray-400 mb-1">🎁 Приз</label>
           <input id="edit-contest-prize" class="input-field w-full p-2 rounded" placeholder="Что можно выиграть" />
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          <input id="edit-contest-start" type="datetime-local" class="input-field w-full p-2 rounded" />
-          <input id="edit-contest-end" type="datetime-local" class="input-field w-full p-2 rounded" />
+        <div class="p-3 rounded-md bg-violet-900/20 border border-violet-400/30 text-sm text-gray-300">
+          Время начала/окончания не используется. Вы можете подвести итоги в любой момент.
         </div>
       </div>
       <button id="update-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Сохранить изменения</button>
@@ -1568,11 +1566,9 @@
             const postLink = document.getElementById('contest-post-link')?.value.trim();
             const conditions = document.getElementById('contest-conditions')?.value.trim();
             const winnersCount = parseInt(document.getElementById('contest-winners-count')?.value) || 1;
-            const startDate = document.getElementById('contest-start')?.value;
-            const endDate = document.getElementById('contest-end')?.value;
 
-            // Для рандом комментариев post_link обязателен
-            if (!postLink || !conditions || !startDate || !endDate) {
+            // Для рандом комментариев пост и условия обязательны, время больше не требуется
+            if (!postLink || !conditions) {
               alert('⚠️ Пожалуйста, заполните все поля');
               return;
             }
@@ -1592,8 +1588,8 @@
               post_link: postLink,
               conditions: conditions,
               prize: '',
-              start_at: startDate,
-              end_at: endDate,
+              start_at: null,
+              end_at: null,
               winners_count: winnersCount,
               created_by: currentUserId,
               contest_type: 'random_comment'
@@ -2937,6 +2933,8 @@
               } catch (e) {
                 console.error(`Ошибка парсинга даты окончания для конкурса ${c.id}:`, e);
               }
+            } else {
+              isEnded = true;
             }
             
             // Определяем тип конкурса
@@ -4072,25 +4070,8 @@
         }
         
         // Форматируем даты для datetime-local
-        if (startInput) {
-          const startRaw = contest.start_at_local || contest.start_at || contest.start_date;
-          if (startRaw) {
-            const normalized = startRaw.length > 16 ? startRaw.slice(0, 16) : startRaw;
-            startInput.value = normalized;
-          } else {
-            startInput.value = '';
-          }
-        }
-        
-        if (endInput) {
-          const endRaw = contest.end_at_local || contest.end_at || contest.end_date;
-          if (endRaw) {
-            const normalized = endRaw.length > 16 ? endRaw.slice(0, 16) : endRaw;
-            endInput.value = normalized;
-          } else {
-            endInput.value = '';
-          }
-        }
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
         
         console.log('✅ Открываем модалку редактирования рандом комментариев');
         openModal(editContestModal);
