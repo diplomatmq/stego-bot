@@ -2414,19 +2414,60 @@
             headers: { 'Content-Type': 'application/json' }
           });
           
+          // Если API вернул, что победители уже выбраны
           if (response.success) {
             btn.innerHTML = '✅ Победители выбраны!';
             btn.classList.add('bg-green-600');
             
-            // Обновляем список конкурсов через 1 секунду
             setTimeout(async () => {
               await loadContests();
             }, 1000);
-          } else {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            alert('Ошибка при выборе победителей: ' + (response.message || 'Неизвестная ошибка'));
+            return;
           }
+
+          // Если API говорит, что сейчас идет сбор комментариев (Telethon работает в фоне)
+          if (response.collecting) {
+            btn.innerHTML = '⏳ Комментарии собираются...';
+            
+            // Периодически опрашиваем сервер, появились ли победители
+            const waitForWinners = async (attempt = 0) => {
+              const maxAttempts = 30; // до ~60 секунд (30 * 2с)
+              if (attempt >= maxAttempts) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                return;
+              }
+              
+              try {
+                const winnersData = await fetchJSON(`/api/contests/${contestId}/winners`);
+                const winners = winnersData?.winners || winnersData || [];
+                if (Array.isArray(winners) && winners.length > 0) {
+                  btn.innerHTML = '✅ Победители выбраны!';
+                  btn.classList.add('bg-green-600');
+                  
+                  setTimeout(async () => {
+                    await loadContests();
+                  }, 1000);
+                  return;
+                }
+              } catch (pollError) {
+                console.error('Ошибка при опросе победителей:', pollError);
+              }
+              
+              // Ждём 2 секунды и пробуем снова
+              setTimeout(() => {
+                waitForWinners(attempt + 1);
+              }, 2000);
+            };
+            
+            await waitForWinners(0);
+            return;
+          }
+
+          // Любая другая ошибка
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+          alert('Ошибка при выборе победителей: ' + (response.message || 'Неизвестная ошибка'));
         } catch (e) {
           btn.innerHTML = originalText;
           btn.disabled = false;
