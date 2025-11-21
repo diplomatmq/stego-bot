@@ -1506,9 +1506,17 @@
 
       // Data fetching helpers
       async function fetchJSON(url, options = {}) {
-        // Добавляем таймаут 10 секунд для всех запросов
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        // Для выборки победителей через Telethon даём больше времени (до 60 секунд)
+        const defaultTimeout = url.includes('/select-winners') ? 60000 : 10000;
+        const timeout = options.timeout || defaultTimeout;
+        
+        // Учитываем внешний AbortController, если он передан
+        const controller = options.signal instanceof AbortController ? options.signal : new AbortController();
+        const timeoutId = setTimeout(() => {
+          if (!(options.signal instanceof AbortController)) {
+            controller.abort();
+          }
+        }, timeout);
         
         try {
           const res = await fetch(url, {
@@ -1535,7 +1543,6 @@
             throw error;
           }
           
-          // Парсим JSON ответ
           const jsonData = await res.json();
           console.log('📋 fetchJSON: Ответ успешно распарсен:', jsonData);
           return jsonData;
