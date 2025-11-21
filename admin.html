@@ -1983,9 +1983,10 @@
             return;
           }
           
-          // Загружаем победителей для всех конкурсов параллельно
+          // Загружаем победителей для всех конкурсов параллельно.
+          // Для админа передаём current_user_id, чтобы он видел своих победителей до подтверждения.
           const winnersPromises = items.map(c => 
-            fetchJSON(`/api/contests/${c.id}/winners`).catch(e => {
+            fetchJSON(`/api/contests/${c.id}/winners?current_user_id=${currentUserId}`).catch(e => {
               console.error(`Ошибка загрузки победителей для конкурса ${c.id}:`, e);
               return { winners: [], is_confirmed: false };
             })
@@ -2458,7 +2459,7 @@
               }
               
               try {
-                const winnersData = await fetchJSON(`/api/contests/${contestId}/winners`);
+                const winnersData = await fetchJSON(`/api/contests/${contestId}/winners?current_user_id=${currentUserId}`);
                 const winners = winnersData?.winners || winnersData || [];
                 if (Array.isArray(winners) && winners.length > 0) {
                   btn.innerHTML = '✅ Победители выбраны!';
