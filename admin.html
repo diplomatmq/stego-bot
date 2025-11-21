@@ -2271,7 +2271,7 @@
                 </div>`;
               } else if (isEnded && !isConfirmed && isRandomCommentContest) {
                 // Если уже запускали Telethon для этого конкурса, больше не показываем кнопку
-                if (telethonInProgress.has(c.id)) {
+                if (telethonInProgress.has(Number(c.id))) {
                   winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20 text-xs text-gray-400">
                     ⏳ Комментарии собираются через Telethon. Ожидайте появления победителей.
                   </div>`;
@@ -2291,7 +2291,7 @@
             } catch (e) {
               console.error('Ошибка загрузки победителей:', e);
               if (isEnded && !isConfirmed && isRandomCommentContest) {
-                if (telethonInProgress.has(c.id)) {
+                if (telethonInProgress.has(Number(c.id))) {
                   winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20 text-xs text-gray-400">
                     ⏳ Комментарии собираются через Telethon. Ожидайте появления победителей.
                   </div>`;
@@ -2413,8 +2413,8 @@
       
       // Функция для выбора победителей через Telethon
       window.selectWinnersViaTelethon = async function(contestId) {
-        // Помечаем конкурс как тот, по которому уже запущен Telethon
-        telethonInProgress.add(contestId);
+        // Помечаем конкурс как тот, по которому уже запущен Telethon (нормализуем ID к числу)
+        telethonInProgress.add(Number(contestId));
 
         const btn = document.getElementById(`select-winners-btn-${contestId}`);
         if (!btn) return;
