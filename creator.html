@@ -3069,6 +3069,11 @@
               const winners = winnersData?.winners || winnersData || [];
               isConfirmed = winnersData?.is_confirmed || false;
               
+              // Владелец конкурса (только он может рероллить и подтверждать)
+              const currentUserIdNum = Number(currentUserId);
+              const createdByIdNum = c.created_by ? Number(c.created_by) : null;
+              const isOwner = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
+
               if (winners && winners.length > 0) {
                 winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                   <div class="text-xs text-gray-500 mb-2">🏆 Победители (${winners.length}):</div>
@@ -3085,7 +3090,7 @@
                       const winnerLink = w.comment_link || w.photo_link;
                       // Определяем тип конкурса - для конкурсов рисунков реролл не нужен
                       const contestType = c.contest_type || 'random_comment';
-                      const showReroll = contestType !== 'drawing' && !isConfirmed;
+                      const showReroll = contestType !== 'drawing' && !isConfirmed && isOwner;
                       return `
                       <div class="flex flex-col gap-1 text-sm p-2 rounded-lg bg-black/20 border border-violet-400/20">
                         <div class="flex items-center gap-2">
@@ -3116,7 +3121,7 @@
                     `;
                     }).join('')}
                   </div>
-                  ${!isConfirmed ? `
+                  ${!isConfirmed && isOwner ? `
                     <button 
                       onclick="confirmWinners(${c.id})" 
                       class="neon-button w-full py-2 rounded-lg text-sm mt-3"
@@ -3126,30 +3131,36 @@
                   ` : ''}
                 </div>`;
               } else if (isEnded && !isConfirmed && isRandomCommentContest) {
-                // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
-                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                  <button 
-                    onclick="selectWinnersViaTelethon(${c.id})" 
-                    class="neon-button w-full py-2 rounded-lg text-sm"
-                    id="select-winners-btn-${c.id}"
-                  >
-                    🎲 Подвести итоги
-                  </button>
-                </div>`;
+                // Кнопка "Подвести итоги" только для владельца конкурса
+                if (isOwner) {
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="selectWinnersViaTelethon(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="select-winners-btn-${c.id}"
+                    >
+                      🎲 Подвести итоги
+                    </button>
+                  </div>`;
+                }
               }
             } catch (e) {
               console.error('Ошибка загрузки победителей:', e);
               if (isEnded && !isConfirmed && isRandomCommentContest) {
-                // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
-                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                  <button 
-                    onclick="selectWinnersViaTelethon(${c.id})" 
-                    class="neon-button w-full py-2 rounded-lg text-sm"
-                    id="select-winners-btn-${c.id}"
-                  >
-                    🎲 Подвести итоги
-                  </button>
-                </div>`;
+                const currentUserIdNum = Number(currentUserId);
+                const createdByIdNum = c.created_by ? Number(c.created_by) : null;
+                const isOwner = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
+                if (isOwner) {
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="selectWinnersViaTelethon(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="select-winners-btn-${c.id}"
+                    >
+                      🎲 Подвести итоги
+                    </button>
+                  </div>`;
+                }
               }
             }
             
