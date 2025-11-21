@@ -1136,30 +1136,45 @@
         }
       }
 
-      // Utilities: format to Moscow time
+      // Utilities: форматируем дату, которую пользователь вводит уже в МСК
       function toMoscowDateTime(value) {
         if (!value) return '';
-        let d;
         if (value instanceof Date) {
-          d = value;
-        } else if (typeof value === 'string') {
+          return new Intl.DateTimeFormat('ru-RU', {
+            timeZone: 'Europe/Moscow',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          }).format(value);
+        }
+        if (typeof value === 'string') {
           const trimmed = value.trim();
           if (!trimmed) return '';
           if (trimmed.includes('Z') || trimmed.match(/[+-]\d{2}:\d{2}$/)) {
-            d = new Date(trimmed);
-          } else {
-            let iso = trimmed.replace(' ', 'T');
-            if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(iso)) {
-              iso = `${iso}:00`;
-            }
-            if (!iso.match(/[+-]\d{2}:\d{2}$/)) {
-              iso = `${iso}+03:00`;
-            }
-            d = new Date(iso);
+            const d = new Date(trimmed);
+            if (Number.isNaN(d.getTime())) return trimmed;
+            return new Intl.DateTimeFormat('ru-RU', {
+              timeZone: 'Europe/Moscow',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            }).format(d);
           }
-        } else {
-          d = new Date(value);
+          let formatted = trimmed
+            .replace('T', ' ')
+            .replace(/Z$/, '')
+            .replace(/[+-]\d{2}:\d{2}$/, '')
+            .trim();
+          if (formatted.length > 16) {
+            formatted = formatted.slice(0, 16);
+          }
+          return formatted;
         }
+        const d = new Date(value);
         if (Number.isNaN(d.getTime())) return '';
         return new Intl.DateTimeFormat('ru-RU', {
           timeZone: 'Europe/Moscow',
