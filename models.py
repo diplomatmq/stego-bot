@@ -2,6 +2,11 @@ from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, DateTime
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, timezone
 
+
+def utcnow_naive():
+    """Возвращает текущее время в UTC без tzinfo (для TIMESTAMP WITHOUT TIME ZONE)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 Base = declarative_base()
 
 class User(Base):
@@ -10,7 +15,7 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True)
     username = Column(String, nullable=True)  # Username пользователя
     role = Column(String, default="user")  # creator / admin / user
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utcnow_naive)
     channel_link = Column(String, nullable=True)  # Ссылка на канал админа
     chat_link = Column(String, nullable=True)  # Ссылка на чат админа
     experience = Column(Integer, default=0)  # Опыт пользователя
@@ -33,7 +38,7 @@ class Giveaway(Base):
     discussion_group_link = Column(String, nullable=True)  # Ссылка на группу обсуждения (например, t.me/monkeys_gifts)
     channel_link = Column(String, nullable=True)  # Ссылка на канал конкурса (из активов админа или фиксированная для создателя)
     winners_count = Column(Integer)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utcnow_naive)
     start_date = Column(DateTime, nullable=True)  # Дата начала конкурса (МСК)
     end_date = Column(DateTime, nullable=False)  # Дата окончания конкурса (МСК)
     channel = relationship("Channel", backref="giveaways")
@@ -58,14 +63,14 @@ class Winner(Base):
     user_username = Column(String, nullable=True)  # username победителя
     prize_link = Column(String, nullable=True)  # Ссылка на приз, который выиграл пользователь
     place = Column(Integer, nullable=True)  # Место победителя (1, 2, 3 и т.д.)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utcnow_naive)
 
 class History(Base):
     __tablename__ = "history"
     id = Column(Integer, primary_key=True)
     action = Column(String)
     user_id = Column(Integer, ForeignKey("users.id"))
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime, default=utcnow_naive)
 
 class Message(Base):
     __tablename__ = "messages"
@@ -74,7 +79,7 @@ class Message(Base):
     to_user_id = Column(BigInteger, nullable=True)  # telegram_id получателя (для creator = None)
     message_text = Column(String, nullable=False)
     status = Column(String, default="pending")  # pending, approved, rejected
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utcnow_naive)
     responded_at = Column(DateTime, nullable=True)
 
 
@@ -90,7 +95,7 @@ class Comment(Base):
     user_id = Column(BigInteger, nullable=True)  # ID пользователя, оставившего комментарий
     username = Column(String, nullable=True)  # Username пользователя
     text = Column(String, nullable=True)  # Текст комментария
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # Когда комментарий был сохранен в БД
+    created_at = Column(DateTime, default=utcnow_naive)  # Когда комментарий был сохранен в БД
     
     # Индексы для быстрого поиска
     __table_args__ = (
@@ -106,7 +111,7 @@ class Participant(Base):
     username = Column(String, nullable=True)  # Username участника
     photo_link = Column(String, nullable=True)  # Ссылка на фотографию участника (для конкурса рисунков, NULL для рандом комментариев)
     photo_message_id = Column(Integer, nullable=True)  # ID сообщения с фотографией в Telegram (для конкурса рисунков)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utcnow_naive)
     
     # Уникальный индекс: один пользователь может участвовать в конкурсе только один раз
     __table_args__ = (
