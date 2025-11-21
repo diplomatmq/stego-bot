@@ -1090,6 +1090,8 @@ async def create_giveaway(request: Request):
             return None
         if isinstance(date_str, str):
             date_clean = date_str.replace('Z', '').replace('+00:00', '')
+            if not date_clean:
+                return None
             if 'T' in date_clean:
                 date_naive = datetime.fromisoformat(date_clean)
             else:
@@ -1098,34 +1100,17 @@ async def create_giveaway(request: Request):
             date_naive = date_str
         return msk_tz.localize(date_naive) if date_naive.tzinfo is None else date_naive.astimezone(msk_tz)
     
-    start_date_db = None
-    end_date_db = None
-    submission_end_date_db = None
-    try:
-        # Парсим дату окончания
-        end_date_msk = None
-        if end_date_str:
-            end_date_msk = parse_date(end_date_str)
-        
-        # Парсим дату начала (если указана)
-        start_date_msk = parse_date(start_date_str)
-        
-        # Парсим дату окончания приема работ (для конкурса рисунков)
-        submission_end_date_msk = None
-        if submission_end_date_str:
-            submission_end_date_msk = parse_date(submission_end_date_str)
-        
-        # Валидация времени для конкурса рисунков и коллекций: минимум 10 минут между окончанием приема и окончанием голосования
-        if contest_type in ["drawing", "collection"] and submission_end_date_msk and end_date_msk:
-            time_diff = (end_date_msk - submission_end_date_msk).total_seconds()
-            if time_diff < 600:  # 10 минут = 600 секунд
-                return {"success": False, "message": "❌ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут"}
-            if submission_end_date_msk >= end_date_msk:
-                return {"success": False, "message": "❌ Дата окончания приема работ должна быть раньше даты окончания голосования"}
-    except Exception as e:
-        return {"success": False, "message": f"❌ Ошибка парсинга даты: {str(e)}"}
+    start_date_msk = parse_date(start_date_str)
+    end_date_msk = parse_date(end_date_str)
+    submission_end_date_msk = parse_date(submission_end_date_str)
     
-    # Конвертируем даты в naive МСК перед записью в БД
+    if contest_type in ["drawing", "collection"] and submission_end_date_msk and end_date_msk:
+        time_diff = (end_date_msk - submission_end_date_msk).total_seconds()
+        if time_diff < 600:
+            return {"success": False, "message": "❌ Между окончанием приема работ и голосованием должно быть минимум 10 минут"}
+        if submission_end_date_msk >= end_date_msk:
+            return {"success": False, "message": "❌ Дата окончания приема работ должна быть раньше даты окончания голосования"}
+    
     start_date_db = to_msk_naive(start_date_msk)
     end_date_db = to_msk_naive(end_date_msk)
     submission_end_date_db = to_msk_naive(submission_end_date_msk)
