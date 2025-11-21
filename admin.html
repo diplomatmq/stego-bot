@@ -1602,6 +1602,7 @@
       let currentCollectionWinnersCount = 1; // Количество победителей для конкурса коллекций
       let originalBaseValue = ''; // Защищенное значение базовых условий
       let currentEditContestId = null; // ID редактируемого конкурса
+      const telethonInProgress = new Set(); // Конкурсы, для которых уже запущен сбор комментариев
 
       function openModal(el) { el.classList.remove('hidden'); }
       function closeModal(el) { el.classList.add('hidden'); }
@@ -2269,30 +2270,43 @@
                   ` : ''}
                 </div>`;
               } else if (isEnded && !isConfirmed && isRandomCommentContest) {
-                // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
-                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                  <button 
-                    onclick="selectWinnersViaTelethon(${c.id})" 
-                    class="neon-button w-full py-2 rounded-lg text-sm"
-                    id="select-winners-btn-${c.id}"
-                  >
-                    🎲 Подвести итоги
-                  </button>
-                </div>`;
+                // Если уже запускали Telethon для этого конкурса, больше не показываем кнопку
+                if (telethonInProgress.has(c.id)) {
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20 text-xs text-gray-400">
+                    ⏳ Комментарии собираются через Telethon. Ожидайте появления победителей.
+                  </div>`;
+                } else {
+                  // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="selectWinnersViaTelethon(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="select-winners-btn-${c.id}"
+                    >
+                      🎲 Подвести итоги
+                    </button>
+                  </div>`;
+                }
               }
             } catch (e) {
               console.error('Ошибка загрузки победителей:', e);
               if (isEnded && !isConfirmed && isRandomCommentContest) {
-                // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
-                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                  <button 
-                    onclick="selectWinnersViaTelethon(${c.id})" 
-                    class="neon-button w-full py-2 rounded-lg text-sm"
-                    id="select-winners-btn-${c.id}"
-                  >
-                    🎲 Подвести итоги
-                  </button>
-                </div>`;
+                if (telethonInProgress.has(c.id)) {
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20 text-xs text-gray-400">
+                    ⏳ Комментарии собираются через Telethon. Ожидайте появления победителей.
+                  </div>`;
+                } else {
+                  // Показываем кнопку "Подвести итоги" ТОЛЬКО для конкурсов с рандом комментариями
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="selectWinnersViaTelethon(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="select-winners-btn-${c.id}"
+                    >
+                      🎲 Подвести итоги
+                    </button>
+                  </div>`;
+                }
               }
             }
             
@@ -2399,6 +2413,9 @@
       
       // Функция для выбора победителей через Telethon
       window.selectWinnersViaTelethon = async function(contestId) {
+        // Помечаем конкурс как тот, по которому уже запущен Telethon
+        telethonInProgress.add(contestId);
+
         const btn = document.getElementById(`select-winners-btn-${contestId}`);
         if (!btn) return;
         
