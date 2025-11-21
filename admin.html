@@ -2431,10 +2431,12 @@
             
             // Периодически опрашиваем сервер, появились ли победители
             const waitForWinners = async (attempt = 0) => {
-              const maxAttempts = 30; // до ~60 секунд (30 * 2с)
+              const maxAttempts = 150; // до ~5 минут (150 * 2с)
               if (attempt >= maxAttempts) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
+                // Перестаём дергать сервер, но оставляем кнопку в состоянии ожидания,
+                // чтобы админ понял, что процесс ещё идёт
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Комментарии продолжают собираться...';
                 return;
               }
               
