@@ -1046,6 +1046,17 @@ async def create_giveaway(request: Request):
             date_naive = date_str
         return msk_tz.localize(date_naive) if date_naive.tzinfo is None else date_naive.astimezone(msk_tz)
     
+    def to_naive(dt):
+        """Конвертирует aware datetime в naive UTC для записи в БД"""
+        if not dt:
+            return None
+        if dt.tzinfo is None:
+            return dt
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    
+    start_date_db = None
+    end_date_db = None
+    submission_end_date_db = None
     try:
         # Парсим дату окончания
         end_date_msk = None
@@ -1067,6 +1078,13 @@ async def create_giveaway(request: Request):
                 return {"success": False, "message": "❌ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут"}
             if submission_end_date_msk >= end_date_msk:
                 return {"success": False, "message": "❌ Дата окончания приема работ должна быть раньше даты окончания голосования"}
+    except Exception as e:
+        return {"success": False, "message": f"❌ Ошибка парсинга даты: {str(e)}"}
+    
+        # Конвертируем даты в naive UTC перед записью в БД (PostgreSQL TIMESTAMP WITHOUT TIME ZONE)
+        start_date_db = to_naive(start_date_msk)
+        end_date_db = to_naive(end_date_msk)
+        submission_end_date_db = to_naive(submission_end_date_msk)
     except Exception as e:
         return {"success": False, "message": f"❌ Ошибка парсинга даты: {str(e)}"}
     
@@ -1142,19 +1160,21 @@ async def create_giveaway(request: Request):
             # Для конкурса рисунков post_link не обязателен (может быть NULL)
             final_post_link = post_link if post_link and post_link.strip() else None
         
+        created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        
         new_giveaway = Giveaway(
             name=name,
             prize=prize or '',
-            start_date=start_date_msk,
-            end_date=end_date_msk,
-            submission_end_date=submission_end_date_msk if contest_type in ["drawing", "collection"] else None,  # Для конкурса рисунков и коллекций
+            start_date=start_date_db,
+            end_date=end_date_db,
+            submission_end_date=submission_end_date_db if contest_type in ["drawing", "collection"] else None,
             post_link=final_post_link,  # Для рандом комментариев обязателен, для рисунков может быть NULL
             discussion_group_link=final_discussion_group_link,
             channel_link=channel_link,
             conditions=conditions,
             winners_count=winners_count,
             prize_links=prize_links if prize_links else None,
-            created_at=datetime.now(timezone.utc),
+            created_at=created_at_utc,
             created_by=created_by if created_by else None,
             contest_type=contest_type,
         )
