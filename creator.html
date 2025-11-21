@@ -1164,15 +1164,7 @@
               minute: '2-digit'
             }).format(d);
           }
-          let formatted = trimmed
-            .replace('T', ' ')
-            .replace(/Z$/, '')
-            .replace(/[+-]\d{2}:\d{2}$/, '')
-            .trim();
-          if (formatted.length > 16) {
-            formatted = formatted.slice(0, 16);
-          }
-          return formatted;
+          return trimmed.length > 19 ? trimmed.slice(0, 19) : trimmed;
         }
         const d = new Date(value);
         if (Number.isNaN(d.getTime())) return '';
@@ -1184,6 +1176,24 @@
           hour: '2-digit',
           minute: '2-digit'
         }).format(d);
+      }
+
+      function toDatetimeLocalValue(value) {
+        if (!value) return '';
+        if (value instanceof Date) {
+          return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 16);
+        }
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) return '';
+          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+            return trimmed.slice(0, 16);
+          }
+          const d = new Date(trimmed);
+          return Number.isNaN(d.getTime()) ? trimmed.slice(0, 16) : d.toISOString().slice(0, 16);
+        }
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
       }
 
       // Data fetching helpers (adjust endpoints to your backend)
@@ -3875,33 +3885,19 @@
         currentDrawingWinnersCount = winnersCount;
         
         // Заполняем даты
-        if (contest.submission_end_date) {
+        if (contest.submission_end_date || contest.submission_end_date_local) {
           const submissionEndInput = document.getElementById('drawing-contest-submission-end');
           if (submissionEndInput) {
-            try {
-              const submissionEndDate = new Date(contest.submission_end_date);
-              if (!isNaN(submissionEndDate.getTime())) {
-                const submissionEndLocal = new Date(submissionEndDate.getTime() - submissionEndDate.getTimezoneOffset() * 60000);
-                submissionEndInput.value = submissionEndLocal.toISOString().slice(0, 16);
-              }
-            } catch (e) {
-              console.error('Ошибка форматирования даты окончания приема работ:', e);
-            }
+            const submissionRaw = contest.submission_end_date_local || contest.submission_end_date;
+            submissionEndInput.value = toDatetimeLocalValue(submissionRaw);
           }
         }
         
-        if (contest.end_date || contest.end_at) {
+        if (contest.end_date || contest.end_at || contest.end_at_local) {
           const votingEndInput = document.getElementById('drawing-contest-voting-end');
           if (votingEndInput) {
-            try {
-              const votingEndDate = new Date(contest.end_date || contest.end_at);
-              if (!isNaN(votingEndDate.getTime())) {
-                const votingEndLocal = new Date(votingEndDate.getTime() - votingEndDate.getTimezoneOffset() * 60000);
-                votingEndInput.value = votingEndLocal.toISOString().slice(0, 16);
-              }
-            } catch (e) {
-              console.error('Ошибка форматирования даты окончания голосования:', e);
-            }
+            const votingRaw = contest.end_at_local || contest.end_date || contest.end_at;
+            votingEndInput.value = toDatetimeLocalValue(votingRaw);
           }
         }
         
@@ -4002,34 +3998,20 @@
         if (winnersCountInputEl) winnersCountInputEl.value = winnersCount;
         
         // Заполняем дату окончания приема работ
-        if (contest.submission_end_date) {
+        if (contest.submission_end_date || contest.submission_end_date_local) {
           const submissionEndInput = document.getElementById('collection-contest-submission-end');
           if (submissionEndInput) {
-            try {
-              const submissionEndDate = new Date(contest.submission_end_date);
-              if (!isNaN(submissionEndDate.getTime())) {
-                const submissionEndLocal = new Date(submissionEndDate.getTime() - submissionEndDate.getTimezoneOffset() * 60000);
-                submissionEndInput.value = submissionEndLocal.toISOString().slice(0, 16);
-              }
-            } catch (e) {
-              console.error('Ошибка форматирования даты окончания приема работ:', e);
-            }
+            const submissionRaw = contest.submission_end_date_local || contest.submission_end_date;
+            submissionEndInput.value = toDatetimeLocalValue(submissionRaw);
           }
         }
         
         // Заполняем дату окончания голосования
-        if (contest.end_date || contest.end_at) {
+        if (contest.end_date || contest.end_at || contest.end_at_local) {
           const votingEndInput = document.getElementById('collection-contest-voting-end');
           if (votingEndInput) {
-            try {
-              const votingEndDate = new Date(contest.end_date || contest.end_at);
-              if (!isNaN(votingEndDate.getTime())) {
-                const votingEndLocal = new Date(votingEndDate.getTime() - votingEndDate.getTimezoneOffset() * 60000);
-                votingEndInput.value = votingEndLocal.toISOString().slice(0, 16);
-              }
-            } catch (e) {
-              console.error('Ошибка форматирования даты окончания голосования:', e);
-            }
+            const votingRaw = contest.end_at_local || contest.end_date || contest.end_at;
+            votingEndInput.value = toDatetimeLocalValue(votingRaw);
           }
         }
         
