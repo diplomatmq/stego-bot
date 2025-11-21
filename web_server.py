@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi import UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from typing import Optional, Union
 import hashlib
 from sqlalchemy.future import select
 from db import async_session, init_db, IS_SQLITE
@@ -35,6 +36,7 @@ except ImportError:
     BufferedInputFile = None
 
 logger = logging.getLogger(__name__)
+MSK_TZ = pytz.timezone('Europe/Moscow')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,6 +103,56 @@ async def get_js():
 
 
 # ------------------- API -------------------
+
+def to_msk_naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """Преобразует datetime в naive формат МСК (UTC+3) для хранения в БД."""
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(MSK_TZ).replace(tzinfo=None)
+
+
+def _as_datetime(value: Optional[Union[str, datetime]]) -> Optional[datetime]:
+    """Преобразует строку или datetime в объект datetime."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        clean = value.strip()
+        if not clean:
+            return None
+        clean = clean.replace('Z', '+00:00') if clean.endswith('Z') else clean
+        try:
+            return datetime.fromisoformat(clean)
+        except Exception:
+            return None
+    return None
+
+
+def to_iso(value: Optional[Union[str, datetime]]) -> Optional[str]:
+    """Возвращает ISO-строку в МСК (UTC+3)."""
+    dt = _as_datetime(value)
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = MSK_TZ.localize(dt)
+    else:
+        dt = dt.astimezone(MSK_TZ)
+    return dt.isoformat()
+
+
+def to_datetime_local(value: Optional[Union[str, datetime]]) -> Optional[str]:
+    """Возвращает строку для input[type=datetime-local] (МСК)."""
+    dt = _as_datetime(value)
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = MSK_TZ.localize(dt)
+    else:
+        dt = dt.astimezone(MSK_TZ)
+    return dt.strftime('%Y-%m-%dT%H:%M')
 
 @app.get("/api/health")
 async def health_check():
@@ -1046,14 +1098,6 @@ async def create_giveaway(request: Request):
             date_naive = date_str
         return msk_tz.localize(date_naive) if date_naive.tzinfo is None else date_naive.astimezone(msk_tz)
     
-    def to_naive(dt):
-        """Конвертирует aware datetime в naive UTC для записи в БД"""
-        if not dt:
-            return None
-        if dt.tzinfo is None:
-            return dt
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    
     start_date_db = None
     end_date_db = None
     submission_end_date_db = None
@@ -1081,12 +1125,10 @@ async def create_giveaway(request: Request):
     except Exception as e:
         return {"success": False, "message": f"❌ Ошибка парсинга даты: {str(e)}"}
     
-        # Конвертируем даты в naive UTC перед записью в БД (PostgreSQL TIMESTAMP WITHOUT TIME ZONE)
-        start_date_db = to_naive(start_date_msk)
-        end_date_db = to_naive(end_date_msk)
-        submission_end_date_db = to_naive(submission_end_date_msk)
-    except Exception as e:
-        return {"success": False, "message": f"❌ Ошибка парсинга даты: {str(e)}"}
+    # Конвертируем даты в naive МСК перед записью в БД
+    start_date_db = to_msk_naive(start_date_msk)
+    end_date_db = to_msk_naive(end_date_msk)
+    submission_end_date_db = to_msk_naive(submission_end_date_msk)
     
     async with async_session() as session:
         # Проверяем, не существует ли уже конкурс для этого поста (только для рандом комментариев)
@@ -1160,8 +1202,8 @@ async def create_giveaway(request: Request):
             # Для конкурса рисунков post_link не обязателен (может быть NULL)
             final_post_link = post_link if post_link and post_link.strip() else None
         
-        created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        
+        created_at_msk = datetime.now(MSK_TZ).replace(tzinfo=None)
+
         new_giveaway = Giveaway(
             name=name,
             prize=prize or '',
@@ -1174,7 +1216,7 @@ async def create_giveaway(request: Request):
             conditions=conditions,
             winners_count=winners_count,
             prize_links=prize_links if prize_links else None,
-            created_at=created_at_utc,
+            created_at=created_at_msk,
             created_by=created_by if created_by else None,
             contest_type=contest_type,
         )
@@ -1299,24 +1341,6 @@ async def list_giveaways(admin_id: int = Query(None)):
                 # Используем select_cols_final для правильного маппинга
                 row_dict = dict(zip(select_cols_final, row))
                 
-                # Helper to convert date to ISO format string
-                def to_iso(value):
-                    if not value:
-                        return None
-                    if isinstance(value, datetime):
-                        msk_tz = pytz.timezone('Europe/Moscow')
-                        value = value.replace(tzinfo=timezone.utc).astimezone(msk_tz)
-                        return value.isoformat()
-                    if isinstance(value, str):
-                        if 'T' in value or ' ' in value:
-                            try:
-                                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                                return dt.isoformat()
-                            except:
-                                return value
-                        return value
-                    return str(value)
-                
                 # Проверяем, окончен ли конкурс и нужно ли выбрать победителей
                 end_date = row_dict.get('end_date')
                 is_confirmed = row_dict.get('is_confirmed', False) if 'is_confirmed' in existing_columns else False
@@ -1420,11 +1444,15 @@ async def list_giveaways(admin_id: int = Query(None)):
                     "prize": row_dict.get('prize') or '',
                     "prize_links": prize_links if prize_links else [],  # Всегда возвращаем список, даже если пустой
                     "end_at": to_iso(end_date),
+                    "end_at_local": to_datetime_local(end_date),
                     "end_date": to_iso(end_date),
                     "start_at": to_iso(start_date),
+                    "start_at_local": to_datetime_local(start_date),
                     "start_date": to_iso(start_date),
                     "submission_end_date": to_iso(submission_end_date),
+                    "submission_end_date_local": to_datetime_local(submission_end_date),
                     "created_at": to_iso(row_dict.get('created_at')),
+                    "created_at_local": to_datetime_local(row_dict.get('created_at')),
                     "created_by": created_by,  # Добавляем created_by в ответ
                     "is_confirmed": is_confirmed,
                     "winners_count": winners_count,
