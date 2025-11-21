@@ -1185,9 +1185,8 @@
           <input type="hidden" id="contest-winners-count" value="1" />
         </div>
         
-        <div class="grid grid-cols-2 gap-2">
-          <input id="contest-start" type="datetime-local" class="input-field w-full p-2 rounded" />
-          <input id="contest-end" type="datetime-local" class="input-field w-full p-2 rounded" />
+        <div class="p-3 rounded-md bg-violet-900/20 border border-violet-400/30 text-sm text-gray-300">
+          ⏱ Время начала и окончания конкурса больше не требуется — вы можете подвести итоги вручную в любой момент.
         </div>
       </div>
       <button id="submit-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить данные</button>
@@ -3320,8 +3319,8 @@
             post_link: postLink,
             conditions: document.getElementById('contest-conditions').value.trim(),
             prize: '', // Пустое значение, так как призы будут добавлены отдельно
-            start_at: document.getElementById('contest-start').value,
-            end_at: document.getElementById('contest-end').value,
+            start_at: null,
+            end_at: null,
             winners_count: winnersCount,
             created_by: currentUserId  // ID админа, создавшего конкурс
           };
@@ -3345,8 +3344,6 @@
               document.getElementById('contest-title').value = '';
               document.getElementById('contest-post-link').value = '';
               document.getElementById('contest-conditions').value = '';
-              document.getElementById('contest-start').value = '';
-              document.getElementById('contest-end').value = '';
               postLinkError.classList.add('hidden');
               await loadContests();
               showSection('contests-section');
@@ -3786,8 +3783,6 @@
             document.getElementById('contest-title').value = '';
             document.getElementById('contest-post-link').value = '';
             document.getElementById('contest-conditions').value = '';
-            document.getElementById('contest-start').value = '';
-            document.getElementById('contest-end').value = '';
             postLinkError.classList.add('hidden');
             await loadContests();
             showSection('contests-section');
