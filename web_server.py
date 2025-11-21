@@ -1523,8 +1523,13 @@ async def select_winners(contest_id: int, winners_count: int = Query(default=1))
         }
 
 @app.get("/api/contests/{contest_id}/winners")
-async def get_winners(contest_id: int):
-    """Получить список победителей конкурса"""
+async def get_winners(contest_id: int, current_user_id: int = Query(None)):
+    """Получить список победителей конкурса.
+    
+    - До подтверждения конкурса (is_confirmed = False) победителей видит только владелец конкурса
+      (created_by == current_user_id), остальные получают пустой список.
+    - После подтверждения (is_confirmed = True) победителей видят все.
+    """
     try:
         async with async_session() as session:
             # Получаем информацию о конкурсе
@@ -1544,6 +1549,26 @@ async def get_winners(contest_id: int):
             
             # Определяем тип конкурса для правильного возврата полей
             contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
+            is_confirmed = getattr(giveaway, 'is_confirmed', False) if hasattr(giveaway, 'is_confirmed') else False
+            winners_selected_at = giveaway.winners_selected_at.isoformat() if hasattr(giveaway, 'winners_selected_at') and giveaway.winners_selected_at else None
+
+            # Проверяем, является ли текущий пользователь владельцем конкурса
+            is_owner = False
+            if current_user_id is not None and hasattr(giveaway, 'created_by') and giveaway.created_by is not None:
+                try:
+                    is_owner = int(giveaway.created_by) == int(current_user_id)
+                except (TypeError, ValueError):
+                    is_owner = False
+
+            # Если конкурс ещё не подтвержден, скрываем победителей от всех, кроме владельца
+            if not is_confirmed and not is_owner:
+                return {
+                    "winners": [],
+                    "is_confirmed": is_confirmed,
+                    "winners_selected_at": winners_selected_at,
+                    "contest_type": contest_type,
+                }
+
             logger.info(f"📊 Загружено {len(winners)} победителей для конкурса {contest_id} (тип: {contest_type}, post_link: {giveaway.post_link})")
             for w in winners:
                 if contest_type == 'random_comment':
@@ -1576,8 +1601,8 @@ async def get_winners(contest_id: int):
             
             return {
                 "winners": winners_data,
-                "is_confirmed": giveaway.is_confirmed if hasattr(giveaway, 'is_confirmed') else False,
-                "winners_selected_at": giveaway.winners_selected_at.isoformat() if hasattr(giveaway, 'winners_selected_at') and giveaway.winners_selected_at else None,
+                "is_confirmed": is_confirmed,
+                "winners_selected_at": winners_selected_at,
                 "contest_type": contest_type
             }
     except HTTPException:
