@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, DateTime, Boolean, JSON, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, timezone
 
@@ -7,7 +7,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True)
+    telegram_id = Column(BigInteger, unique=True)
     username = Column(String, nullable=True)  # Username пользователя
     role = Column(String, default="user")  # creator / admin / user
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -41,7 +41,7 @@ class Giveaway(Base):
     prize = Column(String, nullable=False)  # Описание приза
     prize_links = Column(JSON, nullable=True)  # Массив ссылок на NFT-подарки (количество = winners_count)
     conditions = Column(String)  # Условия участия в конкурсе
-    created_by = Column(Integer, nullable=True)  # ID создателя конкурса (admin или creator) - telegram_id
+    created_by = Column(BigInteger, nullable=True)  # ID создателя конкурса (admin или creator) - telegram_id
     is_confirmed = Column(Boolean, default=False)  # Подтверждены ли победители
     winners_selected_at = Column(DateTime, nullable=True)  # Когда были выбраны победители (до подтверждения)
     contest_type = Column(String, default="random_comment")  # Тип конкурса: "random_comment" или "drawing"
@@ -54,7 +54,7 @@ class Winner(Base):
     comment_link = Column(String, nullable=True)  # Ссылка на комментарий (для рандом комментариев, NULL для конкурса рисунков)
     photo_link = Column(String, nullable=True)  # Ссылка на фотографию (для конкурса рисунков, NULL для рандом комментариев)
     photo_message_id = Column(Integer, nullable=True)  # ID сообщения с фотографией в Telegram (для конкурса рисунков)
-    user_id = Column(Integer, nullable=True)  # telegram_id победителя
+    user_id = Column(BigInteger, nullable=True)  # telegram_id победителя
     user_username = Column(String, nullable=True)  # username победителя
     prize_link = Column(String, nullable=True)  # Ссылка на приз, который выиграл пользователь
     place = Column(Integer, nullable=True)  # Место победителя (1, 2, 3 и т.д.)
@@ -70,8 +70,8 @@ class History(Base):
 class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
-    from_user_id = Column(Integer)  # telegram_id отправителя
-    to_user_id = Column(Integer, nullable=True)  # telegram_id получателя (для creator = None)
+    from_user_id = Column(BigInteger)  # telegram_id отправителя
+    to_user_id = Column(BigInteger, nullable=True)  # telegram_id получателя (для creator = None)
     message_text = Column(String, nullable=False)
     status = Column(String, default="pending")  # pending, approved, rejected
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -87,7 +87,7 @@ class Comment(Base):
     comment_message_id = Column(Integer, nullable=False)  # ID комментария в группе обсуждения
     comment_chat_id = Column(String, nullable=False)  # ID группы обсуждения
     comment_link = Column(String, nullable=False)  # Ссылка на комментарий
-    user_id = Column(Integer, nullable=True)  # ID пользователя, оставившего комментарий
+    user_id = Column(BigInteger, nullable=True)  # ID пользователя, оставившего комментарий
     username = Column(String, nullable=True)  # Username пользователя
     text = Column(String, nullable=True)  # Текст комментария
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # Когда комментарий был сохранен в БД
@@ -102,7 +102,7 @@ class Participant(Base):
     __tablename__ = "participants"
     id = Column(Integer, primary_key=True)
     giveaway_id = Column(Integer, ForeignKey("giveaways.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, nullable=False)  # telegram_id участника
+    user_id = Column(BigInteger, nullable=False)  # telegram_id участника
     username = Column(String, nullable=True)  # Username участника
     photo_link = Column(String, nullable=True)  # Ссылка на фотографию участника (для конкурса рисунков, NULL для рандом комментариев)
     photo_message_id = Column(Integer, nullable=True)  # ID сообщения с фотографией в Telegram (для конкурса рисунков)
