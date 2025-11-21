@@ -1,6 +1,6 @@
 import asyncio
+import contextlib
 import logging
-import threading
 import uvicorn
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, PreCheckoutQuery, ContentType
@@ -362,32 +362,36 @@ async def process_successful_payment(message: types.Message):
         logging.error(f"❌ Ошибка при обработке успешной оплаты: {e}", exc_info=True)
 
 
-def run_web():
-    """Запускаем FastAPI сервер в отдельном потоке"""
+async def start_web_server():
+    """Запускаем FastAPI сервер в том же event loop"""
     import os
     ssl_keyfile = os.getenv("SSL_KEYFILE", "ssl/key.pem")
     ssl_certfile = os.getenv("SSL_CERTFILE", "ssl/cert.pem")
     
-    # Проверяем наличие SSL сертификатов
     use_ssl = os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile)
     
     if use_ssl:
-        print(f"🔒 WebApp доступен на https://0.0.0.0:8000")
+        print("🔒 WebApp доступен на https://0.0.0.0:8000")
         config = uvicorn.Config(
-            fastapi_app, 
-            host="0.0.0.0", 
-            port=8000, 
+            fastapi_app,
+            host="0.0.0.0",
+            port=8000,
             log_level="info",
             ssl_keyfile=ssl_keyfile,
-            ssl_certfile=ssl_certfile
+            ssl_certfile=ssl_certfile,
         )
     else:
-        print(f"⚠️  SSL сертификаты не найдены. WebApp доступен на http://0.0.0.0:8000")
-        print(f"💡 Для HTTPS создайте сертификаты: python generate_ssl.py")
-        config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=8000, log_level="info")
+        print("⚠️  SSL сертификаты не найдены. WebApp доступен на http://0.0.0.0:8000")
+        print("💡 Для HTTPS создайте сертификаты: python generate_ssl.py")
+        config = uvicorn.Config(
+            fastapi_app,
+            host="0.0.0.0",
+            port=8000,
+            log_level="info",
+        )
     
     server = uvicorn.Server(config)
-    server.run()  # синхронно
+    await server.serve()
 
 
 async def run_bot():
@@ -419,9 +423,14 @@ async def run_bot():
 
 
 async def main():
-    web_thread = threading.Thread(target=run_web, daemon=True)
-    web_thread.start()
-    await run_bot()
+    web_task = asyncio.create_task(start_web_server(), name="fastapi-server")
+    try:
+        await run_bot()
+    finally:
+        if not web_task.done():
+            web_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await web_task
 
 
 if __name__ == "__main__":
