@@ -1464,19 +1464,49 @@ async def alias_create_contest(request: Request):
     return await create_giveaway(request)
 
 @app.post("/api/contests/{contest_id}/select-winners")
-async def select_winners(contest_id: int, winners_count: int = Query(default=1)):
-    """Выбирает победителей из конкурса на основе комментариев под постом через Telethon"""
+async def select_winners(
+    contest_id: int,
+    winners_count: int = Query(default=1),
+    current_user_id: int = Query(default=None),
+):
+    """Выбирает победителей из конкурса на основе комментариев под постом через Telethon.
+
+    Итоги может подводить только владелец конкурса (created_by), либо создатель (role=creator),
+    в зависимости от настроек created_by.
+    """
     try:
-        # Получаем информацию о конкурсе
+        # Получаем информацию о конкурсе и проверяем права
         async with async_session() as session:
-            result = await session.execute(
+            giveaway_result = await session.execute(
                 select(Giveaway).where(Giveaway.id == contest_id)
             )
-            giveaway = result.scalars().first()
-            
+            giveaway = giveaway_result.scalars().first()
             if not giveaway:
                 raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
+
+            # Если передан current_user_id — проверяем, что это владелец конкурса
+            if current_user_id is not None:
+                user_result = await session.execute(
+                    select(User).where(User.telegram_id == current_user_id)
+                )
+                user = user_result.scalars().first()
+                if not user:
+                    raise HTTPException(status_code=403, detail="Пользователь не найден")
+
+                # Разрешаем только владельцу конкурса (created_by)
+                if giveaway.created_by is not None:
+                    try:
+                        if int(giveaway.created_by) != int(current_user_id):
+                            raise HTTPException(
+                                status_code=403,
+                                detail="Подвести итоги может только создатель этого конкурса",
+                            )
+                    except (TypeError, ValueError):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Подвести итоги может только создатель этого конкурса",
+                        )
+
             # Для конкурсов рисунков post_link не требуется
             contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
             if contest_type == 'random_comment' and not giveaway.post_link:
@@ -1594,14 +1624,37 @@ async def get_winners(contest_id: int, current_user_id: int = Query(None)):
 
 @app.post("/api/contests/{contest_id}/reroll-winner")
 async def reroll_winner(contest_id: int, request: Request):
-    """Рерандомизирует одного победителя"""
+    """Рерандомизирует одного победителя. Доступно только создателю конкурса."""
     try:
         data = await request.json()
         old_winner_link = data.get("old_winner_link")
+        current_user_id = data.get("current_user_id")
         
         if not old_winner_link:
             raise HTTPException(status_code=400, detail="old_winner_link обязателен")
         
+        # Проверяем права: рероллить может только владелец конкурса
+        async with async_session() as session:
+            giveaway_result = await session.execute(
+                select(Giveaway).where(Giveaway.id == contest_id)
+            )
+            giveaway = giveaway_result.scalars().first()
+            if not giveaway:
+                raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+            if current_user_id is not None and giveaway.created_by is not None:
+                try:
+                    if int(giveaway.created_by) != int(current_user_id):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Реролл доступен только создателю конкурса",
+                        )
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Реролл доступен только создателю конкурса",
+                    )
+
         # Создаем временный Bot объект только для совместимости (но он не используется в reroll_single_winner)
         bot = Bot(token=BOT_TOKEN)
         try:
@@ -3250,9 +3303,34 @@ async def get_collection_contest_results(contest_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/contests/{contest_id}/confirm-winners")
-async def confirm_contest_winners(contest_id: int):
-    """Подтверждает победителей конкурса (финализирует выбор)"""
+async def confirm_contest_winners(contest_id: int, current_user_id: int = Query(default=None)):
+    """Подтверждает победителей конкурса (финализирует выбор).
+
+    Подтверждать победителей может только владелец конкурса (created_by).
+    """
     try:
+        # Проверяем права доступа
+        async with async_session() as session:
+            giveaway_result = await session.execute(
+                select(Giveaway).where(Giveaway.id == contest_id)
+            )
+            giveaway = giveaway_result.scalars().first()
+            if not giveaway:
+                raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+            if current_user_id is not None and giveaway.created_by is not None:
+                try:
+                    if int(giveaway.created_by) != int(current_user_id):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Подтверждать победителей может только создатель конкурса",
+                        )
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Подтверждать победителей может только создатель конкурса",
+                    )
+
         result = await confirm_winners(contest_id)
         return {"success": True, "message": "Победители подтверждены"}
     except HTTPException:
