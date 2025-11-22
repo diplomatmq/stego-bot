@@ -2015,6 +2015,83 @@ async def upload_photo_for_drawing_contest(
             if len(file_content) > 10 * 1024 * 1024:  # 10 MB
                 raise HTTPException(status_code=400, detail="Размер файла не должен превышать 10 МБ")
             
+            # Ресайзим изображение, если оно слишком большое (Telegram API ограничение: 10000x10000)
+            try:
+                from PIL import Image
+                max_dimension = 10000  # Максимальный размер для Telegram API
+                max_file_size = 10 * 1024 * 1024  # 10 МБ
+                
+                # Открываем изображение из байтов
+                img = Image.open(io.BytesIO(file_content))
+                original_size = img.size
+                original_format = img.format
+                
+                # Конвертируем RGBA в RGB для JPEG (если нужно)
+                if img.mode in ('RGBA', 'LA', 'P') and original_format != 'PNG':
+                    # Создаем белый фон для изображений с прозрачностью
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = background
+                
+                # Проверяем размеры
+                needs_resize = img.width > max_dimension or img.height > max_dimension
+                if needs_resize:
+                    logger.info(f"📐 Ресайз изображения: {original_size} -> максимум {max_dimension}x{max_dimension}")
+                    # Вычисляем новые размеры с сохранением пропорций
+                    ratio = min(max_dimension / img.width, max_dimension / img.height)
+                    new_width = int(img.width * ratio)
+                    new_height = int(img.height * ratio)
+                    # Используем совместимый способ ресайза
+                    try:
+                        # Для новых версий PIL
+                        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    except AttributeError:
+                        # Для старых версий PIL
+                        img = img.resize((new_width, new_height), Image.LANCZOS)
+                    logger.info(f"📐 Новые размеры: {img.size}")
+                
+                # Сохраняем в байты и проверяем размер файла
+                output = io.BytesIO()
+                # Определяем формат для сохранения
+                if original_format == 'PNG' and img.mode != 'RGBA':
+                    # Если оригинал был PNG, но мы конвертировали в RGB, используем JPEG
+                    format_ext = 'JPEG'
+                elif original_format in ['JPEG', 'JPG']:
+                    format_ext = 'JPEG'
+                elif original_format == 'PNG':
+                    format_ext = 'PNG'
+                else:
+                    format_ext = 'JPEG'  # По умолчанию JPEG
+                
+                # Пробуем сохранить с разным качеством, если файл слишком большой
+                quality = 95
+                max_quality_iterations = 10  # Максимум 10 итераций
+                iteration = 0
+                
+                while iteration < max_quality_iterations:
+                    output.seek(0)
+                    output.truncate(0)
+                    if format_ext == 'JPEG':
+                        img.save(output, format='JPEG', quality=quality, optimize=True)
+                    else:
+                        img.save(output, format=format_ext, optimize=True)
+                    
+                    file_size = len(output.getvalue())
+                    if file_size <= max_file_size or quality <= 50:
+                        break
+                    quality -= 5
+                    iteration += 1
+                
+                file_content = output.getvalue()
+                logger.info(f"📦 Размер файла после обработки: {len(file_content)} байт (качество: {quality}, формат: {format_ext})")
+                
+            except ImportError:
+                logger.warning("⚠️ PIL/Pillow не установлен, пропускаем ресайз изображения. Установите: pip install Pillow")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка при ресайзе изображения: {e}, используем оригинал", exc_info=True)
+            
             # Отправляем фотографию в бот для сохранения
             bot = Bot(token=BOT_TOKEN)
             photo_link = None
