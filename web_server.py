@@ -2156,24 +2156,25 @@ async def upload_photo_for_drawing_contest(
                     except Exception:
                         return None
 
-                async def send_photo_with_fallback(target_chat_id: int, caption: str):
+                async def send_photo_with_fallback(target_chat_id: int, caption: str, reply_markup=None):
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     buffered = build_buffered_input()
                     if buffered is not None:
-                        return await bot.send_photo(chat_id=target_chat_id, photo=buffered, caption=caption)
+                        return await bot.send_photo(chat_id=target_chat_id, photo=buffered, caption=caption, reply_markup=reply_markup)
                     if FSInputFile is not None:
                         tmp_path = None
                         try:
                             with tempfile.NamedTemporaryFile(delete=False, suffix=(f"_{original_filename}" if original_filename else "")) as tmp:
                                 tmp.write(file_content)
                                 tmp_path = tmp.name
-                            return await bot.send_photo(chat_id=target_chat_id, photo=FSInputFile(tmp_path), caption=caption)
+                            return await bot.send_photo(chat_id=target_chat_id, photo=FSInputFile(tmp_path), caption=caption, reply_markup=reply_markup)
                         finally:
                             if tmp_path and os.path.exists(tmp_path):
                                 try:
                                     os.remove(tmp_path)
                                 except Exception:
                                     pass
-                    return await bot.send_photo(chat_id=target_chat_id, photo=file_content, caption=caption)
+                    return await bot.send_photo(chat_id=target_chat_id, photo=file_content, caption=caption, reply_markup=reply_markup)
 
                 logger.debug(f"📨 Обработка загрузки работы для конкурса {contest_id} пользователем {user_id}")
 
@@ -2236,9 +2237,15 @@ async def upload_photo_for_drawing_contest(
                         caption_creator = f"Конкурс рисунков #{contest_id}\nРабота #{work_number}\nУчастник: ID: {user_id}"
                     caption_user = f"Конкурс рисунков #{contest_id}\nВаша работа #{work_number}"
 
+                    # Создаем кнопку "Аннулировать" под фото
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="❌ Аннулировать", callback_data=f"cancel_work:{contest_id}:{work_number}:{user_id}")]
+                    ])
+
                     try:
                         logger.info(f"📤 Попытка отправить фото конкурса {contest_id} создателю {chat_id}")
-                        sent_message = await send_photo_with_fallback(chat_id, caption_creator)
+                        sent_message = await send_photo_with_fallback(chat_id, caption_creator, reply_markup=cancel_keyboard)
                         logger.info(f"✅ Фото успешно отправлено создателю {chat_id}, message_id={sent_message.message_id}")
                     except Exception as send_error:
                         logger.error(f"❌ Ошибка при отправке фото создателю {chat_id}: {send_error}", exc_info=True)
@@ -2746,6 +2753,10 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             if not work_number or not local_path or not participant_user_id:
                 continue
             
+            # Пропускаем аннулированные работы
+            if work.get("cancelled", False):
+                continue
+            
             # Пропускаем собственную работу пользователя
             if participant_user_id == user_id:
                 continue
@@ -2864,6 +2875,10 @@ async def submit_vote(contest_id: int, request: Request):
         work = next((w for w in works if w.get("work_number") == work_number), None)
         if not work:
             raise HTTPException(status_code=404, detail="Работа не найдена")
+        
+        # Проверяем, что работа не аннулирована
+        if work.get("cancelled", False):
+            raise HTTPException(status_code=404, detail="Работа была аннулирована")
 
         if work.get("participant_user_id") == user_id:
             raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
@@ -2878,7 +2893,9 @@ async def submit_vote(contest_id: int, request: Request):
         remaining = sum(
             1
             for w in works
-            if w.get("participant_user_id") != user_id and str(user_id) not in (w.get("votes") or {})
+            if w.get("participant_user_id") != user_id 
+            and str(user_id) not in (w.get("votes") or {})
+            and not w.get("cancelled", False)  # Пропускаем аннулированные работы
         )
 
         save_drawing_data(drawing_data)
@@ -2900,6 +2917,11 @@ async def get_drawing_work_image(contest_id: int, work_number: int):
         work = next((w for w in contest_entry.get("works", []) if w.get("work_number") == work_number), None)
         if not work:
             raise HTTPException(status_code=404, detail="Работа не найдена")
+        
+        # Проверяем, что работа не аннулирована
+        if work.get("cancelled", False):
+            raise HTTPException(status_code=404, detail="Работа была аннулирована")
+        
         local_path = work.get("local_path")
 
     if not local_path:
@@ -3144,6 +3166,10 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                     votes = work.get("votes", {}) or {}
                     
                     if not work_number or not participant_user_id:
+                        continue
+                    
+                    # Пропускаем аннулированные работы
+                    if work.get("cancelled", False):
                         continue
                     
                     # Получаем username участника из таблицы User (приоритет) или Participant
