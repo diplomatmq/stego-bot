@@ -2691,7 +2691,13 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             # Жюри включено - проверяем, является ли пользователь членом жюри или создателем
             is_creator = giveaway.created_by == user_id
             jury_members = jury.get('members', [])
-            is_jury_member = any(member.get('user_id') == user_id for member in jury_members)
+            # Проверяем по ID (может быть число или строка с username)
+            is_jury_member = any(
+                member.get('user_id') == user_id or 
+                str(member.get('user_id')) == str(user_id) or
+                (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
+                for member in jury_members
+            )
             can_vote = is_creator or is_jury_member
         
         return {
@@ -2741,7 +2747,12 @@ async def submit_vote(contest_id: int, request: Request):
             # Жюри включено - проверяем, является ли пользователь членом жюри или создателем
             is_creator = giveaway.created_by == user_id
             jury_members = jury.get('members', [])
-            is_jury_member = any(member.get('user_id') == user_id for member in jury_members)
+            # Проверяем по ID (может быть число или строка)
+            is_jury_member = any(
+                member.get('user_id') == user_id or 
+                str(member.get('user_id')) == str(user_id)
+                for member in jury_members
+            )
             
             if not (is_creator or is_jury_member):
                 raise HTTPException(
@@ -3675,6 +3686,10 @@ async def update_contest(contest_id: int, request: Request):
                     # submission_end_date не требуется для рандом комментариев - можно обнулить
                     if old_contest_type == "drawing" and "submission_end_date" not in data:
                         contest.submission_end_date = None
+            
+            if "jury" in data:
+                contest.jury = data.get("jury")
+                logger.info(f"Обновление жюри для конкурса {contest_id}")
             
             if "prize_links" in data:
                 prize_links = data.get("prize_links")
