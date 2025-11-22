@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import uvicorn
+from datetime import datetime, timezone
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, PreCheckoutQuery, ContentType
 from sqlalchemy.future import select
@@ -17,6 +18,14 @@ from creator import register_creator_handlers
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
+
+# Словарь для хранения состояния ожидания причины отказа работы
+# Формат: {user_id: {"contest_id": int, "work_number": int, "participant_user_id": int}}
+awaiting_cancel_reason = {}
+
+# Словарь для хранения состояния ожидания причины отказа работы
+# Формат: {user_id: {"contest_id": int, "work_number": int, "participant_user_id": int}}
+awaiting_cancel_reason = {}
 
 
 async def check_subscription_to_channel(bot: Bot, user_id: int, channel_username: str) -> bool:
@@ -136,6 +145,145 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
         parse_mode="Markdown",
         reply_markup=kb
     )
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('cancel_work:'))
+async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
+    """Обработчик кнопки 'Аннулировать' работу"""
+    await callback_query.answer()  # Убираем индикатор загрузки
+    
+    try:
+        # Парсим данные из callback_data: cancel_work:contest_id:work_number:user_id
+        parts = callback_query.data.split(':')
+        if len(parts) != 4:
+            await callback_query.message.answer("❌ Ошибка: неверный формат данных")
+            return
+        
+        contest_id = int(parts[1])
+        work_number = int(parts[2])
+        participant_user_id = int(parts[3])
+        creator_id = callback_query.from_user.id
+        
+        # Сохраняем состояние ожидания причины
+        awaiting_cancel_reason[creator_id] = {
+            "contest_id": contest_id,
+            "work_number": work_number,
+            "participant_user_id": participant_user_id
+        }
+        
+        await callback_query.message.answer(
+            "📝 Пожалуйста, напишите причину аннулирования работы:"
+        )
+        
+    except Exception as e:
+        logging.error(f"Ошибка при обработке аннулирования работы: {e}", exc_info=True)
+        await callback_query.message.answer("❌ Произошла ошибка при обработке запроса")
+
+
+@dp.message_handler(lambda m: m.from_user.id in awaiting_cancel_reason and m.text and not m.text.startswith('/'))
+async def handle_cancel_reason(message: types.Message):
+    """Обработчик ввода причины аннулирования работы"""
+    creator_id = message.from_user.id
+    reason = message.text.strip()
+    
+    if not reason:
+        await message.answer("❌ Причина не может быть пустой. Пожалуйста, напишите причину аннулирования:")
+        return
+    
+    try:
+        cancel_data = awaiting_cancel_reason.pop(creator_id)
+        contest_id = cancel_data["contest_id"]
+        work_number = cancel_data["work_number"]
+        participant_user_id = cancel_data["participant_user_id"]
+        
+        # Загружаем данные конкурса
+        from web_server import load_drawing_data, save_drawing_data, drawing_data_lock
+        
+        async with drawing_data_lock:
+            drawing_data = load_drawing_data()
+            contest_key = str(contest_id)
+            contest_entry = drawing_data.get(contest_key)
+            
+            if not contest_entry:
+                await message.answer("❌ Конкурс не найден")
+                return
+            
+            # Находим работу
+            works = contest_entry.get("works", [])
+            work = None
+            for w in works:
+                if w.get("work_number") == work_number and w.get("participant_user_id") == participant_user_id:
+                    work = w
+                    break
+            
+            if not work:
+                await message.answer("❌ Работа не найдена")
+                return
+            
+            # Удаляем файл фото, если он существует
+            local_path = work.get("local_path")
+            if local_path:
+                try:
+                    from web_server import ROOT_DIR
+                    import os
+                    full_path = os.path.join(ROOT_DIR, local_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        logging.info(f"🗑️ Удален файл фото: {full_path}")
+                except Exception as e:
+                    logging.warning(f"⚠️ Не удалось удалить файл {local_path}: {e}")
+            
+            # Полностью удаляем работу из списка
+            works.remove(work)
+            
+            save_drawing_data(drawing_data)
+            
+            # Обновляем participant в базе данных - удаляем photo_link
+            try:
+                from db import async_session
+                from models import Participant
+                from sqlalchemy.future import select
+                
+                async with async_session() as session:
+                    participant_result = await session.execute(
+                        select(Participant).where(
+                            Participant.giveaway_id == contest_id,
+                            Participant.user_id == participant_user_id
+                        )
+                    )
+                    participant = participant_result.scalars().first()
+                    if participant:
+                        participant.photo_link = None
+                        participant.photo_message_id = None
+                        await session.commit()
+                        logging.info(f"✅ Обновлен participant для пользователя {participant_user_id} в конкурсе {contest_id}")
+            except Exception as e:
+                logging.error(f"⚠️ Ошибка при обновлении participant в БД: {e}")
+        
+        # Получаем название конкурса
+        contest_title = contest_entry.get("title", f"Конкурс #{contest_id}")
+        
+        # Отправляем сообщение участнику
+        try:
+            participant_message = (
+                f"❌ Ваша работа аннулирована в конкурсе \"{contest_title}\"\n\n"
+                f"Причина: {reason}"
+            )
+            await bot.send_message(chat_id=participant_user_id, text=participant_message)
+            await message.answer(f"✅ Работа #{work_number} аннулирована. Участнику отправлено уведомление.")
+        except Exception as e:
+            logging.error(f"Ошибка при отправке сообщения участнику {participant_user_id}: {e}")
+            await message.answer(
+                f"✅ Работа #{work_number} аннулирована.\n"
+                f"⚠️ Не удалось отправить уведомление участнику (возможно, он не начал диалог с ботом)."
+            )
+        
+    except Exception as e:
+        logging.error(f"Ошибка при обработке причины аннулирования: {e}", exc_info=True)
+        await message.answer("❌ Произошла ошибка при обработке причины аннулирования")
+        # Убираем состояние на случай ошибки
+        awaiting_cancel_reason.pop(creator_id, None)
+
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
