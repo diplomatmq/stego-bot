@@ -23,10 +23,6 @@ dp = Dispatcher(bot)
 # Формат: {user_id: {"contest_id": int, "work_number": int, "participant_user_id": int}}
 awaiting_cancel_reason = {}
 
-# Словарь для хранения состояния ожидания причины отказа работы
-# Формат: {user_id: {"contest_id": int, "work_number": int, "participant_user_id": int}}
-awaiting_cancel_reason = {}
-
 
 async def check_subscription_to_channel(bot: Bot, user_id: int, channel_username: str) -> bool:
     """Проверяет подписку пользователя на канал"""
@@ -150,12 +146,21 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('cancel_work:'))
 async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
     """Обработчик кнопки 'Аннулировать' работу"""
-    await callback_query.answer()  # Убираем индикатор загрузки
+    logging.info(f"🔔 Получен callback для аннулирования: {callback_query.data} от пользователя {callback_query.from_user.id}")
+    
+    # Отвечаем на callback сразу, чтобы убрать индикатор загрузки
+    try:
+        await callback_query.answer("Обработка...")
+    except Exception as e:
+        logging.warning(f"⚠️ Не удалось ответить на callback: {e}")
     
     try:
         # Парсим данные из callback_data: cancel_work:contest_id:work_number:user_id
         parts = callback_query.data.split(':')
+        logging.info(f"📋 Парсинг callback_data: {parts}, количество частей: {len(parts)}")
+        
         if len(parts) != 4:
+            logging.error(f"❌ Неверный формат callback_data: {callback_query.data}, частей: {len(parts)}")
             await callback_query.message.answer("❌ Ошибка: неверный формат данных")
             return
         
@@ -164,6 +169,8 @@ async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
         participant_user_id = int(parts[3])
         creator_id = callback_query.from_user.id
         
+        logging.info(f"✅ Парсинг успешен: contest_id={contest_id}, work_number={work_number}, participant_user_id={participant_user_id}, creator_id={creator_id}")
+        
         # Сохраняем состояние ожидания причины
         awaiting_cancel_reason[creator_id] = {
             "contest_id": contest_id,
@@ -171,9 +178,12 @@ async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
             "participant_user_id": participant_user_id
         }
         
+        logging.info(f"💾 Сохранено состояние ожидания причины для создателя {creator_id}")
+        
         await callback_query.message.answer(
             "📝 Пожалуйста, напишите причину аннулирования работы:"
         )
+        logging.info(f"✅ Запрос причины отправлен создателю {creator_id}")
         
     except Exception as e:
         logging.error(f"Ошибка при обработке аннулирования работы: {e}", exc_info=True)
@@ -549,10 +559,13 @@ async def run_bot():
     
     # Callback handler для проверки подписки уже зарегистрирован через декоратор
     logging.info("✅ Callback handler для проверки подписки зарегистрирован через декоратор")
+    logging.info("✅ Callback handler для аннулирования работ зарегистрирован через декоратор")
     
     # Регистрируем хендлеры из других модулей
     register_giveaway_handlers(dp)
     register_creator_handlers(dp)
+    
+    logging.info("✅ Все обработчики зарегистрированы")
     
     # Проверяем все активные конкурсы и собираем исторические комментарии
     from giveaway import check_all_giveaways_historical_comments
