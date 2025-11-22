@@ -143,10 +143,10 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
     )
 
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('cancel_work:'))
+@dp.callback_query_handler(lambda c: c.data and (c.data.startswith('cancel_work:') or c.data.startswith('cancel:')))
 async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
     """Обработчик кнопки 'Аннулировать' работу"""
-    logging.info(f"🔔 Получен callback для аннулирования: {callback_query.data} от пользователя {callback_query.from_user.id}")
+    logging.info(f"🔔🔔🔔 ОБРАБОТЧИК СРАБОТАЛ! Callback для аннулирования: {callback_query.data} от пользователя {callback_query.from_user.id}")
     
     # Отвечаем на callback сразу, чтобы убрать индикатор загрузки
     try:
@@ -155,7 +155,7 @@ async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
         logging.warning(f"⚠️ Не удалось ответить на callback: {e}")
     
     try:
-        # Парсим данные из callback_data: cancel_work:contest_id:work_number:user_id
+        # Парсим данные из callback_data: cancel_work:contest_id:work_number:user_id или cancel:contest_id:work_number:user_id
         parts = callback_query.data.split(':')
         logging.info(f"📋 Парсинг callback_data: {parts}, количество частей: {len(parts)}")
         
