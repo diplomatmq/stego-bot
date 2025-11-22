@@ -1,4093 +1,5754 @@
-from models import User, Giveaway, Message, Winner, Participant
-from sqlalchemy import insert, update, text, func
-from datetime import datetime, timezone
-from fastapi import Request, HTTPException
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, Response
-from fastapi import UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from typing import Optional, Union
-import hashlib
-from sqlalchemy.future import select
-from db import async_session, init_db, IS_SQLITE
-from models import User
-from config import CREATOR_ID, BOT_TOKEN, TON_WALLET, CRYPTOBOT_API_TOKEN, CRYPTOBOT_API_URL
-import cryptobot
-import pytz
-import os
-import json
-import asyncio
-import time
-import mimetypes
-from aiogram import Bot
-from giveaway import select_winners_from_contest, reroll_single_winner, confirm_winners
-import re
-import logging
-import tempfile
-import io
-try:
-    from aiogram.types import FSInputFile
-except ImportError:
-    FSInputFile = None
-try:
-    from aiogram.types import BufferedInputFile
-except ImportError:
-    BufferedInputFile = None
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎁 Панель Пользователя</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Шрифт для темы Mario -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- Готический шрифт для темы Attack on Titan -->
+  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Nosifer&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 
-logger = logging.getLogger(__name__)
-MSK_TZ = pytz.timezone('Europe/Moscow')
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan-хук для инициализации БД при старте FastAPI"""
-    await init_db()
-    logger.info("✅ База данных инициализирована при запуске веб-сервера")
-    yield
-
-app = FastAPI(lifespan=lifespan)
-
-ROOT_DIR = os.path.dirname(__file__)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ------------------- WEB -------------------
-
-def get_file_with_no_cache(file_path: str) -> FileResponse:
-    """Возвращает FileResponse с заголовками для предотвращения кэширования"""
-    response = FileResponse(file_path)
-    # Добавляем заголовки для предотвращения кэширования
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    # Добавляем ETag на основе времени изменения файла
-    if os.path.exists(file_path):
-        mtime = os.path.getmtime(file_path)
-        etag = hashlib.md5(f"{file_path}{mtime}".encode()).hexdigest()
-        response.headers["ETag"] = etag
-    return response
-
-@app.get("/")
-async def root():
-    """Главная страница WebApp"""
-    index_path = os.path.join(ROOT_DIR, "index.html")
-    return get_file_with_no_cache(index_path)
-
-@app.get("/creator.html")
-async def get_creator():
-    return get_file_with_no_cache(os.path.join(ROOT_DIR, "creator.html"))
-
-@app.get("/admin.html")
-async def get_admin():
-    return get_file_with_no_cache(os.path.join(ROOT_DIR, "admin.html"))
-
-@app.get("/user.html")
-async def get_user():
-    return get_file_with_no_cache(os.path.join(ROOT_DIR, "user.html"))
-
-@app.get("/style.css")
-async def get_css():
-    """CSS напрямую из корня"""
-    return get_file_with_no_cache(os.path.join(ROOT_DIR, "style.css"))
-
-@app.get("/script.js")
-async def get_js():
-    """JS напрямую из корня"""
-    return get_file_with_no_cache(os.path.join(ROOT_DIR, "script.js"))
-
-
-# ------------------- API -------------------
-
-def to_msk_naive(dt: Optional[datetime]) -> Optional[datetime]:
-    """Преобразует datetime в naive формат МСК (UTC+3) для хранения в БД."""
-    if not dt:
-        return None
-    if dt.tzinfo is None:
-        return dt
-    return dt.astimezone(MSK_TZ).replace(tzinfo=None)
-
-
-def _as_datetime(value: Optional[Union[str, datetime]]) -> Optional[datetime]:
-    """Преобразует строку или datetime в объект datetime."""
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        clean = value.strip()
-        if not clean:
-            return None
-        clean = clean.replace('Z', '+00:00') if clean.endswith('Z') else clean
-        try:
-            return datetime.fromisoformat(clean)
-        except Exception:
-            return None
-    return None
-
-
-def to_iso(value: Optional[Union[str, datetime]]) -> Optional[str]:
-    """Возвращает ISO-строку в МСК (UTC+3)."""
-    dt = _as_datetime(value)
-    if not dt:
-        return None
-    if dt.tzinfo is None:
-        dt = MSK_TZ.localize(dt)
-    else:
-        dt = dt.astimezone(MSK_TZ)
-    return dt.isoformat()
-
-
-def to_datetime_local(value: Optional[Union[str, datetime]]) -> Optional[str]:
-    """Возвращает строку для input[type=datetime-local] (МСК)."""
-    dt = _as_datetime(value)
-    if not dt:
-        return None
-    if dt.tzinfo is None:
-        dt = MSK_TZ.localize(dt)
-    else:
-        dt = dt.astimezone(MSK_TZ)
-    return dt.strftime('%Y-%m-%dT%H:%M')
-
-@app.get("/api/health")
-async def health_check():
-    return {"status": "ok", "message": "FastAPI работает 🚀"}
-
-async def check_subscription_to_channel_web(user_id: int, channel_username: str) -> bool:
-    """Проверяет подписку пользователя на канал (для веб-сервера)"""
-    bot = None
-    try:
-        bot = Bot(token=BOT_TOKEN)
-        # Добавляем таймаут 5 секунд для проверки подписки
-        try:
-            member = await asyncio.wait_for(
-                bot.get_chat_member(channel_username, user_id),
-                timeout=5.0
-            )
-            return member.status in ['member', 'administrator', 'creator']
-        except asyncio.TimeoutError:
-            logger.warning(f"Таймаут при проверке подписки на {channel_username} для пользователя {user_id}")
-            # При таймауте считаем, что пользователь подписан (чтобы не блокировать доступ)
-            return True
-    except Exception as e:
-        logger.warning(f"Ошибка проверки подписки на {channel_username}: {e}")
-        # При ошибке считаем, что пользователь подписан (чтобы не блокировать доступ)
-        return True
-    finally:
-        if bot:
-            try:
-                session = await bot.get_session()
-                if session:
-                    await session.close()
-            except Exception as e:
-                logger.warning(f"Ошибка при закрытии сессии бота: {e}")
-
-@app.get("/api/auth")
-async def auth_user(tg_id: int = Query(...)):
-    try:
-        logger.info(f"🔐 Запрос авторизации для пользователя {tg_id}")
-        
-        # Получаем username из Telegram Bot API
-        username = None
-        bot = None
-        try:
-            bot = Bot(token=BOT_TOKEN)
-            # Для пользователей используем get_chat_member или get_chat
-            try:
-                user_info = await asyncio.wait_for(bot.get_chat(tg_id), timeout=5.0)
-                username = getattr(user_info, 'username', None) or getattr(user_info, 'first_name', None)
-            except asyncio.TimeoutError:
-                logger.warning(f"Таймаут получения данных пользователя {tg_id} через Bot API, пропускаем username")
-            except Exception as inner_exc:
-                logger.warning(f"Не удалось получить username пользователя {tg_id}: {inner_exc}")
-        except Exception as e:
-            logger.warning(f"Не удалось инициализировать бота для пользователя {tg_id}: {e}")
-        finally:
-            if bot:
-                try:
-                    session_bot = await bot.get_session()
-                    if session_bot:
-                        await session_bot.close()
-                except Exception as close_exc:
-                    logger.warning(f"Ошибка при закрытии сессии бота (auth_user): {close_exc}")
-        
-        async with async_session() as session:
-            result = await session.execute(select(User).where(User.telegram_id == tg_id))
-            user = result.scalars().first()
-
-            # Bootstrap creator on first login if needed
-            if not user and tg_id == CREATOR_ID:
-                logger.info(f"👤 Создание пользователя-создателя {tg_id}")
-                user = User(telegram_id=tg_id, role="creator", username=username, created_at=datetime.now(timezone.utc))
-                session.add(user)
-                await session.commit()
-
-            if not user:
-                logger.warning(f"❌ Пользователь {tg_id} не найден")
-                return {"authorized": False, "message": "Пользователь не найден"}
-
-            # Обновляем username если он изменился или отсутствует
-            if username and (not user.username or user.username != username):
-                user.username = username
-                await session.commit()
-                logger.info(f"✅ Обновлен username для пользователя {tg_id}: {username}")
-
-            logger.info(f"✅ Пользователь {tg_id} найден, роль: {user.role}")
-
-            # Проверяем подписку на обязательный канал (кроме создателя)
-            channel_username = "@monkeys_giveaways"
-            is_subscribed = True  # По умолчанию для создателя
-            
-            if tg_id != CREATOR_ID:
-                logger.info(f"🔍 Проверка подписки для пользователя {tg_id} при входе в приложение")
-                try:
-                    # Добавляем общий таймаут для всей проверки подписки
-                    is_subscribed = await asyncio.wait_for(
-                        check_subscription_to_channel_web(tg_id, channel_username),
-                        timeout=5.0  # Уменьшаем таймаут до 5 секунд
-                    )
-                    logger.info(f"📊 Результат проверки подписки при входе в приложение для {tg_id}: {is_subscribed}")
-                    
-                    if not is_subscribed:
-                        logger.warning(f"⚠️ Пользователь {tg_id} не подписан на канал {channel_username}")
-                        return {
-                            "authorized": False,
-                            "message": f"Для пользования приложением необходимо подписаться на канал {channel_username}. Пожалуйста, подпишитесь и отправьте команду /start в боте."
-                        }
-                except asyncio.TimeoutError:
-                    logger.warning(f"⏰ Таймаут при проверке подписки для пользователя {tg_id}, разрешаем доступ")
-                    # При таймауте разрешаем доступ, чтобы не блокировать пользователя
-                    is_subscribed = True
-                except Exception as e:
-                    logger.error(f"❌ Критическая ошибка при проверке подписки для {tg_id}: {e}", exc_info=True)
-                    # При критической ошибке разрешаем доступ
-                    is_subscribed = True
-
-            logger.info(f"✅ Авторизация успешна для пользователя {tg_id}, роль: {user.role}")
-            return {
-                "authorized": True,
-                "telegram_id": user.telegram_id,
-                "role": user.role,
-            }
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка в auth_user для {tg_id}: {e}", exc_info=True)
-        # В случае критической ошибки возвращаем отказ в доступе
-        return {
-            "authorized": False,
-            "message": "Ошибка сервера при проверке доступа. Попробуйте позже."
-        }
-
-# ------------------- USERS / ADMINS API -------------------
-
-@app.get("/api/admins")
-async def list_admins():
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.role == "admin"))
-        admins = result.scalars().all()
-        return [{"id": u.telegram_id, "role": u.role} for u in admins]
-
-@app.post("/api/admins")
-async def add_admin(request: Request):
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+  <!-- Telegram WebApp -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    console.log('✅ JavaScript работает! Скрипт в head загружен.');
+    console.log('✅ Telegram WebApp доступен:', typeof window.Telegram !== 'undefined');
     
-    # Проверяем наличие id
-    if "id" not in data or data.get("id") is None:
-        raise HTTPException(status_code=400, detail="id is required")
-    
-    # Преобразуем id в integer
-    try:
-        id_value = data.get("id")
-        # Если это строка, проверяем что она не пустая
-        if isinstance(id_value, str) and not id_value.strip():
-            raise ValueError("ID cannot be empty")
-        tg_id = int(id_value)
-        if tg_id <= 0:
-            raise ValueError("ID must be positive")
-    except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=f"id must be a positive integer: {str(e)}")
+    document.addEventListener("DOMContentLoaded", () => {
+      console.log('✅ DOMContentLoaded в head скрипте');
+      if (window.Telegram?.WebApp) {
+        console.log('✅ Инициализация Telegram WebApp');
+        Telegram.WebApp.expand();
+        Telegram.WebApp.ready();
+        console.log('✅ Telegram WebApp готов');
+        console.log('📱 Платформа:', Telegram.WebApp.platform);
+        console.log('👤 Пользователь:', Telegram.WebApp.initDataUnsafe?.user);
+      } else {
+        console.warn('⚠️ Telegram.WebApp не найден');
+        console.warn('💡 Для реальной оплаты откройте приложение через бота в Telegram');
+        console.warn('💡 Если открываете файл напрямую в браузере, будет доступен только тестовый режим');
+      }
+    });
+  </script>
 
-    channel_link = data.get("channel_link", "").strip() or None
-    chat_link = data.get("chat_link", "").strip() or None
-
-    try:
-        async with async_session() as session:
-            result = await session.execute(select(User).where(User.telegram_id == tg_id))
-            user = result.scalars().first()
-            if user:
-                user.role = "admin"
-                if channel_link:
-                    user.channel_link = channel_link
-                if chat_link:
-                    user.chat_link = chat_link
-            else:
-                user = User(
-                    telegram_id=tg_id, 
-                    role="admin", 
-                    created_at=datetime.now(timezone.utc),
-                    channel_link=channel_link,
-                    chat_link=chat_link
-                )
-                session.add(user)
-            await session.commit()
-        return {"success": True, "message": f"Admin {tg_id} added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@app.get("/api/profile")
-async def get_profile(tg_id: int = Query(None)):
-    """Получить профиль пользователя с опытом из базы данных"""
-    if tg_id is None:
-        return {}
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.telegram_id == tg_id))
-        user = result.scalars().first()
-        if not user and tg_id == CREATOR_ID:
-            user = User(telegram_id=tg_id, role="creator", created_at=datetime.now(timezone.utc))
-            session.add(user)
-            await session.commit()
-        if not user:
-            return {}
-        # Получаем опыт из базы данных
-        experience = user.experience if hasattr(user, 'experience') and user.experience is not None else 0
-        
-        # Подсчитываем статистику участий и побед
-        from models import Participant, Winner
-        contests_participated = 0
-        contests_won = 0
-        
-        # Подсчитываем участия и победы
-        if user.role == 'user':
-            # Для пользователей считаем участия в конкурсах рисунков/коллекций
-            participants_result = await session.execute(
-                select(Participant).where(Participant.user_id == user.telegram_id)
-            )
-            participants = participants_result.scalars().all()
-            
-            # Получаем типы конкурсов для каждого участия
-            for participant in participants:
-                giveaway_result = await session.execute(
-                    select(Giveaway).where(Giveaway.id == participant.giveaway_id)
-                )
-                giveaway = giveaway_result.scalars().first()
-                if giveaway:
-                    contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-                    # Для рисунков/коллекций считаем участие только если есть фото/коллекция
-                    if contest_type in ['drawing', 'collection']:
-                        if participant.photo_link:
-                            contests_participated += 1
-            
-            # Для рандом соо считаем участие по комментариям в таблице Comment
-            from models import Comment
-            comments_result = await session.execute(
-                select(Comment).where(Comment.user_id == user.telegram_id)
-            )
-            comments = comments_result.scalars().all()
-            
-            # Получаем уникальные конкурсы, в которых пользователь оставил комментарий
-            commented_contest_ids = set()
-            for comment in comments:
-                # Находим конкурс по post_link
-                if comment.chat_id and comment.post_message_id:
-                    # Ищем конкурс с таким post_link
-                    giveaways_result = await session.execute(
-                        select(Giveaway).where(
-                            Giveaway.contest_type == 'random_comment'
-                        )
-                    )
-                    all_giveaways = giveaways_result.scalars().all()
-                    
-                    for giveaway in all_giveaways:
-                        if not giveaway.post_link:
-                            continue
-                        # Парсим post_link конкурса
-                        from post_parser import parse_telegram_link
-                        parsed = parse_telegram_link(giveaway.post_link)
-                        if parsed:
-                            channel_id, post_message_id = parsed
-                            if str(channel_id) == str(comment.chat_id) and post_message_id == comment.post_message_id:
-                                commented_contest_ids.add(giveaway.id)
-            
-            contests_participated += len(commented_contest_ids)
-            
-            # Подсчитываем победы
-            winners_result = await session.execute(
-                select(Winner).where(Winner.user_id == user.telegram_id)
-            )
-            contests_won = len(winners_result.scalars().all())
-        
-        # Получаем купленные товары
-        purchased_items = None
-        if hasattr(user, 'purchased_items') and user.purchased_items:
-            try:
-                if isinstance(user.purchased_items, str):
-                    purchased_items = json.loads(user.purchased_items)
-                else:
-                    purchased_items = user.purchased_items
-            except:
-                purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
-        else:
-            purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
-        
-        return {
-            "id": user.telegram_id,
-            "status": user.role,
-            "username": user.username if hasattr(user, 'username') else None,
-            "first_login": user.created_at.isoformat() if user.created_at else None,
-            "channel_link": user.channel_link if hasattr(user, 'channel_link') else None,
-            "chat_link": user.chat_link if hasattr(user, 'chat_link') else None,
-            "experience": experience,
-            "contests_participated": contests_participated,
-            "contests_won": contests_won,
-            "ton_wallet": user.ton_wallet if hasattr(user, 'ton_wallet') else None,
-            "purchased_items": purchased_items
-        }
-
-# ------------------- Payment API -------------------
-
-@app.get("/api/payment/get-ton-wallet")
-async def get_ton_wallet(tg_id: int = Query(None)):
-    """Получить адрес TON кошелька пользователя или креатора"""
-    if tg_id:
-        async with async_session() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == tg_id)
-            )
-            user = result.scalars().first()
-            if user and user.ton_wallet:
-                return {"wallet": user.ton_wallet}
-    # Если у пользователя нет кошелька, возвращаем кошелек креатора
-    return {"wallet": TON_WALLET}
-
-@app.post("/api/payment/set-ton-wallet")
-async def set_ton_wallet(request: Request):
-    """Сохранить TON кошелек пользователя"""
-    try:
-        data = await request.json()
-        tg_id = data.get("tg_id")
-        wallet = data.get("wallet", "").strip()
-        
-        if not tg_id:
-            raise HTTPException(status_code=400, detail="tg_id обязателен")
-        
-        # Если wallet пустой, это означает отключение кошелька
-        if wallet:
-            # Простая валидация формата TON адреса (начинается с UQ или EQ)
-            if not (wallet.startswith("UQ") or wallet.startswith("EQ") or wallet.startswith("0:")):
-                raise HTTPException(status_code=400, detail="Неверный формат TON адреса")
-        
-        async with async_session() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == tg_id)
-            )
-            user = result.scalars().first()
-            
-            if not user:
-                raise HTTPException(status_code=404, detail="Пользователь не найден")
-            
-            user.ton_wallet = wallet if wallet else None
-            await session.commit()
-            
-            if wallet:
-                logger.info(f"✅ TON кошелек сохранен для пользователя {tg_id}: {wallet}")
-                return {"success": True, "message": "TON кошелек успешно сохранен", "wallet": wallet}
-            else:
-                logger.info(f"✅ TON кошелек отключен для пользователя {tg_id}")
-                return {"success": True, "message": "TON кошелек отключен", "wallet": None}
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при сохранении TON кошелька: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при сохранении кошелька: {str(e)}")
-
-@app.get("/api/payment/get-creator-id")
-async def get_creator_id():
-    """Получить ID креатора для отправки подарков"""
-    return {"creator_id": str(CREATOR_ID)}
-
-@app.post("/api/payment/create-stars-invoice")
-async def create_stars_invoice(request: Request):
-    """
-    Создать invoice для оплаты через Telegram Stars
-    
-    Принимает:
-    - title: название товара
-    - description: описание товара
-    - amount: количество звезд
-    - user_id: ID пользователя Telegram
-    - category: категория товара (themes, etc.)
-    - item_id: ID товара
-    """
-    try:
-        data = await request.json()
-        title = data.get("title")
-        description = data.get("description", "")
-        amount = data.get("amount")
-        user_id = data.get("user_id")
-        category = data.get("category")
-        item_id = data.get("item_id")
-        
-        logger.info(f"📋 Запрос на создание счета: title={title}, amount={amount}, user_id={user_id}, category={category}, item_id={item_id}")
-        
-        if not title or not amount or not user_id:
-            error_msg = "Необходимо указать title, amount и user_id"
-            logger.error(f"❌ {error_msg}")
-            raise HTTPException(status_code=400, detail=error_msg)
-        
-        # Создаем payload для отслеживания платежа
-        payload_data = {
-            "category": category,
-            "item_id": item_id,
-            "user_id": str(user_id),
-            "payment_method": "stars"
-        }
-        # Генерируем уникальный payload для каждого счета (добавляем timestamp)
-        unique_payload = f"{json.dumps(payload_data)}_{int(time.time())}"
-        start_param = f"shop_{category}_{item_id}_stars_{int(time.time())}"
-        
-        # Создаем invoice через бота - отправляем счет пользователю в чат
-        bot = Bot(token=BOT_TOKEN)
-        try:
-            from aiogram.types import LabeledPrice
-            
-            # Для Stars amount передается напрямую (не в копейках)
-            prices = [LabeledPrice(label=title, amount=int(amount))]
-            
-            # Получаем username пользователя для логов
-            try:
-                user_info = await bot.get_chat(user_id)
-                username = user_info.username or user_info.first_name or f"ID_{user_id}"
-            except:
-                username = f"ID_{user_id}"
-            
-            # Отправляем invoice пользователю через бота
-            message = await bot.send_invoice(
-                chat_id=user_id,
-                title=title,
-                description=description,
-                payload=unique_payload,
-                provider_token="",  # Для Stars не нужен
-                currency="XTR",  # Telegram Stars
-                prices=prices,
-                start_parameter=start_param
-            )
-            
-            # Логируем создание счета
-            logger.info(f"📋 Счет создан: Пользователь {username} (ID: {user_id}) получил счет на {amount} ⭐ за покупку {title} (категория: {category}, товар: {item_id})")
-            
-            # Сохраняем результат ПЕРЕД любыми дополнительными операциями
-            invoice_id = str(message.message_id) if hasattr(message, 'message_id') else None
-            result = {
-                "success": True,
-                "message": "Счет отправлен в бота",
-                "invoice_id": invoice_id
-            }
-            
-            logger.info(f"✅ Счет успешно отправлен. Invoice ID: {invoice_id}")
-            
-            # Сохраняем результат в переменную перед finally
-            final_result = {
-                "success": True,
-                "message": "Счет отправлен в бота",
-                "invoice_id": invoice_id
-            }
-            
-            logger.info(f"✅ Возвращаем успешный ответ: {final_result}")
-            
-            # Закрываем сессию перед возвратом, чтобы избежать проблем с async
-            try:
-                session = await bot.get_session()
-                if session:
-                    await session.close()
-                    logger.debug("✅ Сессия бота закрыта успешно")
-            except Exception as close_error:
-                # Игнорируем ошибки закрытия сессии - счет уже отправлен
-                logger.debug(f"⚠️ Ошибка при закрытии сессии бота (не критично): {close_error}")
-            
-            return final_result
-            
-        except HTTPException as http_ex:
-            # Закрываем сессию перед повторным выбросом
-            try:
-                session = await bot.get_session()
-                if session:
-                    await session.close()
-            except:
-                pass
-            raise http_ex
-        except Exception as e:
-            logger.error(f"❌ Ошибка при отправке invoice пользователю {user_id}: {e}", exc_info=True)
-            # Закрываем сессию перед возвратом ошибки
-            try:
-                session = await bot.get_session()
-                if session:
-                    await session.close()
-            except:
-                pass
-            raise HTTPException(status_code=500, detail=f"Ошибка при отправке счета: {str(e)}")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при создании Stars invoice: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при создании invoice: {str(e)}")
-
-@app.post("/api/payment/create-invoice")
-async def create_invoice(request: Request):
-    """
-    Создать счет на оплату через CryptoBot
-    
-    Принимает:
-    - amount: сумма оплаты
-    - currency: валюта (TON, BTC, ETH, USDT, USDC, BUSD)
-    - description: описание платежа
-    - user_id: ID пользователя Telegram
-    - category: категория товара (themes, etc.)
-    - item_id: ID товара
-    """
-    try:
-        data = await request.json()
-        amount = data.get("amount")
-        currency = data.get("currency", "TON")
-        description = data.get("description", "")
-        user_id = data.get("user_id")
-        category = data.get("category")
-        item_id = data.get("item_id")
-        
-        if not amount or not user_id:
-            raise HTTPException(status_code=400, detail="Необходимо указать amount и user_id")
-        
-        # Создаем payload для отслеживания платежа
-        # В payload сохраняем user_id для проверки принадлежности счета
-        payload_data = {
-            "category": category,
-            "item_id": item_id,
-            "user_id": str(user_id),  # Преобразуем в строку для надежности
-            "currency": currency,
-            "amount": amount
-        }
-        
-        # Создаем payload для отслеживания платежа
-        payload_str = json.dumps(payload_data)
-        
-        # Добавляем информацию о пользователе в описание
-        # Это поможет понять, кто должен оплатить счет
-        description_with_user = f"{description}\n\n👤 Счет для пользователя ID: {user_id}"
-        
-        # Создаем счет через CryptoBot
-        invoice = await cryptobot.create_invoice(
-            amount=amount,
-            currency=currency,
-            description=description_with_user,
-            user_id=user_id,
-            payload=payload_str
-        )
-        
-        if "error" in invoice:
-            raise HTTPException(status_code=500, detail=f"Ошибка создания счета: {invoice.get('error')}")
-        
-        # Сохраняем информацию о счете для последующей проверки
-        invoice_id = invoice.get("invoice_id")
-        invoice_url = invoice.get("pay_url")
-        
-        return {
-            "success": True,
-            "invoice_id": invoice_id,
-            "invoice_url": invoice_url,
-            "payload": json.dumps(payload_data)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при создании счета: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при создании счета: {str(e)}")
-
-@app.post("/api/payment/verify")
-async def verify_payment(request: Request):
-    """
-    Проверка оплаты на сервере через CryptoBot
-    
-    Принимает invoice_id и проверяет его статус и принадлежность пользователю
-    """
-    try:
-        data = await request.json()
-        invoice_id = data.get("invoice_id")
-        category = data.get("category")
-        item_id = data.get("itemId")
-        user_id = data.get("userId")
-        
-        if not invoice_id or not user_id:
-            raise HTTPException(status_code=400, detail="Необходимо указать invoice_id и userId")
-        
-        # Проверяем статус счета через CryptoBot API
-        verification_result = await cryptobot.verify_payment(invoice_id)
-        
-        if "error" in verification_result:
-            logger.warning(f"❌ Ошибка получения информации о счете: {verification_result.get('error')}")
-            return {"verified": False, "message": "Ошибка получения информации о счете"}
-        
-        is_paid = verification_result.get("paid", False)
-        payload = verification_result.get("payload")
-        invoice = verification_result.get("invoice", {})
-        
-        # Проверяем, что счет оплачен
-        if not is_paid:
-            logger.warning(f"❌ Счет не оплачен: invoice_id {invoice_id}")
-            return {"verified": False, "message": "Счет не оплачен"}
-        
-        # Проверяем, что счет принадлежит правильному пользователю
-        if payload:
-            payload_user_id = payload.get("user_id")
-            if payload_user_id and int(payload_user_id) != int(user_id):
-                logger.warning(f"❌ Счет оплачен другим пользователем: invoice_id {invoice_id}, ожидался user_id {user_id}, получен {payload_user_id}")
-                return {"verified": False, "message": "Счет принадлежит другому пользователю"}
-            
-            # Проверяем соответствие категории и товара
-            payload_category = payload.get("category")
-            payload_item_id = payload.get("item_id")
-            if category and payload_category != category:
-                logger.warning(f"❌ Несоответствие категории: invoice_id {invoice_id}, ожидалась {category}, получена {payload_category}")
-                return {"verified": False, "message": "Несоответствие данных счета"}
-            if item_id and str(payload_item_id) != str(item_id):
-                logger.warning(f"❌ Несоответствие товара: invoice_id {invoice_id}, ожидался {item_id}, получен {payload_item_id}")
-                return {"verified": False, "message": "Несоответствие данных счета"}
-        else:
-            # Если payload отсутствует, проверяем по invoice (может содержать информацию о пользователе)
-            logger.warning(f"⚠️ Payload отсутствует в счете: invoice_id {invoice_id}")
-            # В этом случае полагаемся на проверку статуса оплаты
-            # Но лучше всегда использовать payload
-        
-        logger.info(f"✅ Оплата подтверждена: invoice_id {invoice_id}, пользователь {user_id}, товар {category}/{item_id}")
-        return {"verified": True, "message": "Оплата подтверждена"}
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при проверке оплаты: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при проверке оплаты: {str(e)}")
-
-@app.get("/api/payment/purchased-items")
-async def get_purchased_items(tg_id: int = Query(...)):
-    """Получить список купленных товаров пользователя"""
-    try:
-        async with async_session() as session:
-            result = await session.execute(select(User).where(User.telegram_id == tg_id))
-            user = result.scalars().first()
-            
-            if not user:
-                return {"purchased_items": {"themes": [], "avatarStars": [], "nftGifts": []}}
-            
-            # Получаем купленные товары
-            purchased_items = None
-            if hasattr(user, 'purchased_items') and user.purchased_items:
-                try:
-                    if isinstance(user.purchased_items, str):
-                        purchased_items = json.loads(user.purchased_items)
-                    else:
-                        purchased_items = user.purchased_items
-                except:
-                    purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
-            else:
-                purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
-            
-            return {"purchased_items": purchased_items}
-    except Exception as e:
-        logger.error(f"Ошибка при получении покупок: {e}", exc_info=True)
-        return {"purchased_items": {"themes": [], "avatarStars": [], "nftGifts": []}}
-
-@app.post("/api/payment/add-purchase")
-async def add_purchase(request: Request):
-    """Добавить покупку пользователю"""
-    try:
-        data = await request.json()
-        tg_id = data.get("tg_id")
-        category = data.get("category")
-        item_id = data.get("item_id")
-        
-        if not tg_id or not category or not item_id:
-            raise HTTPException(status_code=400, detail="Необходимо указать tg_id, category и item_id")
-        
-        async with async_session() as session:
-            result = await session.execute(select(User).where(User.telegram_id == tg_id))
-            user = result.scalars().first()
-            
-            if not user:
-                raise HTTPException(status_code=404, detail="Пользователь не найден")
-            
-            # Получаем текущие покупки
-            purchased_items = None
-            if hasattr(user, 'purchased_items') and user.purchased_items:
-                try:
-                    if isinstance(user.purchased_items, str):
-                        purchased_items = json.loads(user.purchased_items)
-                    else:
-                        purchased_items = user.purchased_items
-                except:
-                    purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
-            else:
-                purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
-            
-            # Добавляем покупку
-            if category not in purchased_items:
-                purchased_items[category] = []
-            
-            if item_id not in purchased_items[category]:
-                purchased_items[category].append(item_id)
-            
-            # Сохраняем в базу данных
-            user.purchased_items = json.dumps(purchased_items) if isinstance(purchased_items, dict) else purchased_items
-            await session.commit()
-            
-            logger.info(f"✅ Покупка добавлена: пользователь {tg_id}, категория {category}, товар {item_id}")
-            return {"success": True, "purchased_items": purchased_items}
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при добавлении покупки: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при добавлении покупки: {str(e)}")
-
-@app.post("/api/payment/webhook")
-async def payment_webhook(request: Request):
-    """
-    Вебхук для получения уведомлений об оплате от CryptoBot
-    
-    Этот endpoint должен быть настроен в CryptoBot для получения уведомлений
-    о платежах
-    """
-    try:
-        data = await request.json()
-        logger.info(f"📨 Получен вебхук от CryptoBot: {data}")
-        
-        # Обработка уведомления о платеже от CryptoBot
-        if "update_type" in data and data["update_type"] == "invoice_paid":
-            invoice = data.get("payload", {}).get("invoice", {})
-            invoice_id = invoice.get("invoice_id")
-            
-            if invoice_id:
-                # Получаем информацию о счете с проверкой
-                verification_result = await cryptobot.verify_payment(invoice_id)
-                
-                if verification_result.get("paid"):
-                    # Парсим payload для получения информации о покупке
-                    payload = verification_result.get("payload")
-                    if payload:
-                        try:
-                            category = payload.get("category")
-                            item_id = payload.get("item_id")
-                            user_id = payload.get("user_id")
-                            
-                            if not user_id:
-                                logger.warning(f"⚠️ Payload не содержит user_id для invoice_id {invoice_id}")
-                                return {"ok": True}
-                            
-                            logger.info(f"✅ Успешная оплата через CryptoBot: invoice_id {invoice_id}, пользователь {user_id}, товар {category}/{item_id}")
-                            
-                            # Здесь можно добавить логику сохранения покупки в базу данных
-                            # или отправки уведомления пользователю
-                            # Покупка будет автоматически добавлена при следующей проверке статуса
-                            
-                            return {"ok": True}
-                        except Exception as e:
-                            logger.error(f"Ошибка обработки payload: {e}", exc_info=True)
-                            return {"ok": False}
-                    else:
-                        logger.warning(f"⚠️ Payload отсутствует в счете: invoice_id {invoice_id}")
-            
-            return {"ok": True}
-        
-        return {"ok": True}
-        
-    except Exception as e:
-        logger.error(f"Ошибка обработки вебхука CryptoBot: {e}", exc_info=True)
-        return {"ok": False}
-
-@app.post("/api/profile/first_login")
-async def mark_first_login(request: Request):
-    # Optional hint endpoint; does nothing critical server-side for now
-    return {"ok": True}
-
-@app.post("/api/profile/update-username")
-async def update_username(tg_id: int = Query(...), username: str = Query(...)):
-    """Обновить username пользователя"""
-    try:
-        async with async_session() as session:
-            result = await session.execute(select(User).where(User.telegram_id == tg_id))
-            user = result.scalars().first()
-            
-            if user:
-                user.username = username
-                await session.commit()
-                logger.info(f"✅ Username обновлен для пользователя {tg_id}: {username}")
-                return {"success": True}
-            else:
-                return {"success": False, "message": "Пользователь не найден"}
-    except Exception as e:
-        logger.error(f"Ошибка при обновлении username: {e}")
-        return {"success": False, "message": str(e)}
-
-@app.get("/api/rating")
-async def get_rating(role: str = Query("user")):
-    """Получить рейтинг пользователей или админов (топ 100)"""
-    try:
-        async with async_session() as session:
-            # Определяем роль для фильтрации
-            if role == "admin":
-                role_filter = "admin"
-            elif role == "creator":
-                role_filter = "creator"
-            else:
-                role_filter = "user"
-            
-            # Получаем всех пользователей с нужной ролью
-            users_result = await session.execute(
-                select(User).where(User.role == role_filter)
-            )
-            users = users_result.scalars().all()
-            
-            # Для каждого пользователя считаем рейтинг
-            ratings = []
-            for user in users:
-                # Количество побед
-                wins_result = await session.execute(
-                    select(func.count(Winner.id)).where(Winner.user_id == user.telegram_id)
-                )
-                wins_count = wins_result.scalar() or 0
-                
-                # Количество участий
-                participations_result = await session.execute(
-                    select(func.count(Participant.id)).where(Participant.user_id == user.telegram_id)
-                )
-                participations_count = participations_result.scalar() or 0
-                
-                # Рейтинг = количество побед * 10 + количество участий
-                rating = wins_count * 10 + participations_count
-                
-                # Аватар будет получен через Telegram WebApp API на клиенте
-                # Здесь оставляем None, так как получение аватара через Bot API требует дополнительных прав
-                avatar_url = None
-                
-                ratings.append({
-                    "telegram_id": user.telegram_id,
-                    "username": user.username or f"User_{user.telegram_id}",
-                    "rating": rating,
-                    "wins": wins_count,
-                    "participations": participations_count,
-                    "avatar_url": avatar_url
-                })
-            
-            # Сортируем по рейтингу (по убыванию)
-            ratings.sort(key=lambda x: x["rating"], reverse=True)
-            
-            # Берем топ 100
-            top_100 = ratings[:100]
-            
-            # Добавляем место (place)
-            for idx, rating in enumerate(top_100):
-                rating["place"] = idx + 1
-            
-            return {
-                "success": True,
-                "role": role_filter,
-                "ratings": top_100
-            }
-    except Exception as e:
-        logger.error(f"Ошибка при получении рейтинга: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ------------------- GIVEAWAYS API -------------------
-
-@app.post("/api/giveaways")
-async def create_giveaway(request: Request):
-    """
-    Создание нового конкурса (розыгрыша)
-    Ожидает JSON:
-    {
-        "name": "Название",
-        "prize": "Приз",
-        "start_date": "2025-11-01T10:00:00",  # Опционально, дата начала (МСК)
-        "end_date": "2025-11-01T21:00:00",  # Дата окончания (МСК)
-        "prize_links": ["link1", "link2"],  # Опционально, массив ссылок на NFT-подарки
-        "created_by": 123456789  # ID создателя (admin или creator)
+  <style>
+    /* 💧 Ripple эффект */
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      animation: ripple 0.6s linear;
+      background: rgba(255, 255, 255, 0.4);
+      pointer-events: none;
     }
-    """
-    data = await request.json()
 
-    name = data.get("name") or data.get("title")
-    prize = data.get("prize")
-    start_date_str = data.get("start_date") or data.get("start_at")
-    end_date_str = data.get("end_date") or data.get("end_at")
-    submission_end_date_str = data.get("submission_end_date")  # Дата окончания приема работ (для конкурса рисунков)
-    post_link = data.get("post_link", "")
-    discussion_group_link = data.get("discussion_group_link", "")
-    conditions = data.get("conditions", "")
-    winners_count = data.get("winners_count", 1)
-    created_by = data.get("created_by")
-    prize_links = data.get("prize_links", [])  # Массив ссылок на NFT-подарки
-    contest_type = data.get("contest_type", "random_comment")  # Тип конкурса: "random_comment", "drawing" или "collection"
-    jury = data.get("jury")  # Данные жюри: {"enabled": true/false, "members": [{"user_id": 123, "channel_link": "t.me/..."}, ...]}
- 
-    # Базовая валидация: всегда нужно название
-    if not name:
-        return {"success": False, "message": "❌ Название обязательно"}
+    @keyframes ripple {
+      to {
+        transform: scale(4);
+        opacity: 0;
+      }
+    }
+
+    /* 🟣 Black + Neon Purple global theme */
+    :root {
+      --neon-purple-1: #7c3aed; /* violet-600 */
+      --neon-purple-2: #8b5cf6; /* violet-500 */
+      --neon-purple-3: #a78bfa; /* violet-400 */
+      --neon-pink: #ec4899;     /* pink-500 */
+      --neon-white: #ffffff;
+      --neon-bg: #000000;
+      --text-primary: #e5e7eb;
+    }
+
+    .page-dark { background-color: var(--neon-bg); color: var(--text-primary); }
+
+    @keyframes neonFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Liquid flow animations */
+    @keyframes liquidHorizontal {
+      0%   { background-position: 0% center, 100% center, 50% center; }
+      50%  { background-position: 100% center, 0% center, 0% center; }
+      100% { background-position: 0% center, 100% center, 50% center; }
+    }
+
+    /* Text-flow like gradient for side bars */
+    @keyframes sideflow {
+      from { background-position: center 0%; }
+      to { background-position: center 200%; }
+    }
+    @keyframes sideflowReverse {
+      from { background-position: center 200%; }
+      to { background-position: center 0%; }
+    }
+
+    /* ✨ Neon side stripes */
+    .neon-sides::before,
+    .neon-sides::after {
+      content: "";
+      position: fixed;
+      top: 3vh;
+      bottom: 96px;
+      width: 4px;
+      border-radius: 9999px;
+      background: linear-gradient(180deg,
+        var(--neon-purple-1) 0%,
+        var(--neon-purple-1) 25%,
+        var(--neon-pink) 55%,
+        var(--neon-white) 85%,
+        var(--neon-purple-1) 100%
+      );
+      background-size: 100% 250%;
+      box-shadow:
+        0 0 12px rgba(167, 139, 250, 0.6),
+        0 0 28px rgba(139, 92, 246, 0.45),
+        inset 0 0 16px rgba(167, 139, 250, 0.35);
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .neon-sides::before { left: 10px; animation: sideflow 5s linear infinite; }
+    .neon-sides::after { right: 10px; animation: sideflowReverse 5s linear infinite; }
+
+    /* 🔻 Bottom neon shimmer bar */
+    .neon-bottom {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 86px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(60% 140% at 50% 100%, rgba(139, 92, 246, 0.16), rgba(0, 0, 0, 0) 60%),
+        radial-gradient(25% 100% at 0% 100%, rgba(236, 72, 153, 0.18), transparent 70%),
+        radial-gradient(25% 100% at 100% 100%, rgba(255, 255, 255, 0.08), transparent 70%);
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .neon-bottom::before {
+      content: "";
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(560px, 92vw);
+      height: 13px;
+      border-radius: 9999px;
+      background:
+        repeating-linear-gradient(to right,
+          rgba(255,255,255,0.85) 0 18px,
+          transparent 18px 34px
+        ),
+        repeating-linear-gradient(to right,
+          rgba(236,72,153,0.6) 0 14px,
+          transparent 14px 30px
+        ),
+        repeating-linear-gradient(to right,
+          rgba(139,92,246,0.6) 0 16px,
+          transparent 16px 32px
+        );
+      background-blend-mode: screen;
+      animation: liquidHorizontal 9s linear infinite;
+      box-shadow:
+        0 0 22px rgba(167, 139, 250, 0.75),
+        0 0 44px rgba(139, 92, 246, 0.65),
+        inset 0 0 10px rgba(167, 139, 250, 0.55);
+    }
+
+    .neon-bottom::after {
+      content: "";
+      position: absolute;
+      bottom: 24px;
+      left: 10px;
+      right: 10px;
+      height: 18px;
+      border-bottom-left-radius: 9999px;
+      border-bottom-right-radius: 9999px;
+      background: linear-gradient(90deg, transparent, rgba(167,139,250,0.25), rgba(236,72,153,0.25), rgba(255,255,255,0.18), rgba(167,139,250,0.25), transparent);
+      filter: blur(8px);
+      pointer-events: none;
+    }
+
+    /* 🧭 Neon nav */
+    .neon-nav {
+      background: rgba(10, 10, 16, 0.85) !important;
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid rgba(167, 139, 250, 0.25);
+      box-shadow: 0 0 24px rgba(139, 92, 246, 0.25);
+      pointer-events: auto !important;
+      z-index: 1000 !important;
+    }
+
+    .nav-button {
+      color: var(--text-primary);
+      padding: 0.35rem 0.5rem;
+      border-radius: 0.5rem;
+      transition: transform .15s ease, box-shadow .2s ease;
+      box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.35);
+      font-size: 0.875rem;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+      position: relative !important;
+      z-index: 1001 !important;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .nav-button.active,
+    .nav-button:hover {
+      box-shadow:
+        0 0 12px rgba(167, 139, 250, 0.55),
+        inset 0 0 0 1px rgba(167, 139, 250, 0.65);
+      transform: translateY(-1px);
+    }
+
+    /* 🔘 Neon buttons */
+    .neon-button {
+      position: relative;
+      background: #0b0b0f !important;
+      color: #ffffff !important;
+      border: 1px solid rgba(167, 139, 250, 0.45) !important;
+      box-shadow:
+        0 0 16px rgba(139, 92, 246, 0.35),
+        inset 0 0 18px rgba(139, 92, 246, 0.2);
+      transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+      overflow: hidden;
+    }
+
+    .neon-button::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      background: linear-gradient(120deg, transparent 0%, rgba(167, 139, 250, 0.35) 40%, rgba(167, 139, 250, 0.6) 50%, rgba(167, 139, 250, 0.35) 60%, transparent 100%);
+      background-size: 300% 100%;
+      animation: neonFlow 6s linear infinite;
+      z-index: 0;
+      pointer-events: none;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      padding: 1px;
+    }
+
+    .neon-button > * { position: relative; z-index: 1; }
+
+    .neon-button:hover {
+      box-shadow:
+        0 0 22px rgba(139, 92, 246, 0.55),
+        inset 0 0 24px rgba(139, 92, 246, 0.28);
+      transform: translateY(-1px);
+      border-color: rgba(167, 139, 250, 0.75) !important;
+    }
+
+    .neon-button:active { transform: translateY(0); }
+
+    /* Prevent text selection on buttons */
+    .neon-button,
+    .nav-button,
+    button {
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    /* ✨ Shimmer animation for experience bar */
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .animate-shimmer {
+      animation: shimmer 2s infinite;
+    }
+
+    /* 🎯 Level badge glow */
+    #level-badge {
+      background: linear-gradient(135deg, 
+        #000000 0%, 
+        #4c1d95 25%, 
+        #7c3aed 50%, 
+        #ec4899 75%, 
+        #dc2626 100%
+      );
+      background-size: 200% 200%;
+      color: #ffffff;
+      border: 1px solid rgba(167, 139, 250, 0.5);
+      box-shadow: 
+        0 0 15px rgba(124, 58, 237, 0.6),
+        0 0 30px rgba(236, 72, 153, 0.4),
+        inset 0 0 10px rgba(0, 0, 0, 0.5);
+      animation: level-badge-flow 3s ease-in-out infinite, level-badge-pulse 2s ease-in-out infinite;
+      text-shadow: 0 0 10px rgba(167, 139, 250, 0.8);
+    }
+
+    @keyframes level-badge-flow {
+      0% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    @keyframes level-badge-pulse {
+      0%, 100% {
+      box-shadow: 
+        0 0 15px rgba(124, 58, 237, 0.6),
+        0 0 30px rgba(236, 72, 153, 0.4),
+        inset 0 0 10px rgba(0, 0, 0, 0.5);
+      }
+      50% {
+      box-shadow: 
+        0 0 25px rgba(124, 58, 237, 0.9),
+        0 0 50px rgba(236, 72, 153, 0.7),
+        0 0 20px rgba(220, 38, 38, 0.5),
+        inset 0 0 15px rgba(0, 0, 0, 0.7);
+      }
+    }
+
+    /* 📝 Inputs */
+    .input-field {
+      background: #0f0f16 !important;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      color: var(--text-primary) !important;
+      box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.15);
+      transition: box-shadow .2s ease, border-color .2s ease;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: rgba(167, 139, 250, 0.55);
+      box-shadow:
+        0 0 0 3px rgba(167, 139, 250, 0.25),
+        inset 0 0 0 1px rgba(167, 139, 250, 0.55);
+    }
+
+    /* Скрытие спиннера загрузки */
+    .loading-spinner.hidden {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      z-index: -9999 !important;
+      pointer-events: none !important;
+    }
+
+    /* 📱 Стили для модальных окон на мобильных устройствах */
+    #contact-owner-modal,
+    #subscription-modal {
+      /* Обеспечиваем скролл даже при открытой клавиатуре */
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      /* Запрещаем горизонтальный скролл */
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      /* Разрешаем клики и жесты */
+      pointer-events: auto !important;
+      touch-action: pan-y pinch-zoom;
+      /* Фиксируем ширину и предотвращаем масштабирование */
+      max-width: 100vw;
+      width: 100%;
+      z-index: 30 !important;
+    }
     
-    # Валидация полей в зависимости от типа конкурса
-    if contest_type == "drawing":
-        # Для рисунков дата окончания голосования (end_date) обязательна
-        if not end_date_str:
-            return {"success": False, "message": "❌ Для конкурса рисунков обязательна дата окончания голосования (end_date)"}
-        # Для конкурса рисунков:
-        # - Обязательна дата окончания приема работ (submission_end_date)
-        # - post_link НЕ обязателен (может быть пустым)
-        if not submission_end_date_str:
-            return {"success": False, "message": "❌ Для конкурса рисунков обязательна дата окончания приема работ (submission_end_date)"}
-        # post_link не требуется для конкурса рисунков, поэтому не проверяем его
-    elif contest_type == "collection":
-        # Для конкурса коллекций:
-        # - Обязательна дата окончания приема работ (submission_end_date)
-        # - post_link НЕ обязателен (может быть пустым)
-        if not submission_end_date_str:
-            return {"success": False, "message": "❌ Для конкурса коллекций обязательна дата окончания приема работ (submission_end_date)"}
-        # post_link не требуется для конкурса коллекций, поэтому не проверяем его
-    elif contest_type == "random_comment":
-        # Для конкурса рандом комментариев:
-        # - Обязательна ссылка на пост (post_link)
-        # - Время начала/окончания НЕ обязательно (можно подводить итоги вручную в любой момент)
-        if not post_link or not post_link.strip():
-            return {"success": False, "message": "❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)"}
-        # submission_end_date не требуется для рандом комментариев
-    else:
-        # Неизвестный тип конкурса
-        return {"success": False, "message": f"❌ Неизвестный тип конкурса: {contest_type}. Доступные типы: 'random_comment', 'drawing', 'collection'"}
+    #contact-owner-modal > div,
+    #subscription-modal > div {
+      /* Позволяем скроллить содержимое внутри модалки только вертикально */
+      overscroll-behavior: contain;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      /* Разрешаем клики */
+      pointer-events: auto !important;
+      touch-action: pan-y pinch-zoom;
+      /* Фиксируем максимальную ширину */
+      max-width: 100%;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
     
-    # Валидация количества победителей
-    try:
-        winners_count = int(winners_count)
-        if winners_count < 1:
-            winners_count = 1
-        elif winners_count > 50:
-            winners_count = 50
-    except (ValueError, TypeError):
-        winners_count = 1
+    /* Убеждаемся, что все интерактивные элементы внутри модалок кликабельны */
+    #contact-owner-modal button,
+    #contact-owner-modal input,
+    #contact-owner-modal textarea,
+    #contact-owner-modal select,
+    #subscription-modal button,
+    #subscription-modal input,
+    #subscription-modal textarea {
+      pointer-events: auto !important;
+      cursor: pointer;
+      position: relative;
+      z-index: 10;
+    }
     
-    # Валидация prize_links: количество должно совпадать с winners_count
-    if prize_links and isinstance(prize_links, list):
-        if len(prize_links) != winners_count:
-            return {"success": False, "message": f"❌ Количество ссылок на NFT-подарки ({len(prize_links)}) должно совпадать с количеством победителей ({winners_count})"}
-    else:
-        prize_links = []
-    
-    # Преобразуем даты в МСК время
-    msk_tz = pytz.timezone('Europe/Moscow')
-    
-    def parse_date(date_str):
-        """Парсит дату из строки в МСК время"""
-        if not date_str:
-            return None
-        if isinstance(date_str, str):
-            date_clean = date_str.replace('Z', '').replace('+00:00', '')
-            if not date_clean:
-                return None
-            if 'T' in date_clean:
-                date_naive = datetime.fromisoformat(date_clean)
-            else:
-                date_naive = datetime.fromisoformat(f"{date_clean}T00:00:00")
-        else:
-            date_naive = date_str
-        return msk_tz.localize(date_naive) if date_naive.tzinfo is None else date_naive.astimezone(msk_tz)
-    
-    start_date_msk = parse_date(start_date_str)
-    end_date_msk = parse_date(end_date_str)
-    submission_end_date_msk = parse_date(submission_end_date_str)
-    
-    if contest_type in ["drawing", "collection"] and submission_end_date_msk and end_date_msk:
-        time_diff = (end_date_msk - submission_end_date_msk).total_seconds()
-        if time_diff < 600:
-            return {"success": False, "message": "❌ Между окончанием приема работ и голосованием должно быть минимум 10 минут"}
-        if submission_end_date_msk >= end_date_msk:
-            return {"success": False, "message": "❌ Дата окончания приема работ должна быть раньше даты окончания голосования"}
-    
-    start_date_db = to_msk_naive(start_date_msk)
-    end_date_db = to_msk_naive(end_date_msk)
-    submission_end_date_db = to_msk_naive(submission_end_date_msk)
-    
-    async with async_session() as session:
-        # Проверяем, не существует ли уже конкурс для этого поста (только для рандом комментариев)
-        # Для конкурса рисунков post_link может быть пустым, поэтому проверяем только для random_comment
-        if post_link and post_link.strip() and contest_type == "random_comment":
-            try:
-                # Проверяем наличие колонки post_link
-                if IS_SQLITE:
-                    result = await session.execute(text("PRAGMA table_info(giveaways)"))
-                    columns_info = result.fetchall()
-                    existing_columns = {row[1]: row for row in columns_info}
-                else:
-                    result = await session.execute(text("""
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = 'giveaways'
-                    """))
-                    columns_info = result.fetchall()
-                    existing_columns = {row[0]: row for row in columns_info}
-                
-                if 'post_link' in existing_columns:
-                    # Используем прямой SQL запрос для проверки
-                    check_result = await session.execute(
-                        text("SELECT id FROM giveaways WHERE post_link = :post_link AND post_link IS NOT NULL AND post_link != ''"),
-                        {"post_link": post_link}
-                    )
-                    existing_row = check_result.fetchone()
-                    if existing_row:
-                        return {"success": False, "message": f"❌ Для этого поста уже существует конкурс (ID: {existing_row[0]}). Один пост может иметь только один конкурс."}
-            except Exception as e:
-                # Если что-то пошло не так с проверкой, просто логируем и продолжаем
-                logger.warning(f"Ошибка при проверке существующего конкурса: {e}")
+    /* Запрет zoom для всего body при открытых модалках */
+    body.modal-open {
+      overflow: hidden;
+      overflow-x: hidden !important;
+      touch-action: pan-y;
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      max-width: 100vw;
+    }
+
+    /* 🖼️ Drag and Drop стили для NFT коллекций */
+    #collection-grid > div {
+      transition: all 0.2s ease;
+    }
+
+    #collection-grid > div:hover {
+      transform: scale(1.05);
+      border-color: rgba(167, 139, 250, 0.6);
+      box-shadow: 0 0 15px rgba(124, 58, 237, 0.5);
+    }
+
+    #collection-grid > div.dragging {
+      opacity: 0.5;
+      transform: scale(0.95);
+      cursor: grabbing;
+    }
+
+    #collection-grid > div.drag-over {
+      border-color: rgba(236, 72, 153, 0.8);
+      background-color: rgba(236, 72, 153, 0.1);
+      transform: scale(1.1);
+      box-shadow: 0 0 20px rgba(236, 72, 153, 0.7);
+    }
+
+    /* Анимация для NFT в сетке */
+    #collection-grid > div img {
+      transition: transform 0.3s ease;
+    }
+
+    #collection-grid > div:hover img {
+      transform: scale(1.1);
+    }
+
+    /* Улучшенная видимость при перетаскивании */
+    #collection-grid > div[draggable="true"] {
+      cursor: grab;
+    }
+
+    #collection-grid > div[draggable="true"]:active {
+      cursor: grabbing;
+    }
+
+    /* Запрет копирования и контекстного меню для NFT */
+    #collection-grid > div,
+    #collection-grid > div img,
+    #collection-grid > div video {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+      pointer-events: auto;
+    }
+
+    #collection-grid > div img,
+    #collection-grid > div video {
+      pointer-events: none; /* Предотвращаем взаимодействие с изображением/видео напрямую */
+      -webkit-user-drag: none;
+      -khtml-user-drag: none;
+      -moz-user-drag: none;
+      -o-user-drag: none;
+      user-drag: none;
+    }
+
+    /* Запрет контекстного меню */
+    #collection-grid {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+
+    /* Запрет горизонтальной прокрутки в модалке коллекций */
+    #collection-arrange-modal {
+      overflow-x: hidden !important;
+      overflow-y: auto;
+      width: 100%;
+      max-width: 100vw;
+      position: fixed;
+      left: 0;
+      right: 0;
+    }
+
+    #collection-arrange-modal > div {
+      overflow-x: hidden !important;
+      overflow-y: auto;
+      max-width: 100%;
+      width: calc(100% - 2rem);
+      box-sizing: border-box;
+      margin: 0 auto;
+    }
+
+    #collection-grid {
+      overflow-x: hidden !important;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    #collection-grid > div {
+      max-width: 100%;
+      box-sizing: border-box;
+      width: 100%;
+      aspect-ratio: 1;
+      min-width: 0;
+    }
+
+    /* Убеждаемся, что изображения не выходят за границы */
+    #collection-grid img,
+    #collection-grid video {
+      max-width: 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Запрет горизонтальной прокрутки для всех элементов внутри модалки */
+    #collection-arrange-modal * {
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* 🐱 Kitty theme - розовая тема */
+    body.theme-kitty {
+      --neon-purple-1: #ff6b9d; /* розовый */
+      --neon-purple-2: #ff8cc8; /* светло-розовый */
+      --neon-purple-3: #ffb3d9; /* очень светло-розовый */
+      --neon-pink: #ff1493;     /* глубокий розовый */
+      --neon-white: #ffffff;
+      --neon-bg: #fff0f5;       /* очень светлый розовый фон (почти белый) */
+      --text-primary: #8b4a6b;  /* темно-розовый текст для читаемости */
+      --card-bg: #ffe6f2;       /* светлый розовый для карточек */
+      --border-color: #ffb3d9;  /* светло-розовая граница */
+    }
+
+    body.theme-kitty.page-dark {
+      background-color: var(--neon-bg) !important;
+      color: var(--text-primary) !important;
+    }
+
+    body.theme-kitty .rounded-lg.border,
+    body.theme-kitty .bg-black\/30,
+    body.theme-kitty main {
+      background-color: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      color: var(--text-primary) !important;
+    }
+
+    body.theme-kitty .text-white {
+      color: var(--text-primary) !important;
+    }
+
+    body.theme-kitty .text-gray-300,
+    body.theme-kitty .text-gray-400 {
+      color: #b87a9d !important;
+    }
+
+    body.theme-kitty .text-gray-500 {
+      color: #a06a8a !important;
+    }
+
+    body.theme-kitty .nav-button {
+      color: var(--text-primary) !important;
+      box-shadow: inset 0 0 0 1px rgba(255, 107, 157, 0.4) !important;
+    }
+
+    body.theme-kitty .nav-button.active,
+    body.theme-kitty .nav-button:hover {
+      box-shadow:
+        0 0 12px rgba(255, 107, 157, 0.6),
+        inset 0 0 0 1px rgba(255, 107, 157, 0.7) !important;
+    }
+
+    body.theme-kitty .neon-button {
+      background: #ffe6f2 !important;
+      color: var(--text-primary) !important;
+      border: 1px solid rgba(255, 107, 157, 0.5) !important;
+      box-shadow:
+        0 0 16px rgba(255, 107, 157, 0.4),
+        inset 0 0 18px rgba(255, 140, 200, 0.3) !important;
+    }
+
+    body.theme-kitty .neon-button:hover {
+      box-shadow:
+        0 0 22px rgba(255, 107, 157, 0.6),
+        inset 0 0 24px rgba(255, 140, 200, 0.4) !important;
+      border-color: rgba(255, 107, 157, 0.8) !important;
+    }
+
+    body.theme-kitty .neon-sides::before,
+    body.theme-kitty .neon-sides::after {
+      background: linear-gradient(180deg,
+        #ff6b9d 0%,
+        #ff6b9d 25%,
+        #ff1493 55%,
+        #ffffff 85%,
+        #ff8cc8 100%
+      );
+      box-shadow:
+        0 0 12px rgba(255, 140, 200, 0.7),
+        0 0 28px rgba(255, 107, 157, 0.5),
+        inset 0 0 16px rgba(255, 179, 217, 0.4);
+    }
+
+    body.theme-kitty .neon-bottom {
+      background:
+        radial-gradient(60% 140% at 50% 100%, rgba(255, 107, 157, 0.2), rgba(255, 240, 245, 0) 60%),
+        radial-gradient(25% 100% at 0% 100%, rgba(255, 20, 147, 0.22), transparent 70%),
+        radial-gradient(25% 100% at 100% 100%, rgba(255, 255, 255, 0.1), transparent 70%);
+    }
+
+    body.theme-kitty .neon-bottom::before {
+      background:
+        repeating-linear-gradient(to right,
+          rgba(255,255,255,0.9) 0 18px,
+          transparent 18px 34px
+        ),
+        repeating-linear-gradient(to right,
+          rgba(255,20,147,0.7) 0 14px,
+          transparent 14px 30px
+        ),
+        repeating-linear-gradient(to right,
+          rgba(255,107,157,0.7) 0 16px,
+          transparent 16px 32px
+        );
+      box-shadow:
+        0 0 22px rgba(255, 140, 200, 0.8),
+        0 0 44px rgba(255, 107, 157, 0.7),
+        inset 0 0 10px rgba(255, 179, 217, 0.6);
+    }
+
+    body.theme-kitty .neon-bottom::after {
+      background: linear-gradient(90deg, transparent, rgba(255,107,157,0.3), rgba(255,20,147,0.3), rgba(255,255,255,0.22), rgba(255,140,200,0.3), transparent);
+    }
+
+    body.theme-kitty #level-badge {
+      position: relative;
+      background: linear-gradient(135deg,
+        #ffe6f2 0%,
+        #ff8cc8 25%,
+        #ff6b9d 50%,
+        #ff1493 75%,
+        #ff69b4 100%
+      );
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 107, 157, 0.6) !important;
+      box-shadow: 
+        0 0 15px rgba(255, 107, 157, 0.7),
+        0 0 30px rgba(255, 20, 147, 0.5),
+        inset 0 0 10px rgba(255, 255, 255, 0.3) !important;
+      overflow: visible !important;
+    }
+
+    body.theme-kitty #profile-section .rounded-lg.border.border-violet-400\/30 {
+      position: relative;
+      overflow: visible !important;
+    }
+
+    body.theme-kitty #profile-section h3.flex.items-center.gap-2 {
+      position: relative;
+      overflow: visible !important;
+      z-index: 1;
+    }
+
+    body.theme-kitty .text-violet-400 {
+      color: #ff6b9d !important;
+    }
+
+    body.theme-kitty .text-pink-400 {
+      color: #ff1493 !important;
+    }
+
+    body.theme-kitty .text-blue-400 {
+      color: #ff8cc8 !important;
+    }
+
+    body.theme-kitty .text-green-400 {
+      color: #4ade80 !important;
+    }
+
+    body.theme-kitty .border-violet-400\/30,
+    body.theme-kitty .border-violet-400\/20 {
+      border-color: rgba(255, 179, 217, 0.5) !important;
+    }
+
+    body.theme-kitty .neon-nav {
+      background: rgba(255, 230, 242, 0.9) !important;
+      border-bottom: 1px solid rgba(255, 179, 217, 0.3) !important;
+      box-shadow: 0 0 24px rgba(255, 107, 157, 0.3) !important;
+    }
+
+    body.theme-kitty #theme-selector-modal,
+    body.theme-kitty #contact-owner-modal,
+    body.theme-kitty #subscription-modal {
+      background: rgba(255, 240, 245, 0.95) !important;
+    }
+
+    body.theme-kitty #theme-selector-modal > div,
+    body.theme-kitty #contact-owner-modal > div {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+    }
+
+    body.theme-kitty .input-field {
+      background: #ffffff !important;
+      border: 1px solid rgba(255, 179, 217, 0.3) !important;
+      color: var(--text-primary) !important;
+    }
+
+    body.theme-kitty .input-field:focus {
+      border-color: rgba(255, 107, 157, 0.7) !important;
+      box-shadow:
+        0 0 0 3px rgba(255, 107, 157, 0.3),
+        inset 0 0 0 1px rgba(255, 107, 157, 0.7) !important;
+    }
+
+    body.theme-kitty .bg-gray-800 {
+      background-color: rgba(255, 255, 255, 0.5) !important;
+    }
+
+    body.theme-kitty #progress-bar-container {
+      overflow: visible !important;
+    }
+
+    body.theme-kitty #experience-progress-bar {
+      background: linear-gradient(to right, #ff6b9d, #ff1493, #ff6b9d) !important;
+      position: relative;
+    }
+
+    @keyframes kitty-bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes kitty-float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-15px) rotate(5deg); }
+    }
+
+    @keyframes kitty-heart {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+    }
+
+    /* 🍄 Mario theme - ретро стиль Super Mario Bros */
+    body.theme-mario {
+      font-family: 'Press Start 2P', cursive, monospace !important;
+      --mario-sky: #5C94FC;
+      --mario-cloud: #FFFFFF;
+      --mario-hill: #00C000;
+      --mario-brick: #B85C00;
+      --mario-orange: #FF8C00;
+      --mario-yellow: #FFD700;
+      --mario-brown: #8B4513;
+      --mario-blue: #0066FF;
+      --mario-green: #00AA00;
+      --mario-red: #FF0000;
+      --mario-text: #000000;
+      --mario-white: #FFFFFF;
+    }
+
+    body.theme-mario.page-dark {
+      position: relative;
+      background: 
+        radial-gradient(ellipse 120px 60px at 30% 25%, #FFFFFF 0%, #FFFFFF 70%, rgba(135, 206, 235, 0.2) 70%, transparent 100%),
+        radial-gradient(ellipse 120px 60px at 75% 20%, #FFFFFF 0%, #FFFFFF 70%, rgba(135, 206, 235, 0.2) 70%, transparent 100%),
+        repeating-linear-gradient(0deg, #B85C00 0px, #B85C00 16px, #8B4513 16px, #8B4513 20px),
+        repeating-linear-gradient(90deg, transparent 0px, transparent 31px, rgba(0, 0, 0, 0.4) 31px, rgba(0, 0, 0, 0.4) 32px),
+        #87CEEB;
+      background-size: 120px 60px, 120px 60px, 32px 32px, 32px 32px, 100% 100%;
+      background-position: 30% 25%, 75% 20%, 0 67%, 0 67%, 0 0;
+      background-repeat: no-repeat;
+      color: var(--mario-text) !important;
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      min-height: 100vh;
+    }
+
+    body.theme-mario.page-dark::after {
+      content: '?';
+      position: fixed;
+      right: 5%;
+      bottom: 15%;
+      width: 40px;
+      height: 40px;
+      background: var(--mario-yellow);
+      border: 3px solid #000000;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: #000000;
+      z-index: 0;
+      box-shadow: 
+        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
+        0 3px 0 rgba(0, 0, 0, 0.2);
+      font-family: 'Press Start 2P', cursive, monospace;
+      pointer-events: none;
+    }
+
+    body.theme-mario main,
+    body.theme-mario #profile-section {
+      position: relative;
+      z-index: 1;
+    }
+
+    @keyframes mario-clouds {
+      0% { 
+        background-position: 30% 25%, 75% 20%, 0 67%, 0 67%, 0 0; 
+      }
+      100% { 
+        background-position: 32% 25%, 77% 20%, 32px 67%, 32px 67%, 0 0; 
+      }
+    }
+
+    body.theme-mario.page-dark {
+      animation: mario-clouds 30s linear infinite;
+    }
+
+    body.theme-mario h2 {
+      background: rgba(255, 140, 0, 0.85) !important;
+      color: var(--mario-white) !important;
+      padding: 16px 20px !important;
+      border-radius: 12px !important;
+      border: 3px solid #CC7000 !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+        0 4px 0 rgba(0, 0, 0, 0.2) !important;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5) !important;
+      font-size: 0.8rem !important;
+      letter-spacing: 1px !important;
+      text-align: center !important;
+      margin-bottom: 20px !important;
+      width: 100% !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario h3 {
+      background: var(--mario-orange) !important;
+      color: var(--mario-white) !important;
+      padding: 12px 16px !important;
+      border-radius: 8px !important;
+      border: 3px solid #CC7000 !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+        0 4px 0 rgba(0, 0, 0, 0.2) !important;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5) !important;
+      font-size: 0.7rem !important;
+      letter-spacing: 1px !important;
+      text-transform: uppercase !important;
+    }
+
+    body.theme-mario #profile-section .rounded-lg.border.border-violet-400\/30:first-of-type {
+      background: rgba(255, 215, 0, 0.85) !important;
+      border: 3px solid #CCAA00 !important;
+      border-radius: 12px !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.2),
+        0 4px 0 rgba(0, 0, 0, 0.15) !important;
+      color: var(--mario-text) !important;
+      padding: 20px !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario .rounded-lg.border,
+    body.theme-mario .bg-black\/30 {
+      background: rgba(255, 215, 0, 0.85) !important;
+      border: 3px solid #CCAA00 !important;
+      border-radius: 8px !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.2),
+        0 4px 0 rgba(0, 0, 0, 0.15) !important;
+      color: var(--mario-text) !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario main {
+      background: transparent !important;
+    }
+
+    body.theme-mario #profile-section .rounded-lg.border.border-violet-400\/30:nth-of-type(2) {
+      background: 
+        repeating-linear-gradient(0deg, rgba(184, 92, 0, 0.9) 0px, rgba(184, 92, 0, 0.9) 8px, rgba(139, 69, 19, 0.9) 8px, rgba(139, 69, 19, 0.9) 16px),
+        repeating-linear-gradient(90deg, transparent 0px, transparent 15px, rgba(0, 0, 0, 0.1) 15px, rgba(0, 0, 0, 0.1) 16px),
+        rgba(184, 92, 0, 0.85) !important;
+      border: 3px solid #8B4513 !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+        0 4px 0 rgba(0, 0, 0, 0.2) !important;
+      background-size: 100% 16px, 16px 100%, 100% 100% !important;
+      border-radius: 12px !important;
+      padding: 20px !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario #level-badge {
+      background: var(--mario-blue) !important;
+      color: var(--mario-white) !important;
+      border: 3px solid #0044AA !important;
+      border-radius: 8px !important;
+      padding: 10px 16px !important;
+      box-shadow: 
+        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
+        0 3px 0 rgba(0, 0, 0, 0.2) !important;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
+      font-size: 0.65rem !important;
+      display: inline-block !important;
+      white-space: nowrap !important;
+    }
+
+    body.theme-mario #current-experience {
+      background: #8B5CF6 !important;
+      color: var(--mario-white) !important;
+      border-radius: 50% !important;
+      width: 40px !important;
+      height: 40px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border: 2px solid #6D28D9 !important;
+      box-shadow: 
+        inset 0 -2px 0 rgba(0, 0, 0, 0.3),
+        0 2px 0 rgba(0, 0, 0, 0.2) !important;
+      font-size: 0.7rem !important;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
+    }
+
+    body.theme-mario #profile-section .rounded-lg.border.border-violet-400\/30:nth-of-type(2) .text-gray-400 {
+      color: var(--mario-white) !important;
+    }
+
+    body.theme-mario #profile-section .text-lg,
+    body.theme-mario #profile-section .text-sm,
+    body.theme-mario #profile-section .text-gray-400:not(.text-xs) {
+      color: var(--mario-text) !important;
+    }
+
+    body.theme-mario #profile-username {
+      color: var(--mario-text) !important;
+      font-weight: bold !important;
+    }
+
+    body.theme-mario #profile-id {
+      color: var(--mario-blue) !important;
+    }
+
+    body.theme-mario #profile-first-login {
+      color: var(--mario-blue) !important;
+    }
+
+    body.theme-mario #profile-status {
+      color: var(--mario-green) !important;
+    }
+
+    body.theme-mario .nav-button {
+      background: var(--mario-green) !important;
+      color: var(--mario-white) !important;
+      border: 3px solid #008800 !important;
+      box-shadow: 
+        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
+        0 3px 0 rgba(0, 0, 0, 0.2) !important;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
+      font-size: 0.6rem !important;
+      transition: transform 0.1s !important;
+    }
+
+    body.theme-mario .nav-button:active {
+      transform: translateY(2px) !important;
+      box-shadow: 
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+        0 1px 0 rgba(0, 0, 0, 0.2) !important;
+    }
+
+    body.theme-mario #contact-owner-btn {
+      background: rgba(255, 215, 0, 0.85) !important;
+      color: var(--mario-text) !important;
+      border: 3px solid #CCAA00 !important;
+      border-radius: 12px !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+        0 4px 0 rgba(0, 0, 0, 0.2) !important;
+      text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.5) !important;
+      font-size: 0.65rem !important;
+      font-weight: bold !important;
+      padding: 14px !important;
+      margin-top: 20px !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario #contact-owner-btn:active {
+      transform: translateY(2px) !important;
+      box-shadow: 
+        inset 0 -2px 0 rgba(0, 0, 0, 0.3),
+        0 2px 0 rgba(0, 0, 0, 0.2) !important;
+    }
+
+    body.theme-mario #change-theme-btn {
+      background: rgba(255, 140, 0, 0.85) !important;
+      color: var(--mario-white) !important;
+      border: 3px solid #CC7000 !important;
+      border-radius: 12px !important;
+      box-shadow: 
+        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
+        0 3px 0 rgba(0, 0, 0, 0.2) !important;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
+      font-size: 0.65rem !important;
+      padding: 14px !important;
+      margin-bottom: 12px !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario .text-white {
+      color: var(--mario-white) !important;
+    }
+
+    body.theme-mario .text-gray-300,
+    body.theme-mario .text-gray-400 {
+      color: #333333 !important;
+    }
+
+    body.theme-mario .text-violet-400 {
+      color: var(--mario-blue) !important;
+    }
+
+    body.theme-mario #profile-section .grid.grid-cols-2 > div {
+      background: rgba(0, 170, 0, 0.85) !important;
+      border: 3px solid #008800 !important;
+      border-radius: 12px !important;
+      padding: 16px !important;
+      box-shadow: 
+        inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+        0 4px 0 rgba(0, 0, 0, 0.2) !important;
+      backdrop-filter: blur(2px);
+    }
+
+    body.theme-mario #profile-section .grid.grid-cols-2 .text-2xl {
+      color: var(--mario-white) !important;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
+    }
+
+    body.theme-mario #profile-section .grid.grid-cols-2 .text-xs {
+      color: var(--mario-white) !important;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
+    }
+
+    body.theme-mario #contests-won {
+      color: #8B5CF6 !important;
+    }
+
+    @keyframes mario-jump {
+      0%, 100% { transform: translateY(0) scale(1); }
+      25% { transform: translateY(-5px) scale(1.05); }
+      50% { transform: translateY(-8px) scale(1.1); }
+      75% { transform: translateY(-5px) scale(1.05); }
+    }
+
+    body.theme-mario button:hover {
+      animation: mario-jump 0.3s ease-in-out;
+    }
+
+    @keyframes mario-coin {
+      0% { transform: rotateY(0deg) scale(1); }
+      50% { transform: rotateY(180deg) scale(1.1); }
+      100% { transform: rotateY(360deg) scale(1); }
+    }
+
+    body.theme-mario .text-violet-400 {
+      animation: mario-coin 2s ease-in-out infinite;
+    }
+
+    body.theme-mario #contests-participated {
+      animation: none !important;
+    }
+
+    body.theme-mario * {
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+    }
+
+    body.theme-mario .w-16.h-16.rounded-full {
+      background: var(--mario-blue) !important;
+      border: 3px solid #0044AA !important;
+      border-radius: 8px !important;
+      box-shadow: 
+        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
+        0 3px 0 rgba(0, 0, 0, 0.2) !important;
+      width: 64px !important;
+      height: 64px !important;
+    }
+
+    body.theme-mario #profile-avatar {
+      animation: mario-jump 2s ease-in-out infinite;
+      display: inline-block;
+      color: var(--mario-white) !important;
+      font-size: 1.5rem !important;
+    }
+
+    body.theme-mario #progress-bar-container {
+      display: block !important;
+      background: rgba(0, 0, 0, 0.3) !important;
+      border: 3px solid #8B4513 !important;
+      border-radius: 8px !important;
+    }
+
+    @keyframes mario-progress-flow {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+
+    body.theme-mario #experience-progress-bar {
+      background: linear-gradient(90deg, #0066FF 0%, #4A90E2 50%, #0066FF 100%) !important;
+      background-size: 200% 100% !important;
+      animation: mario-progress-flow 2s linear infinite !important;
+    }
+
+    /* ⚔️ Attack on Titan theme */
+    body.theme-aot {
+      font-family: 'UnifrakturMaguntia', 'Creepster', serif !important;
+      --aot-parchment: #f4e4bc;
+      --aot-sepia: #8b6f47;
+      --aot-blood: #8b0000;
+      --aot-text: #3d2817;
+      --aot-border: #5c4a2f;
+    }
+
+    body.theme-aot.page-dark {
+      background: repeating-linear-gradient(0deg, rgba(139, 111, 71, 0.03) 0px, rgba(139, 111, 71, 0.03) 1px, transparent 1px, transparent 2px),
+        repeating-linear-gradient(90deg, rgba(139, 111, 71, 0.03) 0px, rgba(139, 111, 71, 0.03) 1px, transparent 1px, transparent 2px),
+        radial-gradient(ellipse at top, #e8d5b7 0%, #d4c4a4 50%, #c9b99b 100%), #f4e4bc;
+      background-size: 20px 20px, 20px 20px, 100% 60%, 100% 100%;
+      color: var(--aot-text) !important;
+    }
+
+    body.theme-aot #aot-titan-image {
+      display: block !important;
+      position: relative !important;
+      width: 100% !important;
+      margin-bottom: 20px !important;
+    }
+
+    body.theme-aot #aot-titan-image img {
+      width: 100% !important;
+      height: auto !important;
+      max-height: 300px !important;
+      object-fit: contain !important;
+    }
+
+    @media (max-width: 640px) {
+      body.theme-aot #aot-titan-image img { max-height: 200px !important; }
+    }
+
+    body.theme-aot .rounded-lg.border,
+    body.theme-aot .bg-black\/30 {
+      background: repeating-linear-gradient(0deg, rgba(139, 111, 71, 0.05) 0px, rgba(139, 111, 71, 0.05) 1px, transparent 1px, transparent 2px),
+        linear-gradient(135deg, #f4e4bc 0%, #e8d5b7 100%) !important;
+      border: 2px solid var(--aot-border) !important;
+      color: var(--aot-text) !important;
+    }
+
+    body.theme-aot #profile-section .rounded-lg.border:first-of-type {
+      background: radial-gradient(ellipse 20px 25px at 96% 15%, rgba(139, 0, 0, 0.5) 0%, transparent 70%),
+        radial-gradient(ellipse 15px 20px at 98% 35%, rgba(139, 0, 0, 0.45) 0%, transparent 70%),
+        radial-gradient(ellipse 12px 18px at 94% 50%, rgba(139, 0, 0, 0.4) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, rgba(139, 111, 71, 0.05) 0px, rgba(139, 111, 71, 0.05) 1px, transparent 1px, transparent 2px),
+        linear-gradient(135deg, #f4e4bc 0%, #e8d5b7 100%) !important;
+    }
+
+    body.theme-aot #profile-section .rounded-lg.border:nth-of-type(2) {
+      background: radial-gradient(ellipse 18px 22px at 3% 12%, rgba(139, 0, 0, 0.5) 0%, transparent 70%),
+        radial-gradient(ellipse 16px 20px at 97% 18%, rgba(139, 0, 0, 0.5) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, rgba(139, 111, 71, 0.05) 0px, rgba(139, 111, 71, 0.05) 1px, transparent 1px, transparent 2px),
+        linear-gradient(135deg, #f4e4bc 0%, #e8d5b7 100%) !important;
+    }
+
+    body.theme-aot h2 {
+      font-family: 'UnifrakturMaguntia', serif !important;
+      color: var(--aot-text) !important;
+      font-size: 2rem !important;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    body.theme-aot #profile-username {
+      font-family: 'UnifrakturMaguntia', serif !important;
+      color: var(--aot-text) !important;
+    }
+
+    body.theme-aot #profile-id,
+    body.theme-aot #profile-first-login,
+    body.theme-aot #profile-status,
+    body.theme-aot .text-gray-400 {
+      color: var(--aot-sepia) !important;
+    }
+
+    body.theme-aot #level-badge {
+      background: linear-gradient(135deg, #8b6f47 0%, #5c4a2f 100%) !important;
+      color: #f4e4bc !important;
+      border: 2px solid var(--aot-border) !important;
+      font-family: 'UnifrakturMaguntia', serif !important;
+    }
+
+    body.theme-aot #progress-bar-container {
+      background: rgba(139, 111, 71, 0.3) !important;
+      border: 2px solid var(--aot-border) !important;
+    }
+
+    body.theme-aot #experience-progress-bar {
+      background: linear-gradient(90deg, #8b6f47 0%, #5c4a2f 50%, #8b6f47 100%) !important;
+      background-size: 200% 100% !important;
+      animation: aot-progress-flow 2s linear infinite !important;
+    }
+
+    @keyframes aot-progress-flow {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+
+    body.theme-aot .nav-button,
+    body.theme-aot .neon-button {
+      background: linear-gradient(135deg, #8b6f47 0%, #5c4a2f 100%) !important;
+      color: #f4e4bc !important;
+      border: 2px solid var(--aot-border) !important;
+      font-family: 'UnifrakturMaguntia', serif !important;
+    }
+
+    body.theme-aot .text-white,
+    body.theme-aot .text-gray-300,
+    body.theme-aot .text-violet-400,
+    body.theme-aot .text-pink-400,
+    body.theme-aot .text-blue-400,
+    body.theme-aot .text-green-400 {
+      color: var(--aot-sepia) !important;
+    }
+  </style>
+</head>
+<body class="page-dark text-white min-h-screen flex flex-col neon-sides">
+
+  <!-- 🔄 Загрузка -->
+  <div id="loading-spinner" class="loading-spinner relative w-full h-screen flex flex-col items-center justify-center" style="background: #000; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; pointer-events: auto;">
+    <div class="flex flex-col items-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-white mb-4"></div>
+      <p class="text-white text-lg font-semibold">Загрузка панели...</p>
+    </div>
+  </div>
+
+  <!-- Критический скрипт для немедленного скрытия спиннера -->
+  <script>
+    (function() {
+      // Скрываем спиннер через 100ms после загрузки DOM в любом случае
+      function forceHideSpinner() {
+        var spinner = document.getElementById('loading-spinner');
+        var nav = document.getElementById('user-nav');
+        var main = document.querySelector('main');
         
-        # Определяем канал и группу обсуждения
-        channel_link = data.get("channel_link")  # Берем из запроса
-        final_discussion_group_link = discussion_group_link  # Используем переданную в запросе
+        if (spinner) {
+          spinner.style.display = 'none';
+          spinner.style.visibility = 'hidden';
+          spinner.style.opacity = '0';
+          spinner.style.pointerEvents = 'none'; // КРИТИЧНО: отключаем pointer events
+          spinner.style.zIndex = '-1'; // Убираем высокий z-index
+          spinner.classList.add('hidden');
+        }
+        if (nav) {
+          nav.style.display = 'flex';
+          nav.style.pointerEvents = 'auto'; // Включаем клики на навигацию
+          nav.style.zIndex = '10';
+          nav.classList.remove('hidden');
+        }
+        if (main) {
+          main.style.display = 'block';
+          main.style.pointerEvents = 'auto'; // Включаем клики на основной контент
+          main.classList.remove('hidden');
+        }
+      }
+      
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+          setTimeout(forceHideSpinner, 100);
+        });
+      } else {
+        setTimeout(forceHideSpinner, 100);
+      }
+    })();
+  </script>
+
+  <!-- 🚀 Навигация -->
+  <nav id="user-nav" class="neon-nav fixed left-0 right-0 z-10 flex justify-around items-center px-2 pb-2 pt-3 hidden" style="bottom: 18px;">
+    <button class="nav-button active relative" data-section="contests-section">🏆 Конкурсы</button>
+    <button class="nav-button relative" data-section="rating-section">⭐ Рейтинг</button>
+    <button class="nav-button relative" data-section="profile-section">👤 Профиль</button>
+    <button class="nav-button relative" data-section="shop-section">🛒 Магазин</button>
+  </nav>
+
+  <!-- 📦 Основное содержимое -->
+  <main class="flex-1 p-6 space-y-6 pb-24 hidden">
+
+    <!-- 🏆 Конкурсы -->
+    <section id="contests-section" class="content-section">
+      <h2 class="text-xl font-bold mb-4">Активные конкурсы</h2>
+      <div id="contest-list" class="space-y-4 mb-6"></div>
+    </section>
+
+    <!-- ⭐ Рейтинг -->
+    <section id="rating-section" class="content-section hidden">
+      <h2 class="text-xl font-bold mb-4">Рейтинг</h2>
+      
+      <!-- Переключатель между пользователями и админами -->
+      <div class="flex gap-2 mb-4">
+        <button id="rating-users-btn" class="nav-button active px-4 py-2 rounded-lg" data-role="user">Пользователи</button>
+        <button id="rating-admins-btn" class="nav-button px-4 py-2 rounded-lg" data-role="admin">Админы</button>
+      </div>
+      
+      <!-- Список рейтинга -->
+      <div id="rating-list" class="space-y-2">
+        <div class="text-center text-gray-400 py-8">Загрузка рейтинга...</div>
+      </div>
+    </section>
+
+    <!-- 👤 Профиль -->
+    <section id="profile-section" class="content-section hidden">
+      <!-- Attack Titan изображение для темы AoT -->
+      <div id="aot-titan-image" class="hidden absolute top-0 left-0 right-0 -mt-8 mb-4 z-0 pointer-events-none" style="border: 3px solid #5c4a2f; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); min-height: 200px; max-height: 300px; height: auto;">
+        <img src="AoT.jpg" 
+             alt="Attack Titan" 
+             class="w-full h-auto opacity-95"
+             style="filter: sepia(70%) contrast(1.5) brightness(0.75) saturate(0.6) hue-rotate(-10deg); object-fit: contain; display: block; max-height: 300px; width: 100%; height: auto;">
+        <div class="absolute inset-0 pointer-events-none" style="background: repeating-linear-gradient(0deg, rgba(139,111,71,0.03) 0px, transparent 1px, transparent 2px), repeating-linear-gradient(90deg, rgba(139,111,71,0.03) 0px, transparent 1px, transparent 2px); mix-blend-mode: overlay;"></div>
+      </div>
+      <h2 class="text-xl font-bold mb-6">Профиль</h2>
+      
+      <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4 mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-2xl font-bold">
+            <span id="profile-avatar">👤</span>
+          </div>
+          <div>
+            <div class="text-lg font-semibold" id="profile-username">Пользователь</div>
+            <div class="text-sm text-gray-400">ID: <span id="profile-id" class="text-violet-400"></span></div>
+          </div>
+        </div>
         
-        if created_by:
-            # Получаем информацию о создателе
-            result = await session.execute(
-                select(User).where(User.telegram_id == created_by)
-            )
-            creator_user = result.scalars().first()
-            
-            if creator_user:
-                if creator_user.role == "creator":
-                    # Для создателя - используем значения из запроса или из профиля пользователя
-                    # Если не переданы в запросе, берем из профиля пользователя
-                    if not channel_link:
-                        channel_link = creator_user.channel_link
-                    if not final_discussion_group_link:
-                        final_discussion_group_link = creator_user.chat_link
-                elif creator_user.role == "admin":
-                    # Для админа - из активов
-                    if not channel_link:
-                        channel_link = creator_user.channel_link
-                    if not final_discussion_group_link:
-                        final_discussion_group_link = creator_user.chat_link or discussion_group_link
+        <div class="pt-4 border-t border-violet-400/20 space-y-3">
+          <div class="flex justify-between items-center">
+            <span class="text-gray-400">Первый вход:</span>
+            <span id="profile-first-login" class="text-blue-400"></span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-gray-400">Статус:</span>
+            <span id="profile-status" class="text-green-400 font-semibold"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⭐ Система уровней и опыта -->
+      <div class="mb-6">
+        <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-semibold flex items-center gap-2">
+              <span id="level-badge" class="px-3 py-1 rounded-full text-sm font-bold">Уровень 1</span>
+              <span class="text-violet-400">⭐</span>
+            </h3>
+            <div class="text-right">
+              <div class="text-2xl font-bold text-violet-400" id="current-experience">0</div>
+              <div class="text-xs text-gray-400">опыта</div>
+            </div>
+          </div>
+          
+          <!-- Полоска прогресса -->
+          <div class="relative">
+            <div class="w-full h-6 bg-gray-800 rounded-full overflow-hidden border border-violet-400/20">
+              <div id="experience-progress-bar" class="h-full bg-gradient-to-r from-violet-500 via-pink-500 to-violet-500 rounded-full transition-all duration-500 ease-out relative overflow-hidden" style="width: 0%; background-size: 200% 100%; animation: neonFlow 3s linear infinite;">
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
+              </div>
+            </div>
+            <div class="flex justify-between items-center mt-2 text-xs text-gray-400">
+              <span id="current-level-exp">0</span>
+              <span id="next-level-exp">100</span>
+            </div>
+          </div>
+          
+          <!-- Статистика -->
+          <div class="pt-3 border-t border-violet-400/20 grid grid-cols-2 gap-3">
+            <div class="text-center p-3 rounded-lg bg-black/40 border border-violet-400/20">
+              <div class="text-2xl font-bold text-violet-400" id="contests-participated">0</div>
+              <div class="text-xs text-gray-400 mt-1">Участий</div>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-black/40 border border-violet-400/20">
+              <div class="text-2xl font-bold text-pink-400" id="contests-won">0</div>
+              <div class="text-xs text-gray-400 mt-1">Побед</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🎨 Смена темы -->
+      <button id="change-theme-btn" class="neon-button w-full py-3 rounded-lg mb-3 relative">
+        <span class="kitty-btn-icon">🎨</span> Сменить тему
+      </button>
+
+      <!-- 📨 Связь с владельцем -->
+      <button id="contact-owner-btn" class="neon-button w-full py-3 rounded-lg">
+        📨 Связь с владельцем
+      </button>
+    </section>
+
+    <!-- 🛒 Магазин -->
+    <section id="shop-section" class="content-section hidden">
+      <h2 class="text-xl font-bold mb-6">🛒 Магазин</h2>
+      
+      <div class="space-y-4">
+        <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30">
+          <h3 class="text-lg font-semibold mb-4">🎨 Дополнительные темы</h3>
+          <div id="themes-shop" class="grid grid-cols-1 gap-3">
+            <!-- Товары будут добавлены динамически -->
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 🎨 Модалка: Выбор темы -->
+    <div id="theme-selector-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
+        <button id="close-theme-modal" class="absolute top-4 right-4 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">🎨 Выберите тему</h3>
+        <div id="themes-list" class="space-y-3">
+          <!-- Темы будут добавлены динамически -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 💳 Модалка: Выбор способа оплаты -->
+    <div id="payment-method-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
+        <button id="close-payment-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">💳 Выберите способ оплаты</h3>
+        <div id="payment-methods-list" class="space-y-3">
+          <!-- Способы оплаты будут добавлены динамически -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 📨 Модалка: Отправить сообщение владельцу -->
+    <div id="contact-owner-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
+        <button id="close-contact-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">📨 Связь с владельцем</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm text-gray-400 mb-2">Ваше сообщение:</label>
+            <textarea id="contact-message-text" class="input-field w-full p-3 rounded" rows="6" placeholder="Введите ваше сообщение..."></textarea>
+          </div>
+          <button id="send-contact-message" class="neon-button w-full py-3 rounded-lg">Отправить</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 🟣 Bottom neon shimmer backdrop for buttons -->
+  <div class="neon-bottom"></div>
+
+  <!-- Модальное окно для подписки на каналы/чаты -->
+  <div id="subscription-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div id="subscription-modal-content" class="bg-gradient-to-br from-gray-900 via-purple-900/30 to-gray-900 rounded-xl border-2 border-violet-400/40 p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="text-center mb-4">
+        <h2 class="text-2xl font-bold text-white mb-2">⚠️ Требуется подписка</h2>
+        <p class="text-gray-300 text-sm">Для участия в конкурсе необходимо подписаться на следующие каналы и чаты:</p>
+      </div>
+      <div id="subscription-list" class="space-y-3 mb-4"></div>
+      <div class="flex flex-col gap-2">
+        <button id="verify-subscription-btn" class="neon-button px-6 py-3 rounded-lg font-semibold text-white w-full">
+          ✓ Выполнил
+        </button>
+        <button id="close-subscription-modal" class="px-6 py-2 rounded-lg font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 w-full">
+          Отмена
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🏆 Модальное окно для итогов конкурса рисунков -->
+  <div id="drawing-results-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="relative w-full max-w-2xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-2xl font-bold text-white">🏆 Итоги конкурса</h2>
+        <button onclick="document.getElementById('drawing-results-modal').classList.add('hidden')" class="bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
+      </div>
+      <div id="drawing-results-content" class="space-y-4">
+        <!-- Содержимое будет добавлено динамически -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 🗳️ Модальное окно голосования за работы -->
+  <div id="voting-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="relative w-full max-w-xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6">
+      <button id="voting-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+      <div id="voting-modal-progress" class="text-sm text-gray-300 text-center mb-3"></div>
+      <div class="w-full rounded-xl overflow-hidden bg-black/40 mb-4 flex items-center justify-center min-h-[260px]">
+        <img id="voting-modal-image" src="" alt="Работа конкурса" class="max-h-[360px] object-contain w-full transition-opacity duration-300 hidden" />
+        <div id="voting-modal-loader" class="text-gray-400 text-sm">⏳ Загрузка...</div>
+      </div>
+      <div id="voting-modal-info" class="text-sm text-gray-400 text-center mb-4"></div>
+      <div class="flex justify-center gap-2 flex-wrap">
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="1">1</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="2">2</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="3">3</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="4">4</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="5">5</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🖼️ Модальное окно для ввода ссылок на NFT (шаг 1) -->
+  <div id="collection-links-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="relative w-full max-w-2xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <button id="collection-links-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
+      <h2 class="text-2xl font-bold text-white mb-4">🖼️ Введите ссылки на NFT</h2>
+      <p class="text-gray-300 text-sm mb-4">Введите 9 ссылок на NFT в формате <code class="bg-black/40 px-2 py-1 rounded">t.me/nft/название-номер</code></p>
+      
+      <div id="collection-links-inputs" class="space-y-3 mb-4">
+        <!-- Поля ввода будут добавлены динамически -->
+      </div>
+      
+      <div class="flex items-center justify-between mb-4">
+        <div id="collection-links-count" class="text-sm text-gray-400">
+          Введено: <span id="collection-links-entered">0</span> / 9
+        </div>
+        <div id="collection-links-error" class="text-sm text-red-400 hidden"></div>
+      </div>
+      
+      <div class="flex gap-3">
+        <button id="collection-links-continue" class="neon-button px-6 py-3 rounded-lg font-semibold text-white flex-1 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+          Продолжить
+        </button>
+        <button id="collection-links-cancel" class="px-6 py-3 rounded-lg font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700">
+          Отмена
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🖼️ Модальное окно для расстановки NFT (шаг 2) -->
+  <div id="collection-arrange-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" style="overflow-x: hidden !important; overflow-y: auto; left: 0; right: 0; width: 100vw; max-width: 100vw; box-sizing: border-box; position: fixed;">
+    <div class="relative w-full max-w-4xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto" style="overflow-x: hidden !important; max-width: calc(100% - 2rem); width: calc(100% - 2rem); box-sizing: border-box; margin: 0 auto; position: relative;">
+      <button id="collection-arrange-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
+      <h2 class="text-2xl font-bold text-white mb-4" style="word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; box-sizing: border-box; overflow-x: hidden;">🖼️ Расставьте NFT в нужном порядке</h2>
+      <p class="text-gray-300 text-sm mb-4" style="word-wrap: break-word; overflow-wrap: break-word; max-width: 100%; box-sizing: border-box; overflow-x: hidden;">Зажмите и перетащите NFT для изменения их расположения</p>
+      
+      <div id="collection-grid" class="grid grid-cols-3 gap-3 mb-6 w-full" oncontextmenu="return false;" style="-webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; -webkit-touch-callout: none; overflow-x: hidden !important; width: 100%; max-width: 100%; box-sizing: border-box; min-width: 0;">
+        <!-- Сетка 3x3 будет добавлена динамически -->
+      </div>
+      
+      <div class="flex gap-3" style="max-width: 100%; box-sizing: border-box; width: 100%; overflow-x: hidden;">
+        <button id="collection-arrange-submit" class="neon-button px-6 py-3 rounded-lg font-semibold text-white flex-1" style="min-width: 0; max-width: 100%; box-sizing: border-box;">
+          Отправить коллекцию
+        </button>
+        <button id="collection-arrange-back" class="px-6 py-3 rounded-lg font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700" style="min-width: 0; max-width: 100%; box-sizing: border-box;">
+          Назад
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🧠 Встроенная логика UI/загрузка -->
+  <script>
+    // Логирование самого начала выполнения скрипта
+    console.log('🚀 ========== СКРИПТ USER.HTML ЗАГРУЖЕН ==========');
+    console.log('🚀 Время загрузки:', new Date().toISOString());
+    console.log('🚀 URL:', window.location.href);
+    console.log('🚀 User Agent:', navigator.userAgent);
+    
+    (function() {
+      console.log('🚀 IIFE функция запущена');
+      let currentUserId = null;
+      window.currentUserId = null; // Глобальная переменная для доступа из других функций
+      let spinner, topNav, main, contentSections, navButtons;
+      
+      // СНАЧАЛА ОПРЕДЕЛЯЕМ ВСЕ ФУНКЦИИ, ПОТОМ ВЫЗЫВАЕМ initUserPage
+      
+      // Utilities
+      function toMoscowDateTime(value) {
+        if (!value) return '';
+        const d = (value instanceof Date) ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        return new Intl.DateTimeFormat('ru-RU', {
+          timeZone: 'Europe/Moscow',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        }).format(d);
+      }
+
+      // Делаем fetchJSON доступной глобально СРАЗУ
+      window.fetchJSON = async function(url, options) {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          const error = new Error(`HTTP error! status: ${res.status}`);
+          error.response = res;
+          throw error;
+        }
         
-        # Если discussion_group_link был передан явно, используем его (приоритет)
-        if discussion_group_link:
-            final_discussion_group_link = discussion_group_link
-        
-        # Для конкурса рисунков post_link должен быть NULL или пустой строкой
-        # Для рандом комментариев post_link обязателен (уже проверено выше)
-        final_post_link = None
-        if contest_type == "random_comment":
-            # Для рандом комментариев post_link обязателен
-            final_post_link = post_link if post_link and post_link.strip() else None
-        else:
-            # Для конкурса рисунков post_link не обязателен (может быть NULL)
-            final_post_link = post_link if post_link and post_link.strip() else None
-        
-        created_at_msk = datetime.now(MSK_TZ).replace(tzinfo=None)
+        // Парсим JSON ответ
+        const jsonData = await res.json();
+        console.log('📋 fetchJSON: Ответ успешно распарсен:', jsonData);
+        return jsonData;
+      };
 
-        new_giveaway = Giveaway(
-            name=name,
-            prize=prize or '',
-            start_date=start_date_db,
-            end_date=end_date_db,
-            submission_end_date=submission_end_date_db if contest_type in ["drawing", "collection"] else None,
-            post_link=final_post_link,  # Для рандом комментариев обязателен, для рисунков может быть NULL
-            discussion_group_link=final_discussion_group_link,
-            channel_link=channel_link,
-            conditions=conditions,
-            winners_count=winners_count,
-            prize_links=prize_links if prize_links else None,
-            created_at=created_at_msk,
-            created_by=created_by if created_by else None,
-            contest_type=contest_type,
-            jury=jury if jury else None,  # Сохраняем данные жюри
-        )
-        session.add(new_giveaway)
-        await session.commit()
-        await session.refresh(new_giveaway)
-        
-        # Если это конкурс рисунков, создаем начальную запись в drawing_contests.json
-        if contest_type == "drawing":
-            async with drawing_data_lock:
-                drawing_data = load_drawing_data()
-                contest_key = str(new_giveaway.id)
-                if contest_key not in drawing_data:
-                    # Создаем начальную запись для конкурса рисунков
-                    preferred_creator_id = created_by if created_by else None
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    now_msk = datetime.now(msk_tz)
-                    drawing_data[contest_key] = {
-                        "contest_id": new_giveaway.id,
-                        "title": name,
-                        "topic": conditions or '',
-                        "created_by": preferred_creator_id,
-                        "created_at": now_msk.isoformat(),
-                        "works": []
-                    }
-                    save_drawing_data(drawing_data)
-                    logger.info(f"✅ Создана начальная запись для конкурса рисунков {new_giveaway.id} в drawing_contests.json")
-        
-        # Если это конкурс коллекций, создаем начальную запись в collection_contests.json
-        if contest_type == "collection":
-            async with collection_data_lock:
-                collection_data = load_collection_data()
-                contest_key = str(new_giveaway.id)
-                if contest_key not in collection_data:
-                    # Создаем начальную запись для конкурса коллекций
-                    preferred_creator_id = created_by if created_by else None
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    now_msk = datetime.now(msk_tz)
-                    collection_data[contest_key] = {
-                        "contest_id": new_giveaway.id,
-                        "title": name,
-                        "topic": conditions or '',
-                        "created_by": preferred_creator_id,
-                        "created_at": now_msk.isoformat(),
-                        "collections": []
-                    }
-                    save_collection_data(collection_data)
-                    logger.info(f"✅ Создана начальная запись для конкурса коллекций {new_giveaway.id} в collection_contests.json")
+      // Extract channel username from post link
+      function extractChannelFromPostLink(postLink) {
+        if (!postLink) return null;
+        const match = postLink.match(/(?:t\.me|telegram\.me)\/([a-zA-Z0-9_]+)\/(\d+)/);
+        return match ? match[1] : null;
+      }
 
-    return {"success": True, "message": "✅ Конкурс успешно создан!", "id": new_giveaway.id}
+      // Contests - делаем функции доступными глобально СРАЗУ
+      let contestList;
+      
+      function initContestList() {
+        if (!contestList) {
+          contestList = document.getElementById('contest-list');
+        }
+        return contestList;
+      }
 
+      const votingState = {
+        contestId: null,
+        works: [],
+        currentIndex: 0
+      };
+      let votingModal;
+      let votingModalImage;
+      let votingModalProgress;
+      let votingModalLoader;
+      let votingModalInfo;
+      let votingModalCloseBtn;
+      let votingScoreButtons = [];
 
-@app.get("/api/giveaways")
-async def list_giveaways(admin_id: int = Query(None)):
-    """Получить список конкурсов. Если передан admin_id, возвращает только конкурсы этого админа."""
-    async with async_session() as session:
-        # Check which columns exist
-        try:
-            if IS_SQLITE:
-                result = await session.execute(text("PRAGMA table_info(giveaways)"))
-                columns_info = result.fetchall()
-                existing_columns = {row[1]: row for row in columns_info}
-            else:
-                result = await session.execute(text("""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'giveaways'
-                """))
-                columns_info = result.fetchall()
-                existing_columns = {row[0]: row for row in columns_info}
-            
-            # Build SELECT query with only existing columns
-            base_cols = ['id', 'post_link', 'created_at']
-            optional_cols = {'name': 'name', 'prize': 'prize', 'end_date': 'end_date', 'conditions': 'conditions', 'discussion_group_link': 'discussion_group_link', 'prize_links': 'prize_links', 'contest_type': 'contest_type', 'submission_end_date': 'submission_end_date', 'winners_count': 'winners_count', 'start_date': 'start_date', 'jury': 'jury'}
-            
-            select_cols = []
-            for col in base_cols:
-                if col in existing_columns:
-                    select_cols.append(col)
-            
-            for col_key, col_name in optional_cols.items():
-                if col_name in existing_columns:
-                    select_cols.append(col_name)
-            
-            if not select_cols:
-                return []
-            
-            # Проверяем наличие поля created_by
-            has_created_by = 'created_by' in existing_columns
-            
-            # Строим запрос с фильтрацией по admin_id если нужно
-            select_cols_final = select_cols.copy()
-            if has_created_by and 'created_by' not in select_cols_final:
-                select_cols_final.append('created_by')
-            
-            query = f"SELECT {', '.join(select_cols_final)} FROM giveaways"
-            
-            # Добавляем фильтрацию для админа: показываем его конкурсы и конкурсы создателя
-            if admin_id and has_created_by:
-                # Проверяем, является ли пользователь создателем
-                user_result = await session.execute(
-                    select(User).where(User.telegram_id == admin_id)
-                )
-                user = user_result.scalars().first()
-                
-                if user and user.role == "admin":
-                    # Для админа показываем его конкурсы и конкурсы создателя
-                    query += f" WHERE (created_by = {admin_id} OR created_by = {CREATOR_ID})"
-                elif user and user.role == "creator":
-                    # Для создателя показываем все конкурсы
-                    pass  # Без фильтрации
-                else:
-                    # Для обычного пользователя или если пользователь не найден - только его конкурсы
-                    query += f" WHERE created_by = {admin_id}"
-            
-            result = await session.execute(text(query))
-            rows = result.fetchall()
-            
-            # Map rows to dict format
-            giveaways_list = []
-            for row in rows:
-                # Используем select_cols_final для правильного маппинга
-                row_dict = dict(zip(select_cols_final, row))
-                
-                # Проверяем, окончен ли конкурс и нужно ли выбрать победителей
-                end_date = row_dict.get('end_date')
-                is_confirmed = row_dict.get('is_confirmed', False) if 'is_confirmed' in existing_columns else False
-                winners_selected_at = row_dict.get('winners_selected_at') if 'winners_selected_at' in existing_columns else None
-                winners_count = row_dict.get('winners_count', 1) if 'winners_count' in existing_columns else 1
-                
-                # Автоматически выбираем победителей, если конкурс окончен и победители еще не выбраны
-                contest_id = row_dict.get('id')
-                if end_date and not is_confirmed and not winners_selected_at:
-                    # Преобразуем дату в МСК для сравнения
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    end_date_obj = None
-                    
-                    try:
-                        if isinstance(end_date, str):
-                            # Обрабатываем строку в формате "2025-11-04 15:54:00.000000" или ISO формате
-                            end_date_clean = end_date.strip()
-                            
-                            # Если формат "YYYY-MM-DD HH:MM:SS.microseconds" или "YYYY-MM-DD HH:MM:SS"
-                            if 'T' not in end_date_clean and ' ' in end_date_clean:
-                                # Формат: "2025-11-04 15:54:00.000000" или "2025-11-04 15:54:00"
-                                try:
-                                    # Пробуем парсить с микросекундами
-                                    if '.' in end_date_clean:
-                                        end_date_naive = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S.%f')
-                                    else:
-                                        end_date_naive = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S')
-                                    # Считаем, что это МСК время (как указал пользователь)
-                                    end_date_obj = msk_tz.localize(end_date_naive)
-                                except ValueError:
-                                    # Если не получилось, пробуем ISO формат
-                                    end_date_clean = end_date_clean.replace('Z', '').replace('+00:00', '')
-                                    if 'T' in end_date_clean:
-                                        end_date_naive = datetime.fromisoformat(end_date_clean)
-                                    else:
-                                        end_date_naive = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
-                                    # Считаем, что это МСК время
-                                    end_date_obj = msk_tz.localize(end_date_naive) if end_date_naive.tzinfo is None else end_date_naive.astimezone(msk_tz)
-                            else:
-                                # ISO формат с T
-                                end_date_clean = end_date_clean.replace('Z', '').replace('+00:00', '')
-                                if 'T' in end_date_clean:
-                                    end_date_naive = datetime.fromisoformat(end_date_clean)
-                                else:
-                                    end_date_naive = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
-                                # Считаем, что это МСК время
-                                end_date_obj = msk_tz.localize(end_date_naive) if end_date_naive.tzinfo is None else end_date_naive.astimezone(msk_tz)
-                        elif isinstance(end_date, datetime):
-                            # Если это уже datetime объект
-                            if end_date.tzinfo is None:
-                                # Если naive datetime, считаем что это МСК
-                                end_date_obj = msk_tz.localize(end_date)
-                            else:
-                                # Если timezone-aware, преобразуем в МСК
-                                end_date_obj = end_date.astimezone(msk_tz)
-                    except Exception as e:
-                        logger.warning(f"⚠️ Не удалось преобразовать end_date в datetime для конкурса {contest_id}: {end_date}, ошибка: {e}")
-                        end_date_obj = None
-                    
-                    if end_date_obj:
-                        current_time_msk = datetime.now(msk_tz)
-                        logger.debug(f"🔍 Проверка конкурса {contest_id}: end_date={end_date_obj}, current_time={current_time_msk}, окончен={end_date_obj < current_time_msk}")
-                        # Удален автоматический выбор победителей - теперь только через кнопку "Подвести итоги"
-                    else:
-                        logger.warning(f"⚠️ Не удалось преобразовать end_date в datetime для конкурса {contest_id}: {end_date}")
-                elif is_confirmed:
-                    logger.debug(f"✓ Конкурс {contest_id} уже подтвержден")
-                elif winners_selected_at:
-                    logger.debug(f"✓ Победители для конкурса {contest_id} уже выбраны в {winners_selected_at}")
-                
-                # Парсим prize_links если это JSON строка
-                prize_links = row_dict.get('prize_links')
-                if isinstance(prize_links, str):
-                    try:
-                        import json
-                        prize_links = json.loads(prize_links) if prize_links else []
-                    except:
-                        prize_links = []
-                elif prize_links is None:
-                    prize_links = []
-                elif not isinstance(prize_links, list):
-                    prize_links = []
-                
-                # Логируем для отладки (только если есть призы)
-                if prize_links:
-                    logger.debug(f"Конкурс {contest_id}: загружено {len(prize_links)} призов")
-                
-                # Получаем contest_type и submission_end_date
-                contest_type = row_dict.get('contest_type', 'random_comment') if 'contest_type' in existing_columns else 'random_comment'
-                submission_end_date = row_dict.get('submission_end_date') if 'submission_end_date' in existing_columns else None
-                start_date = row_dict.get('start_date') if 'start_date' in existing_columns else None
-                created_by = row_dict.get('created_by') if has_created_by else None
-                
-                # Парсим jury если это JSON строка
-                jury = row_dict.get('jury') if 'jury' in existing_columns else None
-                if isinstance(jury, str):
-                    try:
-                        import json
-                        jury = json.loads(jury) if jury else None
-                    except:
-                        jury = None
-                
-                giveaways_list.append({
-                    "id": row_dict.get('id'),
-                    "title": row_dict.get('name') or row_dict.get('post_link') or 'Без названия',
-                    "name": row_dict.get('name') or '',
-                    "post_link": row_dict.get('post_link') or '',
-                    "discussion_group_link": row_dict.get('discussion_group_link') or '',
-                    "conditions": row_dict.get('conditions') or '',
-                    "prize": row_dict.get('prize') or '',
-                    "prize_links": prize_links if prize_links else [],  # Всегда возвращаем список, даже если пустой
-                    "end_at": to_iso(end_date),
-                    "end_at_local": to_datetime_local(end_date),
-                    "end_date": to_iso(end_date),
-                    "start_at": to_iso(start_date),
-                    "start_at_local": to_datetime_local(start_date),
-                    "start_date": to_iso(start_date),
-                    "submission_end_date": to_iso(submission_end_date),
-                    "submission_end_date_local": to_datetime_local(submission_end_date),
-                    "created_at": to_iso(row_dict.get('created_at')),
-                    "created_at_local": to_datetime_local(row_dict.get('created_at')),
-                    "created_by": created_by,  # Добавляем created_by в ответ
-                    "is_confirmed": is_confirmed,
-                    "winners_count": winners_count,
-                    "contest_type": contest_type,
-                    "jury": jury,  # Добавляем данные жюри в ответ
-                })
-            
-            return giveaways_list
-        except Exception as e:
-            print(f"Error listing giveaways: {e}")
-            return []
+      function resetVotingState() {
+        votingState.contestId = null;
+        votingState.works = [];
+        votingState.currentIndex = 0;
+      }
 
-# Backward-compat aliases for creator.html JS expecting /api/contests
-@app.get("/api/contests")
-async def alias_list_contests(admin_id: int = Query(None)):
-    """Получить список конкурсов. Для админа - только его конкурсы, для создателя - все."""
-    return await list_giveaways(admin_id=admin_id)
+      function closeVotingModal() {
+        if (votingModal) {
+          votingModal.classList.add('hidden');
+        }
+        resetVotingState();
+      }
 
-@app.post("/api/contests")
-async def alias_create_contest(request: Request):
-    return await create_giveaway(request)
-
-@app.post("/api/contests/{contest_id}/select-winners")
-async def select_winners(
-    contest_id: int,
-    winners_count: int = Query(default=1),
-    current_user_id: int = Query(default=None),
-):
-    """Выбирает победителей из конкурса на основе комментариев под постом через Telethon.
-
-    Итоги может подводить только владелец конкурса (created_by), либо создатель (role=creator),
-    в зависимости от настроек created_by.
-    """
-    try:
-        # Получаем информацию о конкурсе и проверяем права
-        async with async_session() as session:
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-
-            # Если передан current_user_id — проверяем, что это владелец конкурса
-            if current_user_id is not None:
-                user_result = await session.execute(
-                    select(User).where(User.telegram_id == current_user_id)
-                )
-                user = user_result.scalars().first()
-                if not user:
-                    raise HTTPException(status_code=403, detail="Пользователь не найден")
-
-                # Разрешаем только владельцу конкурса (created_by)
-                if giveaway.created_by is not None:
-                    try:
-                        if int(giveaway.created_by) != int(current_user_id):
-                            raise HTTPException(
-                                status_code=403,
-                                detail="Подвести итоги может только создатель этого конкурса",
-                            )
-                    except (TypeError, ValueError):
-                        raise HTTPException(
-                            status_code=403,
-                            detail="Подвести итоги может только создатель этого конкурса",
-                        )
-
-            # Для конкурсов рисунков post_link не требуется
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-            if contest_type == 'random_comment' and not giveaway.post_link:
-                raise HTTPException(status_code=400, detail="У конкурса не указана ссылка на пост")
-        
-        # Выбираем победителей через Telethon (Telethon соберет комментарии и сохранит их в файл)
-        # Бот больше не нужен, так как используем только Telethon
-        try:
-            # Создаем временный Bot объект только для передачи в функцию (но он не используется)
-            bot = Bot(token=BOT_TOKEN)
-            winners = await select_winners_from_contest(contest_id, winners_count, bot)
-            # Не закрываем сессию бота, так как она может быть None
-            return {"success": True, "winners": winners}
-        except ValueError as e:
-            # Если нет комментариев, возвращаем более понятное сообщение
-            error_msg = str(e)
-            # Если ошибка связана с тем, что комментарии еще собираются, возвращаем специальный статус
-            if "комментариев" in error_msg.lower() or "не найдено" in error_msg.lower():
-                # Возвращаем успех, но с информацией о том, что комментарии еще собираются
-                return {
-                    "success": False,
-                    "collecting": True,  # Флаг, что комментарии еще собираются
-                    "message": "Комментарии собираются через Telethon. Пожалуйста, подождите..."
-                }
-            raise HTTPException(status_code=400, detail=error_msg)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при выборе победителей: {e}", exc_info=True)
-        error_msg = str(e)
-        # Если ошибка связана с Telethon или сбором комментариев, возвращаем специальный статус
-        if "telethon" in error_msg.lower() or "комментариев" in error_msg.lower() or "собираются" in error_msg.lower():
-            return {
-                "success": False,
-                "collecting": True,
-                "message": "Комментарии собираются через Telethon. Пожалуйста, подождите..."
-            }
-        # Для любых других ошибок тоже возвращаем collecting: true, чтобы не показывать ошибку пользователю
-        # Telethon может работать долго, и это нормально
-        return {
-            "success": False,
-            "collecting": True,
-            "message": "Обработка данных. Пожалуйста, подождите..."
+      function initVotingModalElements() {
+        if (votingModal) {
+          return;
         }
 
-@app.get("/api/contests/{contest_id}/winners")
-async def get_winners(contest_id: int, current_user_id: int = Query(None)):
-    """Получить список победителей конкурса.
+        votingModal = document.getElementById('voting-modal');
+        votingModalImage = document.getElementById('voting-modal-image');
+        votingModalProgress = document.getElementById('voting-modal-progress');
+        votingModalLoader = document.getElementById('voting-modal-loader');
+        votingModalInfo = document.getElementById('voting-modal-info');
+        votingModalCloseBtn = document.getElementById('voting-modal-close');
+        votingScoreButtons = Array.from(document.querySelectorAll('.voting-score-btn'));
 
-    В текущей версии победителей видят все (и админ, и креатор, и пользователи),
-    параметр current_user_id зарезервирован на будущее и сейчас не влияет на логику.
-    """
-    try:
-        async with async_session() as session:
-            # Получаем информацию о конкурсе
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            # Получаем победителей ТОЛЬКО для этого конкурса
-            result = await session.execute(
-                select(Winner).where(Winner.giveaway_id == contest_id)
-            )
-            winners = result.scalars().all()
-            
-            # Определяем тип конкурса для правильного возврата полей
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-            is_confirmed = getattr(giveaway, 'is_confirmed', False) if hasattr(giveaway, 'is_confirmed') else False
-            winners_selected_at = giveaway.winners_selected_at.isoformat() if hasattr(giveaway, 'winners_selected_at') and giveaway.winners_selected_at else None
-
-            logger.info(f"📊 Загружено {len(winners)} победителей для конкурса {contest_id} (тип: {contest_type}, post_link: {giveaway.post_link})")
-            for w in winners:
-                if contest_type == 'random_comment':
-                    logger.debug(f"  - Победитель ID {w.id}, giveaway_id={w.giveaway_id}, comment_link={w.comment_link}")
-                else:
-                    logger.debug(f"  - Победитель ID {w.id}, giveaway_id={w.giveaway_id}, photo_link={w.photo_link}")
-            
-            winners_data = []
-            for w in winners:
-                winner_data = {
-                    "id": w.id,
-                    "user_id": w.user_id if hasattr(w, 'user_id') else None,
-                    "user_username": w.user_username if hasattr(w, 'user_username') else None,
-                    "prize_link": w.prize_link if hasattr(w, 'prize_link') else None,
-                    "place": w.place if hasattr(w, 'place') else None,
-                    "created_at": w.created_at.isoformat() if w.created_at else None
-                }
-                
-                # Для рандом комментариев возвращаем comment_link
-                if contest_type == 'random_comment':
-                    winner_data["comment_link"] = w.comment_link if hasattr(w, 'comment_link') else None
-                    winner_data["photo_link"] = None
-                # Для конкурса рисунков возвращаем photo_link
-                else:
-                    winner_data["photo_link"] = w.photo_link if hasattr(w, 'photo_link') else None
-                    winner_data["photo_message_id"] = w.photo_message_id if hasattr(w, 'photo_message_id') else None
-                    winner_data["comment_link"] = None
-                
-                winners_data.append(winner_data)
-            
-            return {
-                "winners": winners_data,
-                "is_confirmed": is_confirmed,
-                "winners_selected_at": winners_selected_at,
-                "contest_type": contest_type
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/contests/{contest_id}/reroll-winner")
-async def reroll_winner(contest_id: int, request: Request):
-    """Рерандомизирует одного победителя. Доступно только создателю конкурса."""
-    try:
-        data = await request.json()
-        old_winner_link = data.get("old_winner_link")
-        current_user_id = data.get("current_user_id")
-        
-        if not old_winner_link:
-            raise HTTPException(status_code=400, detail="old_winner_link обязателен")
-        
-        # Проверяем права: рероллить может только владелец конкурса
-        async with async_session() as session:
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-
-            if current_user_id is not None and giveaway.created_by is not None:
-                try:
-                    if int(giveaway.created_by) != int(current_user_id):
-                        raise HTTPException(
-                            status_code=403,
-                            detail="Реролл доступен только создателю конкурса",
-                        )
-                except (TypeError, ValueError):
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Реролл доступен только создателю конкурса",
-                    )
-
-        # Создаем временный Bot объект только для совместимости (но он не используется в reroll_single_winner)
-        bot = Bot(token=BOT_TOKEN)
-        try:
-            new_winner = await reroll_single_winner(contest_id, old_winner_link, bot)
-        finally:
-            # Закрываем сессию бота, если она существует
-            try:
-                bot_session = await bot.get_session()
-                if bot_session:
-                    await bot_session.close()
-            except Exception:
-                pass
-        
-        return {"success": True, "winner": new_winner}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при рерандомизации победителя: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def parse_telegram_username(link: str) -> str:
-    """Парсит username из ссылки Telegram"""
-    if not link:
-        return None
-    if link.startswith('@'):
-        return link
-    if 't.me/' in link:
-        match = re.search(r't\.me/([a-zA-Z0-9_]+)', link)
-        if match:
-            return '@' + match.group(1)
-    return None
-
-async def check_subscription(bot: Bot, chat_username: str, user_id: int) -> bool:
-    """Проверяет подписку пользователя на канал/чат"""
-    try:
-        member = await bot.get_chat_member(chat_username, user_id)
-        return member.status in ['member', 'administrator', 'creator']
-    except Exception:
-        return False
-
-def normalize_datetime_to_msk(dt):
-    """Приводит datetime к timezone-aware формату в МСК времени"""
-    if dt is None:
-        return None
-    msk_tz = pytz.timezone('Europe/Moscow')
-    if dt.tzinfo is None:
-        # Если datetime naive, считаем что он в МСК времени
-        return msk_tz.localize(dt)
-    else:
-        # Если datetime уже timezone-aware, преобразуем в МСК
-        return dt.astimezone(msk_tz)
-
-@app.post("/api/contests/{contest_id}/participate")
-async def participate_in_contest(contest_id: int, request: Request):
-    """Проверка подписки при попытке присоединиться к конкурсу. Возвращает список неподписанных каналов/чатов."""
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        user_username = data.get("username")
-        
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id обязателен")
-        
-        async with async_session() as session:
-            # Получаем информацию о конкурсе
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            # Проверяем, не участвует ли уже пользователь
-            from models import Participant
-            from sqlalchemy.exc import IntegrityError
-            existing_participant_result = await session.execute(
-                select(Participant).where(
-                    Participant.giveaway_id == contest_id,
-                    Participant.user_id == user_id
-                )
-            )
-            existing_participant = existing_participant_result.scalars().first()
-            if existing_participant:
-                # Пользователь уже участвует - возвращаем успешный ответ
-                # Для конкурса рисунков проверяем, загружена ли фотография
-                contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-                has_photo = bool(existing_participant.photo_link) if existing_participant else False
-                if contest_type == 'drawing' and has_photo:
-                    return {"success": True, "message": "Вы уже участвуете в этом конкурсе и загрузили фотографию", "already_participating": True, "has_photo": True}
-                elif contest_type == 'drawing':
-                    return {"success": True, "message": "Вы уже участвуете в этом конкурсе. Загрузите фотографию.", "already_participating": True, "has_photo": False}
-                else:
-                    return {"success": True, "message": "Вы уже участвуете в этом конкурсе", "already_participating": True}
-            
-            # Собираем список каналов/чатов для проверки
-            required_subscriptions = []
-            
-            # 1. Канал и чат админа, который создал конкурс
-            if giveaway.created_by:
-                creator_result = await session.execute(
-                    select(User).where(User.telegram_id == giveaway.created_by)
-                )
-                creator_user = creator_result.scalars().first()
-                
-                if creator_user:
-                    # Канал админа
-                    if creator_user.channel_link:
-                        channel_username = parse_telegram_username(creator_user.channel_link)
-                        if channel_username:
-                            required_subscriptions.append({
-                                "type": "channel",
-                                "link": creator_user.channel_link,
-                                "username": channel_username,
-                                "name": "Канал админа"
-                            })
-                    
-                    # Чат админа
-                    if creator_user.chat_link:
-                        chat_username = parse_telegram_username(creator_user.chat_link)
-                        if chat_username:
-                            required_subscriptions.append({
-                                "type": "chat",
-                                "link": creator_user.chat_link,
-                                "username": chat_username,
-                                "name": "Чат админа"
-                            })
-            
-            # 2. Обязательный канал создателя
-            creator_channel_link = "t.me/monkeys_giveaways"
-            creator_channel_username = parse_telegram_username(creator_channel_link)
-            if creator_channel_username:
-                required_subscriptions.append({
-                    "type": "channel",
-                    "link": creator_channel_link,
-                    "username": creator_channel_username,
-                    "name": "Канал создателя"
-                })
-            
-            # 3. Каналы жюри (если жюри включено)
-            jury = getattr(giveaway, 'jury', None)
-            if jury and isinstance(jury, dict) and jury.get('enabled', False):
-                jury_members = jury.get('members', [])
-                for member in jury_members:
-                    channel_link = member.get('channel_link')
-                    if channel_link:
-                        channel_username = parse_telegram_username(channel_link)
-                        if channel_username:
-                            # Проверяем, что этот канал еще не добавлен
-                            if not any(sub["username"] == channel_username for sub in required_subscriptions):
-                                required_subscriptions.append({
-                                    "type": "channel",
-                                    "link": channel_link,
-                                    "username": channel_username,
-                                    "name": "Канал жюри"
-                                })
-            
-            # 4. Извлекаем ссылки из условий конкурса (включая дополнительные условия)
-            # Парсим поле conditions для поиска ссылок на каналы/чаты
-            if giveaway.conditions:
-                # Ищем все ссылки вида t.me/username или @username в тексте условий
-                # Паттерн для поиска ссылок: t.me/username, telegram.me/username, @username
-                link_patterns = [
-                    r't\.me/([a-zA-Z0-9_]+)',
-                    r'telegram\.me/([a-zA-Z0-9_]+)',
-                    r'@([a-zA-Z0-9_]+)'
-                ]
-                
-                found_links = set()  # Используем set, чтобы избежать дубликатов
-                for pattern in link_patterns:
-                    matches = re.findall(pattern, giveaway.conditions, re.IGNORECASE)
-                    for match in matches:
-                        if match:
-                            username = f"@{match}"
-                            # Проверяем, что это не ссылка, которая уже есть в списке
-                            link = f"t.me/{match}"
-                            found_links.add((username, link, match))
-                
-                # Добавляем найденные ссылки в список для проверки
-                for username, link, name in found_links:
-                    # Проверяем, что эта ссылка еще не добавлена
-                    if not any(sub["username"] == username for sub in required_subscriptions):
-                        # Определяем тип (канал или чат) по имени или оставляем как канал по умолчанию
-                        required_subscriptions.append({
-                            "type": "channel",  # По умолчанию канал, можно улучшить проверкой
-                            "link": link,
-                            "username": username,
-                            "name": f"Канал {name}" if not name.startswith('@') else f"Канал {name[1:]}"
-                        })
-            
-            # Для конкурса рисунков проверяем deadline приема работ
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-            if contest_type == 'drawing' and giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
-                submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
-                
-                if now_msk > submission_end:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Время приема работ истекло. Окончание приема: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                    )
-            
-            # Проверяем подписки
-            bot = Bot(token=BOT_TOKEN)
-            not_subscribed = []
-            
-            try:
-                for sub in required_subscriptions:
-                    is_subscribed = await check_subscription(bot, sub["username"], user_id)
-                    if not is_subscribed:
-                        not_subscribed.append(sub)
-            finally:
-                # ВАЖНО: используем другое имя переменной для сессии бота, чтобы не перезаписать SQLAlchemy session
-                try:
-                    bot_session = await bot.get_session()
-                    if bot_session:
-                        await bot_session.close()
-                except Exception:
-                    pass
-            
-            # Если есть неподписанные каналы/чаты, возвращаем их список
-            if not_subscribed:
-                return {
-                    "success": False,
-                    "requires_subscription": True,
-                    "not_subscribed": not_subscribed,
-                    "message": "Для участия в конкурсе необходимо подписаться на указанные каналы и чаты"
-                }
-            
-            # Если все подписки есть, сразу добавляем участника
-            # Для рандом комментариев photo_link = NULL
-            # Для конкурса рисунков photo_link будет установлен позже, когда пользователь отправит фотографию
-            try:
-                participant = Participant(
-                    giveaway_id=contest_id,
-                    user_id=user_id,
-                    username=user_username,
-                    photo_link=None,  # Будет установлен позже для конкурса рисунков
-                    photo_message_id=None
-                )
-                session.add(participant)
-                await session.commit()
-                
-                return {"success": True, "message": "✅ Вы успешно присоединились к конкурсу!"}
-            except IntegrityError as e:
-                # Если возникла ошибка UNIQUE constraint, значит пользователь уже участвует
-                await session.rollback()
-                logger.warning(f"Попытка повторного участия пользователя {user_id} в конкурсе {contest_id}")
-                # Проверяем статус участника еще раз (после rollback нужно перезагрузить giveaway)
-                existing_participant_result = await session.execute(
-                    select(Participant).where(
-                        Participant.giveaway_id == contest_id,
-                        Participant.user_id == user_id
-                    )
-                )
-                existing_participant = existing_participant_result.scalars().first()
-                
-                # Перезагружаем giveaway после rollback
-                giveaway_result = await session.execute(
-                    select(Giveaway).where(Giveaway.id == contest_id)
-                )
-                giveaway = giveaway_result.scalars().first()
-                
-                if existing_participant and giveaway:
-                    contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-                    has_photo = bool(existing_participant.photo_link) if existing_participant else False
-                    if contest_type == 'drawing' and has_photo:
-                        return {"success": True, "message": "Вы уже участвуете в этом конкурсе и загрузили фотографию", "already_participating": True, "has_photo": True}
-                    elif contest_type == 'drawing':
-                        return {"success": True, "message": "Вы уже участвуете в этом конкурсе. Загрузите фотографию.", "already_participating": True, "has_photo": False}
-                    else:
-                        return {"success": True, "message": "Вы уже участвуете в этом конкурсе", "already_participating": True}
-                else:
-                    # Если участник не найден, но была ошибка UNIQUE - возможно race condition
-                    raise HTTPException(status_code=500, detail="Ошибка при добавлении участника. Попробуйте еще раз.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при участии в конкурсе: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/contests/{contest_id}/upload-photo")
-async def upload_photo_for_drawing_contest(
-    contest_id: int,
-    file: UploadFile = File(...),
-    user_id: int = Form(...),
-    user_username: str = Form(None)
-):
-    """Загрузка фотографии для конкурса рисунков"""
-    try:
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id обязателен")
-        
-        async with async_session() as session:
-            # Получаем информацию о конкурсе
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            # Проверяем тип конкурса
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            if contest_type != 'drawing':
-                raise HTTPException(status_code=400, detail="Этот конкурс не является конкурсом рисунков")
-            
-            # Проверяем время окончания приема работ
-            if giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
-                submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
-                
-                if now_msk > submission_end:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Время приема работ истекло. Окончание приема: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                    )
-            
-            # Проверяем, участвует ли пользователь в конкурсе
-            from models import Participant
-            participant_result = await session.execute(
-                select(Participant).where(
-                    Participant.giveaway_id == contest_id,
-                    Participant.user_id == user_id
-                )
-            )
-            participant = participant_result.scalars().first()
-            
-            if not participant:
-                raise HTTPException(status_code=404, detail="Вы не участвуете в этом конкурсе. Сначала присоединитесь к конкурсу.")
-            
-            # Проверяем, не загружена ли уже фотография
-            if participant.photo_link:
-                raise HTTPException(status_code=400, detail="Вы уже загрузили фотографию для этого конкурса")
-            
-            # Проверяем тип файла
-            if not file.content_type or not file.content_type.startswith('image/'):
-                raise HTTPException(status_code=400, detail="Файл должен быть изображением")
-            
-            # Читаем файл
-            file_content = await file.read()
-            if len(file_content) > 10 * 1024 * 1024:  # 10 MB
-                raise HTTPException(status_code=400, detail="Размер файла не должен превышать 10 МБ")
-            
-            # Отправляем фотографию в бот для сохранения
-            bot = Bot(token=BOT_TOKEN)
-            photo_link = None
-            photo_message_id = None
-            photo_file_id = None
-            work_number = None
-            local_rel_path = None
-
-            try:
-                import tempfile
-                import io
-
-                try:
-                    from aiogram.types import BufferedInputFile as LocalBufferedInputFile
-                except ImportError:
-                    LocalBufferedInputFile = None
-
-                preferred_creator_id = getattr(giveaway, 'created_by', None)
-                chat_candidates = []
-                if preferred_creator_id is not None:
-                    chat_candidates.append(preferred_creator_id)
-                if CREATOR_ID:
-                    chat_candidates.append(CREATOR_ID)
-                chat_candidates.append(user_id)
-
-                def normalize_chat_id(value):
-                    try:
-                        return int(value)
-                    except (TypeError, ValueError):
-                        return value
-
-                chat_id = None
-                for candidate in chat_candidates:
-                    if candidate is None:
-                        continue
-                    chat_id = normalize_chat_id(candidate)
-                    break
-
-                if chat_id is None:
-                    chat_id = user_id
-                else:
-                    chat_id = normalize_chat_id(chat_id)
-
-                def build_buffered_input():
-                    if LocalBufferedInputFile is None:
-                        return None
-                    try:
-                        return LocalBufferedInputFile(file_content, filename=file.filename)
-                    except Exception:
-                        return None
-
-                async def send_photo_with_fallback(target_chat_id: int, caption: str):
-                    buffered = build_buffered_input()
-                    if buffered is not None:
-                        return await bot.send_photo(chat_id=target_chat_id, photo=buffered, caption=caption)
-                    if FSInputFile is not None:
-                        tmp_path = None
-                        try:
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=(f"_{file.filename}" if file.filename else "")) as tmp:
-                                tmp.write(file_content)
-                                tmp_path = tmp.name
-                            return await bot.send_photo(chat_id=target_chat_id, photo=FSInputFile(tmp_path), caption=caption)
-                        finally:
-                            if tmp_path and os.path.exists(tmp_path):
-                                try:
-                                    os.remove(tmp_path)
-                                except Exception:
-                                    pass
-                    return await bot.send_photo(chat_id=target_chat_id, photo=file_content, caption=caption)
-
-                logger.debug(f"📨 Обработка загрузки работы для конкурса {contest_id} пользователем {user_id}")
-
-                async with drawing_data_lock:
-                    drawing_data = load_drawing_data()
-                    contest_key = str(contest_id)
-                    contest_entry = drawing_data.get(contest_key)
-                    if not contest_entry:
-                        msk_tz = pytz.timezone('Europe/Moscow')
-                        created_at_msk = None
-                        if getattr(giveaway, 'created_at', None):
-                            # Конвертируем UTC время в МСК
-                            created_at_utc = giveaway.created_at
-                            if created_at_utc.tzinfo is None:
-                                # Если naive datetime, считаем что это UTC
-                                created_at_utc = created_at_utc.replace(tzinfo=timezone.utc)
-                            created_at_msk = created_at_utc.astimezone(msk_tz)
-                        else:
-                            created_at_msk = datetime.now(msk_tz)
-                        contest_entry = {
-                            "contest_id": contest_id,
-                            "title": getattr(giveaway, 'name', '') or getattr(giveaway, 'title', '') or '',
-                            "topic": getattr(giveaway, 'conditions', '') or '',
-                            "created_by": preferred_creator_id,
-                            "created_at": created_at_msk.isoformat(),
-                            "works": []
-                        }
-                        drawing_data[contest_key] = contest_entry
-                    else:
-                        contest_entry["title"] = getattr(giveaway, 'name', '') or contest_entry.get("title") or ''
-                        if getattr(giveaway, 'conditions', None):
-                            contest_entry["topic"] = giveaway.conditions
-                        contest_entry["created_by"] = preferred_creator_id
-
-                    works = contest_entry.setdefault("works", [])
-                    existing_work = next((w for w in works if w.get("participant_user_id") == user_id), None)
-                    if existing_work and existing_work.get("work_number"):
-                        work_number = existing_work["work_number"]
-                    else:
-                        work_number = len(works) + 1
-
-                    file_ext = os.path.splitext(file.filename or "")[1].lower()
-                    if not file_ext or len(file_ext) > 5:
-                        file_ext = ".jpg"
-                    work_dir = os.path.join(DRAWING_UPLOADS_DIR, f"contest_{contest_id}")
-                    _ensure_dir(work_dir)
-                    local_filename = f"work_{work_number}{file_ext}"
-                    local_path = os.path.join(work_dir, local_filename)
-                    with open(local_path, "wb") as f_out:
-                        f_out.write(file_content)
-                    local_rel_path = os.path.relpath(local_path, ROOT_DIR).replace("\\", "/")
-
-                    # Получаем username: сначала из параметров, потом из базы данных, если не передан
-                    final_username = user_username
-                    if not final_username and participant and participant.username:
-                        final_username = participant.username
-                    
-                    # Формируем подпись с username и ID
-                    if final_username:
-                        caption_creator = f"Конкурс рисунков #{contest_id}\nРабота #{work_number}\nУчастник: @{final_username} (ID: {user_id})"
-                    else:
-                        # Если username нет, показываем только ID
-                        caption_creator = f"Конкурс рисунков #{contest_id}\nРабота #{work_number}\nУчастник: ID: {user_id}"
-                    caption_user = f"Конкурс рисунков #{contest_id}\nВаша работа #{work_number}"
-
-                    try:
-                        sent_message = await send_photo_with_fallback(chat_id, caption_creator)
-                    except Exception as send_error:
-                        if chat_id != user_id:
-                            try:
-                                sent_message = await send_photo_with_fallback(user_id, caption_user)
-                                chat_id = user_id
-                            except Exception:
-                                try:
-                                    if os.path.exists(local_path):
-                                        os.remove(local_path)
-                                except Exception:
-                                    pass
-                                raise HTTPException(status_code=500, detail="Не удалось отправить фотографию в Telegram") from send_error
-                        else:
-                            try:
-                                if os.path.exists(local_path):
-                                    os.remove(local_path)
-                            except Exception:
-                                pass
-                            raise HTTPException(status_code=500, detail="Не удалось отправить фотографию в Telegram") from send_error
-
-                    photo_file_id = sent_message.photo[-1].file_id if sent_message.photo else None
-                    photo_message_id = sent_message.message_id
-
-                    chat_id_int = chat_id if isinstance(chat_id, int) else None
-                    if chat_id_int is not None and chat_id_int < 0:
-                        channel_id = str(chat_id_int).replace('-100', '')
-                        photo_link = f"https://t.me/c/{channel_id}/{photo_message_id}"
-                    else:
-                        photo_link = f"tg://photo?file_id={photo_file_id}" if photo_file_id else None
-
-                    work_record = existing_work or {
-                        "work_number": work_number,
-                        "participant_user_id": user_id,
-                        "votes": {}
-                    }
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    now_msk = datetime.now(msk_tz)
-                    work_record.update({
-                        "photo_link": photo_link,
-                        "photo_message_id": photo_message_id,
-                        "photo_file_id": photo_file_id,
-                        "local_path": local_rel_path,
-                        "uploaded_at": now_msk.isoformat()
-                    })
-                    if not existing_work:
-                        works.append(work_record)
-
-                    save_drawing_data(drawing_data)
-            finally:
-                try:
-                    bot_session = await bot.get_session()
-                    await bot_session.close()
-                except Exception:
-                    pass
-
-            # Обновляем участника
-            participant.photo_link = photo_link
-            participant.photo_message_id = photo_message_id
-
-            await session.commit()
-
-            return {
-                "success": True,
-                "message": "✅ Фотография успешно загружена!",
-                "photo_link": photo_link,
-                "photo_message_id": photo_message_id,
-                "work_number": work_number
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке фотографии: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/contests/{contest_id}/submit-collection")
-async def submit_collection_for_contest(
-    contest_id: int,
-    request: Request
-):
-    """Отправка коллекции из 9 NFT для конкурса коллекций"""
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        user_username = data.get("username")
-        nft_links = data.get("nft_links", [])
-        
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id обязателен")
-        
-        if not isinstance(nft_links, list) or len(nft_links) != 9:
-            raise HTTPException(status_code=400, detail="Необходимо отправить ровно 9 ссылок на NFT")
-        
-        # Валидация ссылок
-        for link in nft_links:
-            if not isinstance(link, str) or not link.strip():
-                raise HTTPException(status_code=400, detail="Все ссылки должны быть непустыми строками")
-            # Проверяем формат ссылки (должна быть t.me/nft/...)
-            if not link.startswith("t.me/nft/"):
-                raise HTTPException(status_code=400, detail=f"Неверный формат ссылки: {link}. Ожидается формат: t.me/nft/название-номер")
-        
-        async with async_session() as session:
-            # Получаем информацию о конкурсе
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            # Проверяем тип конкурса
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            if contest_type != 'collection':
-                raise HTTPException(status_code=400, detail="Этот конкурс не является конкурсом коллекций")
-            
-            # Проверяем время окончания приема работ
-            if giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
-                submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
-                
-                if now_msk > submission_end:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Время приема работ истекло. Окончание приема: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                    )
-            
-            # Проверяем, участвует ли пользователь в конкурсе
-            from models import Participant
-            participant_result = await session.execute(
-                select(Participant).where(
-                    Participant.giveaway_id == contest_id,
-                    Participant.user_id == user_id
-                )
-            )
-            participant = participant_result.scalars().first()
-            
-            if not participant:
-                raise HTTPException(status_code=404, detail="Вы не участвуете в этом конкурсе. Сначала присоединитесь к конкурсу.")
-            
-            # Проверяем, не отправлена ли уже коллекция
-            if participant.photo_link:  # Используем photo_link для хранения флага отправки коллекции
-                raise HTTPException(status_code=400, detail="Вы уже отправили коллекцию для этого конкурса")
-            
-            # Сохраняем коллекцию в collection_contests.json
-            async with collection_data_lock:
-                collection_data = load_collection_data()
-                contest_key = str(contest_id)
-                contest_entry = collection_data.get(contest_key)
-                
-                if not contest_entry:
-                    raise HTTPException(status_code=404, detail="Данные о конкурсе не найдены")
-                
-                collections = contest_entry.setdefault("collections", [])
-                
-                # Проверяем, не отправлена ли уже коллекция этим пользователем
-                existing_collection = next((c for c in collections if c.get("participant_user_id") == user_id), None)
-                if existing_collection:
-                    raise HTTPException(status_code=400, detail="Вы уже отправили коллекцию для этого конкурса")
-                
-                # Получаем username
-                final_username = user_username
-                if not final_username and participant and participant.username:
-                    final_username = participant.username
-                
-                # Определяем номер коллекции
-                collection_number = len(collections) + 1
-                
-                # Добавляем коллекцию
-                collections.append({
-                    "collection_number": collection_number,
-                    "participant_user_id": user_id,
-                    "participant_username": final_username,
-                    "nft_links": nft_links,
-                    "submitted_at": datetime.now(pytz.timezone('Europe/Moscow')).isoformat(),
-                    "votes": {}
-                })
-                
-                save_collection_data(collection_data)
-                
-                # Обновляем participant, чтобы отметить, что коллекция отправлена
-                participant.photo_link = "collection_submitted"  # Используем как флаг
-                await session.commit()
-            
-            return {
-                "success": True,
-                "message": "✅ Коллекция успешно отправлена!",
-                "collection_number": collection_number
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при отправке коллекции: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/contests/{contest_id}/verify-subscription")
-async def verify_subscription(contest_id: int, request: Request):
-    """Проверка подписки после нажатия 'Выполнил' и добавление участника"""
-    try:
-        data = await request.json()
-        user_id = data.get("user_id")
-        user_username = data.get("username")
-        
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id обязателен")
-        
-        async with async_session() as session:
-            # Получаем информацию о конкурсе
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            # Проверяем, не участвует ли уже пользователь
-            from models import Participant
-            from sqlalchemy.exc import IntegrityError
-            existing_participant_result = await session.execute(
-                select(Participant).where(
-                    Participant.giveaway_id == contest_id,
-                    Participant.user_id == user_id
-                )
-            )
-            existing_participant = existing_participant_result.scalars().first()
-            if existing_participant:
-                # Пользователь уже участвует - возвращаем успешный ответ
-                # Для конкурса рисунков проверяем, загружена ли фотография
-                contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-                has_photo = bool(existing_participant.photo_link) if existing_participant else False
-                if contest_type == 'drawing' and has_photo:
-                    return {"success": True, "message": "Вы уже участвуете в этом конкурсе и загрузили фотографию", "already_participating": True, "has_photo": True}
-                elif contest_type == 'drawing':
-                    return {"success": True, "message": "Вы уже участвуете в этом конкурсе. Загрузите фотографию.", "already_participating": True, "has_photo": False}
-                else:
-                    return {"success": True, "message": "Вы уже участвуете в этом конкурсе", "already_participating": True}
-            
-            # Собираем список каналов/чатов для проверки
-            required_subscriptions = []
-            
-            # 1. Канал и чат админа, который создал конкурс
-            if giveaway.created_by:
-                creator_result = await session.execute(
-                    select(User).where(User.telegram_id == giveaway.created_by)
-                )
-                creator_user = creator_result.scalars().first()
-                
-                if creator_user:
-                    # Канал админа
-                    if creator_user.channel_link:
-                        channel_username = parse_telegram_username(creator_user.channel_link)
-                        if channel_username:
-                            required_subscriptions.append({
-                                "type": "channel",
-                                "link": creator_user.channel_link,
-                                "username": channel_username,
-                                "name": "Канал админа"
-                            })
-                    
-                    # Чат админа
-                    if creator_user.chat_link:
-                        chat_username = parse_telegram_username(creator_user.chat_link)
-                        if chat_username:
-                            required_subscriptions.append({
-                                "type": "chat",
-                                "link": creator_user.chat_link,
-                                "username": chat_username,
-                                "name": "Чат админа"
-                            })
-            
-            # 2. Обязательный канал создателя
-            creator_channel_link = "t.me/monkeys_giveaways"
-            creator_channel_username = parse_telegram_username(creator_channel_link)
-            if creator_channel_username:
-                required_subscriptions.append({
-                    "type": "channel",
-                    "link": creator_channel_link,
-                    "username": creator_channel_username,
-                    "name": "Канал создателя"
-                })
-            
-            # 3. Каналы жюри (если жюри включено)
-            jury = getattr(giveaway, 'jury', None)
-            if jury and isinstance(jury, dict) and jury.get('enabled', False):
-                jury_members = jury.get('members', [])
-                for member in jury_members:
-                    channel_link = member.get('channel_link')
-                    if channel_link:
-                        channel_username = parse_telegram_username(channel_link)
-                        if channel_username:
-                            # Проверяем, что этот канал еще не добавлен
-                            if not any(sub["username"] == channel_username for sub in required_subscriptions):
-                                required_subscriptions.append({
-                                    "type": "channel",
-                                    "link": channel_link,
-                                    "username": channel_username,
-                                    "name": "Канал жюри"
-                                })
-            
-            # 4. Извлекаем ссылки из условий конкурса (включая дополнительные условия)
-            # Парсим поле conditions для поиска ссылок на каналы/чаты
-            if giveaway.conditions:
-                # Ищем все ссылки вида t.me/username или @username в тексте условий
-                link_patterns = [
-                    r't\.me/([a-zA-Z0-9_]+)',
-                    r'telegram\.me/([a-zA-Z0-9_]+)',
-                    r'@([a-zA-Z0-9_]+)'
-                ]
-                
-                found_links = set()  # Используем set, чтобы избежать дубликатов
-                for pattern in link_patterns:
-                    matches = re.findall(pattern, giveaway.conditions, re.IGNORECASE)
-                    for match in matches:
-                        if match:
-                            username = f"@{match}"
-                            link = f"t.me/{match}"
-                            found_links.add((username, link, match))
-                
-                # Добавляем найденные ссылки в список для проверки
-                for username, link, name in found_links:
-                    # Проверяем, что эта ссылка еще не добавлена
-                    if not any(sub["username"] == username for sub in required_subscriptions):
-                        required_subscriptions.append({
-                            "type": "channel",  # По умолчанию канал
-                            "link": link,
-                            "username": username,
-                            "name": f"Канал {name}" if not name.startswith('@') else f"Канал {name[1:]}"
-                        })
-            
-            # Для конкурса рисунков проверяем deadline приема работ
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-            if contest_type == 'drawing' and giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
-                submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
-                
-                if now_msk > submission_end:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Время приема работ истекло. Окончание приема: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                    )
-            
-            # Проверяем подписки
-            bot = Bot(token=BOT_TOKEN)
-            not_subscribed = []
-            
-            try:
-                for sub in required_subscriptions:
-                    is_subscribed = await check_subscription(bot, sub["username"], user_id)
-                    if not is_subscribed:
-                        not_subscribed.append(sub)
-            finally:
-                # ВАЖНО: используем другое имя переменной для сессии бота, чтобы не перезаписать SQLAlchemy session
-                try:
-                    bot_session = await bot.get_session()
-                    if bot_session:
-                        await bot_session.close()
-                except Exception:
-                    pass
-            
-            # Если есть неподписанные каналы/чаты, возвращаем их список
-            if not_subscribed:
-                return {
-                    "success": False,
-                    "not_subscribed": not_subscribed,
-                    "message": "Вы не подписаны на некоторые каналы и чаты"
-                }
-            
-            # Если все подписки есть, добавляем участника
-            # Для рандом комментариев photo_link = NULL
-            # Для конкурса рисунков photo_link будет установлен позже, когда пользователь отправит фотографию
-            try:
-                participant = Participant(
-                    giveaway_id=contest_id,
-                    user_id=user_id,
-                    username=user_username,
-                    photo_link=None,  # Будет установлен позже для конкурса рисунков
-                    photo_message_id=None
-                )
-                session.add(participant)
-                await session.commit()
-                
-                return {"success": True, "message": "✅ Вы успешно присоединились к конкурсу!"}
-            except IntegrityError as e:
-                # Если возникла ошибка UNIQUE constraint, значит пользователь уже участвует
-                await session.rollback()
-                logger.warning(f"Попытка повторного участия пользователя {user_id} в конкурсе {contest_id} (verify_subscription)")
-                # Проверяем статус участника еще раз
-                existing_participant_result = await session.execute(
-                    select(Participant).where(
-                        Participant.giveaway_id == contest_id,
-                        Participant.user_id == user_id
-                    )
-                )
-                existing_participant = existing_participant_result.scalars().first()
-                if existing_participant:
-                    contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-                    has_photo = bool(existing_participant.photo_link) if existing_participant else False
-                    if contest_type == 'drawing' and has_photo:
-                        return {"success": True, "message": "Вы уже участвуете в этом конкурсе и загрузили фотографию", "already_participating": True, "has_photo": True}
-                    elif contest_type == 'drawing':
-                        return {"success": True, "message": "Вы уже участвуете в этом конкурсе. Загрузите фотографию.", "already_participating": True, "has_photo": False}
-                    else:
-                        return {"success": True, "message": "Вы уже участвуете в этом конкурсе", "already_participating": True}
-                else:
-                    # Если участник не найден, но была ошибка UNIQUE - возможно race condition
-                    raise HTTPException(status_code=500, detail="Ошибка при добавлении участника. Попробуйте еще раз.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при проверке подписки: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/contests/{contest_id}/participant-status")
-async def get_participant_status(contest_id: int, user_id: int = Query(...)):
-    """Получить статус участия пользователя в конкурсе (участвует ли, загружена ли фотография/коллекция)"""
-    try:
-        async with async_session() as session:
-            from models import Participant
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            
-            # Если конкурс не найден, возвращаем дефолтные значения (не ошибку)
-            if not giveaway:
-                logger.warning(f"Конкурс {contest_id} не найден при проверке статуса участника {user_id}")
-                return {
-                    "is_participating": False,
-                    "has_photo": False,
-                    "has_collection": False
-                }
-            
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            
-            result = await session.execute(
-                select(Participant).where(
-                    Participant.giveaway_id == contest_id,
-                    Participant.user_id == user_id
-                )
-            )
-            participant = result.scalars().first()
-            
-            if not participant:
-                return {
-                    "is_participating": False,
-                    "has_photo": False,
-                    "has_collection": False
-                }
-            
-            has_photo_or_collection = bool(participant.photo_link)
-            
-            return {
-                "is_participating": True,
-                "has_photo": has_photo_or_collection if contest_type == 'drawing' else False,
-                "has_collection": has_photo_or_collection if contest_type == 'collection' else False
-            }
-    except Exception as e:
-        logger.error(f"Ошибка при получении статуса участника для конкурса {contest_id}, пользователь {user_id}: {e}", exc_info=True)
-        # Возвращаем дефолтные значения вместо ошибки, чтобы UI мог продолжить работу
-        return {
-            "is_participating": False,
-            "has_photo": False,
-            "has_collection": False
+        if (votingModalCloseBtn) {
+          votingModalCloseBtn.addEventListener('click', closeVotingModal);
         }
 
-@app.get("/api/contests/{contest_id}/voting-queue")
-async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
-    """Получить список работ для голосования в конкурсе рисунков"""
-    from models import Participant
+        if (votingModal) {
+          votingModal.addEventListener('click', (event) => {
+            if (event.target === votingModal) {
+              closeVotingModal();
+            }
+          });
+        }
 
-    async with async_session() as session:
-        giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-        giveaway = giveaway_result.scalars().first()
+        votingScoreButtons.forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const score = parseInt(btn.dataset.score, 10);
+            if (!Number.isNaN(score)) {
+              await handleVoteClick(score);
+            }
+          });
+        });
+      }
 
-        if not giveaway:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
+      function showVotingLoader(show) {
+        initVotingModalElements();
+        if (votingModalLoader) {
+          votingModalLoader.classList.toggle('hidden', !show);
+        }
+        if (votingModalImage && show) {
+          votingModalImage.classList.add('hidden');
+        }
+        votingScoreButtons.forEach((btn) => {
+          btn.disabled = show;
+        });
+      }
 
-        contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-        if contest_type != 'drawing':
-            raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
+      function renderVotingWork() {
+        initVotingModalElements();
+        if (!votingState.works.length) {
+          if (votingModalInfo) {
+            votingModalInfo.textContent = 'Нет работ для оценки';
+          }
+          votingScoreButtons.forEach((btn) => {
+            btn.disabled = true;
+          });
+          if (votingModalImage) {
+            votingModalImage.src = '';
+            votingModalImage.classList.add('hidden');
+          }
+          return;
+        }
 
-        participant_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.user_id == user_id
-            )
-        )
-        participant = participant_result.scalars().first()
-        if not participant:
-            raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
+        const work = votingState.works[votingState.currentIndex];
+        if (!work) {
+          goToNextWork();
+          return;
+        }
 
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
+        if (votingModalProgress) {
+          votingModalProgress.textContent = `Работа ${votingState.currentIndex + 1} из ${votingState.works.length}`;
+        }
+        if (votingModalInfo) {
+          votingModalInfo.textContent = 'Выберите оценку от 1 до 5';
+        }
 
-    async with drawing_data_lock:
-        drawing_data = load_drawing_data()
-        contest_entry = drawing_data.get(str(contest_id))
-        if not contest_entry:
-            return {"success": True, "works": [], "total": 0}
+        if (votingModalImage) {
+          votingModalImage.classList.add('hidden');
+          votingModalImage.onload = () => votingModalImage.classList.remove('hidden');
+          votingModalImage.onerror = () => {
+            if (votingModalInfo) {
+              votingModalInfo.textContent = 'Не удалось загрузить изображение';
+            }
+          };
+          votingModalImage.src = `${work.image_url}?t=${Date.now()}`;
+        }
 
-        works_raw = contest_entry.get("works", [])
-        works_sorted = sorted(works_raw, key=lambda w: w.get("work_number", 0))
-        sanitized = []
-        for work in works_sorted:
-            work_number = work.get("work_number")
-            local_path = work.get("local_path")
-            participant_user_id = work.get("participant_user_id")
-            
-            # Пропускаем работы без необходимых данных
-            if not work_number or not local_path or not participant_user_id:
-                continue
-            
-            # Пропускаем собственную работу пользователя
-            if participant_user_id == user_id:
-                continue
-            
-            votes = work.get("votes", {}) or {}
-            sanitized.append({
-                "work_number": work_number,
-                "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image",
-                "already_rated": str(user_id) in votes,
-                "rating": votes.get(str(user_id)),
-                "is_own": False  # Все работы здесь уже не свои, так как мы их отфильтровали
+        votingScoreButtons.forEach((btn) => {
+          const btnScore = Number(btn.dataset.score);
+          const isSelected = work.rating === btnScore;
+          if (isSelected) {
+            btn.classList.add('bg-violet-600');
+            btn.classList.remove('bg-violet-500/40');
+          } else {
+            btn.classList.remove('bg-violet-600');
+            btn.classList.add('bg-violet-500/40');
+          }
+          btn.disabled = false;
+        });
+      }
+
+      function goToNextWork() {
+        const works = votingState.works;
+        if (!works.length) {
+          closeVotingModal();
+          return;
+        }
+
+        const nextIndex = works.findIndex((work, index) => index > votingState.currentIndex && !work.already_rated);
+        if (nextIndex !== -1) {
+          votingState.currentIndex = nextIndex;
+          renderVotingWork();
+          return;
+        }
+
+        const firstUnrated = works.findIndex((work) => !work.already_rated);
+        if (firstUnrated !== -1) {
+          votingState.currentIndex = firstUnrated;
+          renderVotingWork();
+          return;
+        }
+
+        alert('Спасибо! Вы оценили все доступные работы.');
+        closeVotingModal();
+        if (typeof window.loadContests === 'function') {
+          window.loadContests(true);
+        }
+      }
+
+      async function handleVoteClick(score) {
+        initVotingModalElements();
+        if (!votingState.contestId || !votingState.works.length) {
+          return;
+        }
+
+        const currentWork = votingState.works[votingState.currentIndex];
+        if (!currentWork || currentWork.already_rated) {
+          goToNextWork();
+          return;
+        }
+
+        showVotingLoader(true);
+        if (votingModalInfo) {
+          votingModalInfo.textContent = 'Сохраняем вашу оценку...';
+        }
+
+        try {
+          await window.fetchJSON(`/api/contests/${votingState.contestId}/vote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: currentUserId,
+              work_number: currentWork.work_number,
+              score: score
             })
+          });
 
-        # Проверяем, может ли пользователь оценивать работы (для жюри)
-        jury = getattr(giveaway, 'jury', None)
-        can_vote = True
-        if jury and isinstance(jury, dict) and jury.get('enabled', False):
-            # Жюри включено - проверяем, является ли пользователь членом жюри или создателем
-            is_creator = giveaway.created_by == user_id
-            jury_members = jury.get('members', [])
-            is_jury_member = any(member.get('user_id') == user_id for member in jury_members)
-            can_vote = is_creator or is_jury_member
-        
-        return {
-            "success": True,
-            "works": sanitized,
-            "total": len(sanitized),
-            "can_vote": can_vote  # Информация о правах доступа для оценивания
+          currentWork.already_rated = true;
+          currentWork.rating = score;
+          showVotingLoader(false);
+          goToNextWork();
+        } catch (error) {
+          showVotingLoader(false);
+          let message = 'Не удалось сохранить оценку';
+          if (error.response) {
+            try {
+              const errData = await error.response.clone().json();
+              message = errData.detail || errData.message || message;
+            } catch (e) {
+              // ignore JSON parse errors
+            }
+          } else if (error.message) {
+            message = error.message;
+          }
+          alert('❌ ' + message);
+        }
+      }
+
+      async function openVotingModal(contestId) {
+        if (!currentUserId) {
+          alert('Не удалось определить ваш идентификатор. Попробуйте перезапустить приложение.');
+          return;
         }
 
-@app.post("/api/contests/{contest_id}/vote")
-async def submit_vote(contest_id: int, request: Request):
-    """Сохранить оценку за работу конкурса рисунков"""
-    data = await request.json()
-    user_id = data.get("user_id")
-    work_number = data.get("work_number")
-    score = data.get("score")
+        initVotingModalElements();
+        resetVotingState();
+        votingState.contestId = contestId;
 
-    if user_id is None or work_number is None or score is None:
-        raise HTTPException(status_code=400, detail="Необходимо указать user_id, work_number и score")
+        if (votingModal) {
+          votingModal.classList.remove('hidden');
+        }
 
-    try:
-        user_id = int(user_id)
-        work_number = int(work_number)
-        score = int(score)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Некорректные данные для голосования")
+        showVotingLoader(true);
+        if (votingModalInfo) {
+          votingModalInfo.textContent = 'Загружаем работы для голосования...';
+        }
 
-    if score < 1 or score > 5:
-        raise HTTPException(status_code=400, detail="Оценка должна быть в диапазоне от 1 до 5")
+        try {
+          const response = await window.fetchJSON(`/api/contests/${contestId}/voting-queue?user_id=${currentUserId}`);
+          // Работы уже отфильтрованы на сервере (собственные работы исключены)
+          const works = response?.works || [];
+          const canVote = response?.can_vote !== false; // По умолчанию true, если не указано
 
-    from models import Participant
+          if (!canVote) {
+            alert('Оценивать работы могут только члены жюри и создатель конкурса.');
+            closeVotingModal();
+            return;
+          }
 
-    async with async_session() as session:
-        giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-        giveaway = giveaway_result.scalars().first()
+          if (!works.length) {
+            alert('Нет работ для оценки или все работы принадлежат вам.');
+            closeVotingModal();
+            return;
+          }
 
-        if not giveaway:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
+          const firstUnratedIndex = works.findIndex((work) => !work.already_rated);
+          if (firstUnratedIndex === -1) {
+            alert('Вы уже оценили все доступные работы. Спасибо!');
+            closeVotingModal();
+            return;
+          }
 
-        contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-        if contest_type != 'drawing':
-            raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
+          votingState.works = works;
+          votingState.currentIndex = firstUnratedIndex;
+          showVotingLoader(false);
+          renderVotingWork();
+        } catch (error) {
+          showVotingLoader(false);
+          let message = 'Не удалось загрузить список работ';
+          if (error.response) {
+            try {
+              const errData = await error.response.clone().json();
+              message = errData.detail || errData.message || message;
+            } catch (e) {
+              // ignore JSON parse errors
+            }
+          } else if (error.message) {
+            message = error.message;
+          }
+          alert('❌ ' + message);
+          closeVotingModal();
+        }
+      }
 
-        # Проверяем права доступа: если жюри включено, только жюри и создатель могут оценивать
-        jury = getattr(giveaway, 'jury', None)
-        if jury and isinstance(jury, dict) and jury.get('enabled', False):
-            # Жюри включено - проверяем, является ли пользователь членом жюри или создателем
-            is_creator = giveaway.created_by == user_id
-            jury_members = jury.get('members', [])
-            is_jury_member = any(member.get('user_id') == user_id for member in jury_members)
-            
-            if not (is_creator or is_jury_member):
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Оценивать работы могут только члены жюри и создатель конкурса"
-                )
-        else:
-            # Жюри выключено - проверяем, что пользователь участвует в конкурсе
-            participant_result = await session.execute(
-                select(Participant).where(
-                    Participant.giveaway_id == contest_id,
-                    Participant.user_id == user_id
-                )
-            )
-            participant = participant_result.scalars().first()
-            if not participant:
-                raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
-
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
-
-    async with drawing_data_lock:
-        drawing_data = load_drawing_data()
-        contest_entry = drawing_data.get(str(contest_id))
-        if not contest_entry:
-            raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
-
-        works = contest_entry.get("works", [])
-        work = next((w for w in works if w.get("work_number") == work_number), None)
-        if not work:
-            raise HTTPException(status_code=404, detail="Работа не найдена")
-
-        if work.get("participant_user_id") == user_id:
-            raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
-
-        votes = work.setdefault("votes", {})
-        # Проверяем, не оценил ли пользователь уже эту работу
-        if str(user_id) in votes:
-            raise HTTPException(status_code=400, detail="Вы уже оценили эту работу. Повторная оценка не разрешена.")
+      window.openVotingModal = openVotingModal;
+      
+      // Функция для подсчета итогов конкурса рисунков (для создателя)
+      window.calculateDrawingResults = async function(contestId) {
+        const btn = document.getElementById(`calculate-results-btn-${contestId}`);
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ Подсчет...';
+        }
         
-        votes[str(user_id)] = score
-
-        remaining = sum(
-            1
-            for w in works
-            if w.get("participant_user_id") != user_id and str(user_id) not in (w.get("votes") or {})
-        )
-
-        save_drawing_data(drawing_data)
-
-    return {
-        "success": True,
-        "score": score,
-        "work_number": work_number,
-        "remaining": remaining
-    }
-
-@app.get("/api/drawing-contests/{contest_id}/works/{work_number}/image")
-async def get_drawing_work_image(contest_id: int, work_number: int):
-    async with drawing_data_lock:
-        drawing_data = load_drawing_data()
-        contest_entry = drawing_data.get(str(contest_id))
-        if not contest_entry:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
-        work = next((w for w in contest_entry.get("works", []) if w.get("work_number") == work_number), None)
-        if not work:
-            raise HTTPException(status_code=404, detail="Работа не найдена")
-        local_path = work.get("local_path")
-
-    if not local_path:
-        raise HTTPException(status_code=404, detail="Файл не найден")
-
-    full_path = os.path.abspath(os.path.join(ROOT_DIR, local_path))
-    uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
-    if not full_path.startswith(uploads_root):
-        raise HTTPException(status_code=400, detail="Некорректный путь к файлу")
-    if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="Файл не найден")
-
-    media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
-    return FileResponse(full_path, media_type=media_type)
-
-@app.get("/api/contests/{contest_id}/collection-voting-queue")
-async def get_collection_voting_queue(contest_id: int, user_id: int = Query(...)):
-    """Получить список коллекций для голосования в конкурсе коллекций"""
-    from models import Participant
-
-    async with async_session() as session:
-        giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-        giveaway = giveaway_result.scalars().first()
-
-        if not giveaway:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
-
-        contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-        if contest_type != 'collection':
-            raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса коллекций")
-
-        participant_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.user_id == user_id
-            )
-        )
-        participant = participant_result.scalars().first()
-        if not participant:
-            raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
-
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
-
-    async with collection_data_lock:
-        collection_data = load_collection_data()
-        contest_entry = collection_data.get(str(contest_id))
-        if not contest_entry:
-            return {"success": True, "collections": [], "total": 0}
-
-        collections_raw = contest_entry.get("collections", [])
-        collections_sorted = sorted(collections_raw, key=lambda c: c.get("collection_number", 0))
-        sanitized = []
-        for collection in collections_sorted:
-            collection_number = collection.get("collection_number")
-            nft_links = collection.get("nft_links", [])
-            participant_user_id = collection.get("participant_user_id")
+        try {
+          const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+          const response = await window.fetchJSON(`/api/contests/${contestId}/calculate-results?current_user_id=${currentUserId}`, {
+            method: 'POST'
+          });
+          
+          if (response.success) {
+            alert('✅ Итоги успешно подсчитаны!');
+            await window.loadContests(true);
+          } else {
+            alert('❌ Ошибка при подсчете итогов: ' + (response.message || 'Неизвестная ошибка'));
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '📊 Подсчет итогов';
+            }
+          }
+        } catch (e) {
+          console.error('Ошибка подсчета итогов:', e);
+          let errorMessage = 'Неизвестная ошибка';
+          if (e.response) {
+            try {
+              const errData = await e.response.clone().json();
+              errorMessage = errData.detail || errData.message || errorMessage;
+            } catch (parseError) {
+              if (e.message) errorMessage = e.message;
+            }
+          } else if (e.message) {
+            errorMessage = e.message;
+          }
+          alert('❌ Ошибка при подсчете итогов: ' + errorMessage);
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '📊 Подсчет итогов';
+          }
+        }
+      };
+      
+      // Функция для отображения итогов конкурса рисунков
+      window.showDrawingResults = async function(contestId) {
+        try {
+          const response = await window.fetchJSON(`/api/contests/${contestId}/results`);
+          
+          if (!response.results_calculated) {
+            alert('Итоги еще не подсчитаны');
+            return;
+          }
+          
+          const results = response.results || [];
+          const resultsModal = document.getElementById('drawing-results-modal');
+          const resultsContent = document.getElementById('drawing-results-content');
+          
+          if (!resultsModal || !resultsContent) {
+            alert('Модальное окно не найдено');
+            return;
+          }
+          
+          // Формируем HTML с итогами
+          let resultsHtml = '<div class="space-y-4">';
+          
+          for (const result of results) {
+            const place = result.place;
+            const username = result.username || '';
+            const userId = result.participant_user_id;
+            const userDisplay = username ? `${username} (ID: ${userId})` : `ID: ${userId}`;
+            const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
+            const prizeLink = result.prize_link;
+            const averageScore = result.average_score || 0;
+            const votesCount = result.votes_count || 0;
             
-            # Пропускаем коллекции без необходимых данных
-            if not collection_number or not nft_links or len(nft_links) != 9 or not participant_user_id:
-                continue
+            resultsHtml += `
+              <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
+                <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
+                <div class="text-sm text-gray-300 mb-3">
+                  ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
+                  <span class="text-gray-400">(ID: ${userId})</span>
+                </div>
+                <div class="mb-3">
+                  <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
+                </div>
+                <div class="text-sm text-gray-400 mb-3">
+                  Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
+                </div>
+                ${prizeLink ? `
+                  <div class="text-sm">
+                    <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }
+          
+          resultsHtml += '</div>';
+          resultsContent.innerHTML = resultsHtml;
+          
+          // Открываем модальное окно
+          resultsModal.classList.remove('hidden');
+        } catch (e) {
+          console.error('Ошибка загрузки итогов:', e);
+          alert('❌ Ошибка при загрузке итогов: ' + (e.message || 'Неизвестная ошибка'));
+        }
+      };
+      window.closeVotingModal = closeVotingModal;
+
+      // Инициализируем переменные после загрузки DOM
+      function initElements() {
+        spinner = document.getElementById('loading-spinner');
+        topNav = document.getElementById('user-nav');
+        main = document.querySelector('main');
+        contentSections = document.querySelectorAll('.content-section');
+        navButtons = topNav ? topNav.querySelectorAll('.nav-button') : [];
+        
+        console.log('🔧 Элементы инициализированы:', {
+          spinner: !!spinner,
+          topNav: !!topNav,
+          main: !!main,
+          contentSections: contentSections.length,
+          navButtons: navButtons.length
+        });
+      }
+
+      function showSection(id) {
+        console.log('🔧 showSection вызвана с id:', id);
+        
+        // Получаем элементы напрямую из DOM
+        const sections = document.querySelectorAll('.content-section');
+        const nav = document.getElementById('user-nav');
+        const buttons = nav ? nav.querySelectorAll('.nav-button') : [];
+        
+        if (sections.length === 0) {
+          console.error('❌ Секции контента не найдены!');
+          return;
+        }
+        
+        console.log('🔧 Показываем секцию:', id);
+        sections.forEach(s => {
+          const shouldShow = s.id === id;
+          console.log(`🔧 Секция ${s.id}: ${shouldShow ? 'показываем' : 'скрываем'}`);
+          if (shouldShow) {
+            s.classList.remove('hidden');
+          } else {
+            s.classList.add('hidden');
+          }
+        });
+        
+        // Обновляем активную кнопку
+        buttons.forEach(b => {
+          const isActive = b.dataset.section === id;
+          if (isActive) {
+            b.classList.add('active');
+          } else {
+            b.classList.remove('active');
+          }
+        });
+        
+        console.log('✅ showSection завершена');
+      }
+
+      function hideSpinnerAndShowPanel() {
+        console.log('🔄 Скрываем спиннер и показываем панель');
+        
+        try {
+          // Получаем элементы заново, на случай если они еще не были определены
+          if (!spinner) spinner = document.getElementById('loading-spinner');
+          if (!topNav) topNav = document.getElementById('user-nav');
+          if (!main) main = document.querySelector('main');
+          
+          if (spinner) {
+            spinner.classList.add('hidden');
+            spinner.style.display = 'none';
+            spinner.style.visibility = 'hidden';
+            spinner.style.opacity = '0';
+            spinner.style.pointerEvents = 'none'; // КРИТИЧНО: отключаем pointer events
+            spinner.style.zIndex = '-1'; // Убираем высокий z-index
+            console.log('✅ Спиннер скрыт и pointer-events отключены');
+          } else {
+            console.error('❌ Элемент spinner не найден!');
+          }
+          
+          if (topNav) {
+            topNav.classList.remove('hidden');
+            topNav.style.display = 'flex';
+            topNav.style.visibility = 'visible';
+            topNav.style.pointerEvents = 'auto'; // Включаем клики
+            topNav.style.zIndex = '10';
+            console.log('✅ Навигация показана, pointer-events включены');
+          } else {
+            console.error('❌ Элемент topNav не найден!');
+          }
+          
+          if (main) {
+            main.classList.remove('hidden');
+            main.style.display = 'block';
+            main.style.visibility = 'visible';
+            main.style.pointerEvents = 'auto'; // Включаем клики
+            console.log('✅ Основной контент показан, pointer-events включены');
+          } else {
+            console.error('❌ Элемент main не найден!');
+          }
+          
+          console.log('✅ Панель полностью показана');
+        } catch (error) {
+          console.error('❌ Ошибка при скрытии спиннера:', error);
+          // Пытаемся скрыть спиннер напрямую через style, если классы не работают
+          if (spinner) {
+            spinner.style.display = 'none';
+            spinner.style.visibility = 'hidden';
+            spinner.style.opacity = '0';
+            spinner.style.pointerEvents = 'none';
+          }
+        }
+      }
+
+      // Проверяем, загружен ли DOM сразу
+      console.log('🚀 Проверка состояния DOM до DOMContentLoaded:', {
+        readyState: document.readyState,
+        bodyExists: !!document.body,
+        spinnerExists: !!document.getElementById('loading-spinner')
+      });
+      
+      // ВАЖНО: initUserPage будет вызвана ПОСЛЕ определения всех функций
+      // Функции определяются синхронно, поэтому мы можем вызвать initUserPage сразу после их определения
+      // Но для надежности добавим небольшую задержку
+      function startInit() {
+        if (document.readyState === 'loading') {
+          console.log('🚀 DOM еще загружается, ждем DOMContentLoaded');
+          document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(initUserPage, 50); // Небольшая задержка для гарантии
+          });
+        } else {
+          console.log('🚀 DOM уже загружен, запускаем сразу');
+          setTimeout(initUserPage, 50); // Небольшая задержка для гарантии
+        }
+      }
+      
+      function initUserPage() {
+        console.log('🚀 ========== НАЧАЛО ИНИЦИАЛИЗАЦИИ USER.HTML ==========');
+        console.log('🚀 DOMContentLoaded - начало инициализации user.html');
+        
+        // ПРОВЕРЯЕМ ДОСТУПНОСТЬ ФУНКЦИЙ
+        console.log('🔍 Проверка доступности функций:', {
+          'window.fetchJSON': typeof window.fetchJSON,
+          'window.loadContests': typeof window.loadContests,
+          'window.loadProfile': typeof window.loadProfile,
+          'initContestList': typeof initContestList,
+          'extractChannelFromPostLink': typeof extractChannelFromPostLink
+        });
+        
+        // Инициализируем элементы ДО всего остального
+        initElements();
+        
+        // Инициализируем contestList
+        if (typeof initContestList === 'function') {
+          initContestList();
+        } else {
+          contestList = document.getElementById('contest-list');
+        }
+        
+        console.log('Элементы найдены:', {
+          spinner: !!spinner,
+          topNav: !!topNav,
+          main: !!main,
+          contentSections: contentSections.length,
+          navButtons: navButtons.length,
+          contestList: !!contestList
+        });
+        
+        // Получаем tg_id из параметров URL
+        const params = new URLSearchParams(window.location.search);
+        const tgId = params.get('tg_id');
+
+        if (!tgId) {
+          console.error('❌ tg_id отсутствует в URL');
+          if (spinner) {
+            spinner.innerHTML = '<div class="text-red-500 text-lg font-semibold">❌ Ошибка: отсутствует tg_id</div>';
+          }
+          return;
+        }
+        
+        // Устанавливаем currentUserId сразу из URL
+        currentUserId = parseInt(tgId);
+        window.currentUserId = currentUserId;
+        console.log('✅ currentUserId установлен:', currentUserId);
+        
+        // НАСТОЯЩЕЕ СКРЫТИЕ СПИННЕРА - ВЫПОЛНЯЕМ СРАЗУ
+        console.log('🔄 Скрываем спиннер НЕМЕДЛЕННО');
+        hideSpinnerAndShowPanel();
+        
+        // Инициализируем навигацию - ПРОСТАЯ ЛОГИКА
+        console.log('🔘 Инициализация навигации');
+        
+        // Функция для установки обработчиков навигации
+        function setupNavigation() {
+          const nav = document.getElementById('user-nav');
+          if (!nav) {
+            console.error('❌ Навигация не найдена!');
+            return;
+          }
+          
+          const buttons = nav.querySelectorAll('.nav-button');
+          const sections = document.querySelectorAll('.content-section');
+          
+          console.log('🔘 Найдено кнопок:', buttons.length, 'секций:', sections.length);
+          
+          // Устанавливаем обработчики для каждой кнопки
+          buttons.forEach((btn) => {
+            // Удаляем старые обработчики через клонирование
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
             
-            # Пропускаем собственную коллекцию пользователя
-            if participant_user_id == user_id:
-                continue
+            console.log('🔘 Устанавливаем обработчик на кнопку:', newBtn.dataset.section);
             
-            votes = collection.get("votes", {}) or {}
-            sanitized.append({
-                "collection_number": collection_number,
-                "nft_links": nft_links,
-                "already_rated": str(user_id) in votes,
-                "rating": votes.get(str(user_id)),
-                "is_own": False
+            // Устанавливаем обработчик клика
+            newBtn.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              const sectionId = this.dataset.section;
+              console.log('✅✅✅ КЛИК ПО КНОПКЕ:', sectionId);
+              
+              // Обновляем активную кнопку (используем все кнопки из навигации)
+              const allButtons = nav.querySelectorAll('.nav-button');
+              allButtons.forEach(b => {
+                if (b.dataset.section === sectionId) {
+                  b.classList.add('active');
+                } else {
+                  b.classList.remove('active');
+                }
+              });
+              
+              // Показываем/скрываем секции
+              sections.forEach(sec => {
+                if (sec.id === sectionId) {
+                  console.log('✅ Показываем секцию:', sec.id);
+                  sec.classList.remove('hidden');
+                  
+                  // Если это секция конкурсов, обновляем список
+                  if (sec.id === 'contests-section') {
+                    setTimeout(async () => {
+                      console.log('📥 Загружаем конкурсы при переключении на секцию');
+                      if (typeof window.loadContests === 'function') {
+                        await window.loadContests(true);
+                      } else {
+                        console.error('❌ window.loadContests не найдена!');
+                      }
+                    }, 100);
+                  }
+                  
+                  // Если это секция профиля, загружаем профиль
+                  if (sec.id === 'profile-section') {
+                    setTimeout(async () => {
+                      console.log('📥 Загружаем профиль при переключении на секцию');
+                      if (typeof window.loadProfile === 'function') {
+                        await window.loadProfile();
+                      } else {
+                        console.error('❌ window.loadProfile не найдена!');
+                      }
+                    }, 100);
+                  }
+                  
+                  // Если это секция магазина, рендерим магазин
+                  if (sec.id === 'shop-section') {
+                    setTimeout(() => {
+                      console.log('🛒 Загружаем магазин при переключении на секцию');
+                      if (typeof window.renderShop === 'function') {
+                        window.renderShop();
+                      }
+                    }, 100);
+                  }
+                } else {
+                  console.log('❌ Скрываем секцию:', sec.id);
+                  sec.classList.add('hidden');
+                }
+              });
+              
+              console.log('✅ Секция', sectionId, 'показана успешно');
+            });
+            
+            // Убеждаемся, что кнопки кликабельны
+            newBtn.style.pointerEvents = 'auto';
+            newBtn.style.cursor = 'pointer';
+          });
+          
+          console.log('✅ Навигация полностью инициализирована');
+        }
+        
+        // Инициализируем навигацию после показа панели (небольшая задержка для гарантии видимости)
+        setTimeout(() => {
+          setupNavigation();
+          setupContactOwnerHandlers();
+          
+          // Показываем секцию конкурсов по умолчанию
+          console.log('🔘 Показываем секцию конкурсов по умолчанию');
+          // Показываем секцию напрямую
+          const contestsSection = document.getElementById('contests-section');
+          const profileSection = document.getElementById('profile-section');
+          if (contestsSection) {
+            contestsSection.classList.remove('hidden');
+            // Загружаем конкурсы
+            setTimeout(async () => {
+              if (typeof window.loadContests === 'function') {
+                await window.loadContests();
+              }
+            }, 100);
+          }
+          if (profileSection) {
+            profileSection.classList.add('hidden');
+          }
+        }, 100);
+        
+        // Telegram WebApp initialization
+        if (window.Telegram?.WebApp) {
+          Telegram.WebApp.ready();
+          const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+          if (tgUser) {
+            currentUserId = tgUser.id || parseInt(tgId);
+            window.currentUserId = currentUserId;
+            const usernameEl = document.getElementById('profile-username');
+            if (usernameEl) {
+              // Показываем username из Telegram WebApp если есть, иначе first_name, иначе "Пользователь"
+              const displayName = tgUser.username || tgUser.first_name || 'Пользователь';
+              usernameEl.textContent = displayName;
+              
+              // Отправляем username на сервер для сохранения
+              if (tgUser.username) {
+                fetch(`/api/profile/update-username?tg_id=${currentUserId}&username=${encodeURIComponent(tgUser.username)}`, {
+                  method: 'POST'
+                }).catch(() => {});
+              }
+            }
+            const profileIdEl = document.getElementById('profile-id');
+            if (profileIdEl) {
+              profileIdEl.textContent = tgUser.id || tgId;
+            }
+          }
+        }
+        
+        // Загружаем конкурсы сразу после инициализации (как в creator.html)
+        console.log('📥 Начинаем загрузку конкурсов...');
+        setTimeout(async () => {
+          try {
+            if (typeof window.loadContests === 'function') {
+              console.log('📥 Вызываем window.loadContests()...');
+              await window.loadContests();
+              console.log('✅ Конкурсы загружены');
+            } else {
+              console.error('❌ Функция window.loadContests не найдена!');
+            }
+          } catch (error) {
+            console.error('❌ Ошибка загрузки конкурсов:', error);
+          }
+        }, 200);
+        
+        // Загружаем профиль
+        setTimeout(async () => {
+          try {
+            if (typeof window.loadProfile === 'function') {
+              await window.loadProfile();
+              console.log('✅ Профиль загружен');
+            } else {
+              console.error('❌ Функция window.loadProfile не найдена!');
+            }
+          } catch (error) {
+            console.error('❌ Ошибка загрузки профиля:', error);
+          }
+        }, 200);
+        
+        console.log('✅ Инициализация завершена');
+        
+        // Дополнительный fallback - скрываем спиннер через 500ms в любом случае
+        setTimeout(() => {
+          if (spinner && spinner.style.display !== 'none') {
+            console.warn('⚠️ Fallback: принудительно скрываем спиннер');
+            hideSpinnerAndShowPanel();
+          }
+        }, 500);
+        
+        // Обновляем при возврате фокуса на страницу
+        let lastVisibilityChange = Date.now();
+        document.addEventListener('visibilitychange', async () => {
+          if (!document.hidden) {
+            const now = Date.now();
+            if (now - lastVisibilityChange > 5000) {
+              const contestsSection = document.getElementById('contests-section');
+              if (contestsSection && !contestsSection.classList.contains('hidden')) {
+                if (typeof window.loadContests === 'function') {
+                  await window.loadContests(true);
+                }
+              }
+              lastVisibilityChange = now;
+            }
+          }
+        });
+        
+        // Легкая проверка изменений конкурсов
+        let lastContestIds = null;
+        const checkForChanges = async () => {
+          try {
+            const contestsSection = document.getElementById('contests-section');
+            if (!contestsSection || contestsSection.classList.contains('hidden')) {
+              return;
+            }
+            const items = await window.fetchJSON('/api/contests');
+            const currentIds = items.map(c => c.id.toString()).sort().join(',');
+            if (lastContestIds !== null && lastContestIds !== currentIds) {
+              if (typeof window.loadContests === 'function') {
+                await window.loadContests(true);
+              }
+            }
+            lastContestIds = currentIds;
+          } catch (error) {
+            console.error('Ошибка при проверке изменений конкурсов:', error);
+          }
+        };
+        setInterval(checkForChanges, 10000);
+      }
+      
+      // Экспортируем функцию для отладки
+      window.initUserPage = initUserPage;
+      
+      // Дополнительная проверка через некоторое время (fallback)
+    setTimeout(() => {
+      console.log('🚀 Fallback проверка через 2 секунды после загрузки скрипта');
+      const spinner = document.getElementById('loading-spinner');
+      const nav = document.getElementById('user-nav');
+      const main = document.querySelector('main');
+      
+      // Проверяем, виден ли спиннер (через computed style)
+      if (spinner) {
+        const spinnerStyle = window.getComputedStyle(spinner);
+        const isSpinnerVisible = spinnerStyle.display !== 'none' && 
+                                 spinnerStyle.visibility !== 'hidden' && 
+                                 spinner.offsetParent !== null;
+        
+        if (isSpinnerVisible) {
+          console.warn('⚠️ Спиннер все еще виден через 2 секунды, принудительно скрываем через fallback');
+          spinner.style.setProperty('display', 'none', 'important');
+          spinner.style.setProperty('visibility', 'hidden', 'important');
+          spinner.style.setProperty('opacity', '0', 'important');
+          spinner.style.setProperty('z-index', '-1', 'important');
+          spinner.classList.add('hidden');
+          
+          // Показываем навигацию и контент
+          if (nav) {
+            nav.classList.remove('hidden');
+            nav.style.setProperty('display', 'flex', 'important');
+            nav.style.setProperty('visibility', 'visible', 'important');
+            nav.style.setProperty('opacity', '1', 'important');
+            nav.style.setProperty('pointer-events', 'auto', 'important');
+          }
+          if (main) {
+            main.classList.remove('hidden');
+            main.style.setProperty('display', 'block', 'important');
+            main.style.setProperty('visibility', 'visible', 'important');
+            main.style.setProperty('opacity', '1', 'important');
+            main.style.setProperty('pointer-events', 'auto', 'important');
+          }
+          
+          console.log('✅ Спиннер принудительно скрыт через fallback проверку');
+          console.log('⚠️ Если кнопки не работают, перезагрузите страницу');
+        } else {
+          console.log('✅ Спиннер уже скрыт, все в порядке');
+        }
+      }
+    }, 2000);
+    
+    console.log('🚀 ========== КОНЕЦ ИНИЦИАЛИЗАЦИИ СКРИПТА ==========');
+
+    window.loadContests = async function(silentUpdate = false) {
+      // Убеждаемся, что contestList инициализирован
+      if (!contestList) {
+        contestList = initContestList();
+      }
+      
+      if (!contestList) {
+        console.error('❌ contestList не найден!');
+        return;
+      }
+      try {
+        const items = await window.fetchJSON('/api/contests');
+        
+        // Проверяем, пуст ли список (первая загрузка)
+        const isFirstLoad = contestList.children.length === 0 || 
+                           contestList.innerHTML.includes('Нет активных конкурсов') ||
+                           contestList.innerHTML.includes('Ошибка');
+        
+        // Если это первая загрузка, очищаем список полностью
+        if (isFirstLoad && !silentUpdate) {
+          contestList.innerHTML = '';
+        }
+        
+        // Если нет конкурсов и список пуст, показываем сообщение
+        if (items.length === 0) {
+          // Удаляем все существующие карточки с анимацией
+          const allCards = Array.from(contestList.children);
+          allCards.forEach(card => {
+            if (card.dataset.contestId) {
+              card.style.transition = 'opacity 0.5s ease-out, transform 0.5s ease-out';
+              card.style.opacity = '0';
+              card.style.transform = 'translateX(-100%)';
+              setTimeout(() => {
+                if (card.parentNode) {
+                  card.parentNode.removeChild(card);
+                }
+              }, 500);
+            }
+          });
+          
+          // Показываем сообщение после анимации удаления
+          setTimeout(() => {
+            if (contestList.children.length === 0) {
+              contestList.innerHTML = '<div class="text-gray-500 text-center py-4">Нет активных конкурсов</div>';
+            }
+          }, 600);
+          return;
+        }
+        
+        // Если список был пуст, очищаем сообщение
+        if (contestList.innerHTML.includes('Нет активных конкурсов')) {
+          contestList.innerHTML = '';
+        }
+        
+        // Сохраняем текущие ID конкурсов для сравнения
+        const currentContestIds = new Set(
+          Array.from(contestList.children)
+            .map(card => card.dataset.contestId)
+            .filter(id => id)
+        );
+        
+        const newContestIds = new Set(items.map(c => c.id.toString()));
+        
+        // Удаляем конкурсы, которых больше нет (только если это не первая загрузка)
+        if (!isFirstLoad) {
+          const contestsToRemove = Array.from(contestList.children).filter(card => {
+            const contestId = card.dataset.contestId;
+            return contestId && !newContestIds.has(contestId);
+          });
+          
+          // Анимируем удаление конкурсов
+          contestsToRemove.forEach(card => {
+            card.style.transition = 'opacity 0.5s ease-out, transform 0.5s ease-out';
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(-100%)';
+            setTimeout(() => {
+              if (card.parentNode) {
+                card.parentNode.removeChild(card);
+              }
+            }, 500);
+          });
+        }
+        
+        // Загружаем количество участников для всех конкурсов параллельно
+        const participantsPromises = items.map(c => 
+          window.fetchJSON(`/api/contests/${c.id}/participants-count`).catch(e => {
+            console.error(`Ошибка загрузки участников для конкурса ${c.id}:`, e);
+            return { count: 0 };
+          })
+        );
+        const participantsResults = await Promise.all(participantsPromises);
+        
+        // Загружаем победителей для всех конкурсов параллельно
+        const winnersPromises = items.map(c => 
+          window.fetchJSON(`/api/contests/${c.id}/winners`).catch(e => {
+            console.error(`Ошибка загрузки победителей для конкурса ${c.id}:`, e);
+            return { winners: [], is_confirmed: false };
+          })
+        );
+        const winnersResults = await Promise.all(winnersPromises);
+        
+        items.forEach((c, index) => {
+          const participantsCount = participantsResults[index]?.count || 0;
+          const winnersData = winnersResults[index];
+          
+          // Проверяем, существует ли уже карточка для этого конкурса
+          const existingCard = contestList.querySelector(`[data-contest-id="${c.id}"]`);
+          if (existingCard && silentUpdate) {
+            // Если карточка уже существует и это тихое обновление, пропускаем
+            return;
+          }
+          
+          // Если карточка существует, но это не тихое обновление, удаляем её для обновления
+          if (existingCard) {
+            existingCard.remove();
+          }
+          
+          const card = document.createElement('div');
+          card.className = 'rounded-lg border border-violet-400/30 p-4 bg-black/30';
+          card.dataset.contestId = c.id; // Сохраняем ID для отслеживания
+          card.style.opacity = '0';
+          card.style.transform = 'translateY(-20px)';
+          card.style.transition = 'opacity 0.3s ease-in, transform 0.3s ease-in';
+          
+          const postLink = c.post_link || '';
+          const channelUsername = extractChannelFromPostLink(postLink);
+          const channelDisplay = channelUsername ? `@${channelUsername}` : 'Не указан';
+          
+          // Получаем название конкурса
+          const contestTitle = c.title || c.name || 'Конкурс';
+          
+          // Определяем тип конкурса
+          const contestType = c.contest_type || 'random_comment';
+          const isDrawingContest = contestType === 'drawing';
+          const isCollectionContest = contestType === 'collection';
+          
+          // Отображаем призы (максимум 3, но если меньше - показываем все)
+          let prizesHtml = '';
+          // Нормализуем prize_links: убеждаемся что это массив
+          let prizeLinks = c.prize_links;
+          if (!prizeLinks) {
+            prizeLinks = [];
+          } else if (typeof prizeLinks === 'string') {
+            // Если это строка, пытаемся распарсить как JSON
+            try {
+              prizeLinks = JSON.parse(prizeLinks);
+            } catch (e) {
+              console.warn(`Конкурс ${c.id}: Не удалось распарсить prize_links как JSON:`, prizeLinks);
+              prizeLinks = [];
+            }
+          } else if (!Array.isArray(prizeLinks)) {
+            console.warn(`Конкурс ${c.id}: prize_links не является массивом:`, typeof prizeLinks, prizeLinks);
+            prizeLinks = [];
+          }
+          
+          if (prizeLinks && Array.isArray(prizeLinks) && prizeLinks.length > 0) {
+            // Показываем максимум 3 приза (за первые 3 места)
+            const prizesToShow = prizeLinks.slice(0, Math.min(3, prizeLinks.length));
+            
+            // Функция для нормализации ссылки на приз
+            function normalizePrizeLink(link) {
+              if (!link) return '';
+              link = link.trim();
+              // Если уже начинается с https:// или http://, возвращаем как есть
+              if (link.startsWith('http://') || link.startsWith('https://')) {
+                return link;
+              }
+              // Если начинается с t.me/, добавляем https://
+              if (link.startsWith('t.me/')) {
+                return 'https://' + link;
+              }
+              // Иначе добавляем https://
+              return 'https://' + link;
+            }
+            
+            // Функция для получения изображения NFT - используем img с загрузкой через API
+            function getNFTImageHtml(link, idx) {
+              const normalizedLink = normalizePrizeLink(link);
+              // Используем img с src, который будет загружен через API endpoint
+              return `
+                <img 
+                  src="/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}" 
+                  alt="Приз ${idx + 1}"
+                  class="w-full h-full object-cover rounded-lg prize-image"
+                  onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');"
+                  loading="lazy"
+                />
+              `;
+            }
+            
+            // Определяем количество колонок для grid
+            const gridCols = prizesToShow.length === 1 ? 'grid-cols-1' : prizesToShow.length === 2 ? 'grid-cols-2' : 'grid-cols-3';
+            
+            prizesHtml = `
+              <div class="mb-4">
+                <div class="grid ${gridCols} gap-3 mb-3">
+                  ${prizesToShow.map((prizeLink, idx) => {
+                    const normalizedLink = normalizePrizeLink(prizeLink);
+                    return `
+                    <div class="relative rounded-xl overflow-hidden border-2 border-violet-400/40 bg-gradient-to-br from-violet-600/30 via-pink-600/30 to-purple-600/30 aspect-square group hover:scale-105 transition-transform shadow-lg cursor-pointer">
+                      <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48Y2lyY2xlIGN4PSIxMCIgY3k9IjEwIiByPSIxLjUiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20"></div>
+                      <a href="${normalizedLink}" target="_blank" class="absolute inset-0 z-10 block">
+                        <div class="w-full h-full relative">
+                          ${getNFTImageHtml(prizeLink, idx)}
+                          <div class="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg fallback-prize hidden">
+                            <div class="text-5xl opacity-70">🎁</div>
+                          </div>
+                        </div>
+                      </a>
+                      <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-2 z-20 pointer-events-none">
+                        <div class="text-xs text-white font-semibold text-center">${idx + 1} место</div>
+                      </div>
+                    </div>
+                  `;
+                  }).join('')}
+                </div>
+                ${prizeLinks.length > 3 ? `<div class="text-xs text-gray-400 text-center">+${prizeLinks.length - 3} еще призов</div>` : ''}
+              </div>
+            `;
+          }
+          
+          card.innerHTML = `
+            ${prizesHtml}
+            
+            <div class="flex items-center justify-between mb-3">
+              <div class="font-bold text-xl text-white">${contestTitle}</div>
+            </div>
+            
+            ${c.post_link ? `
+              <div class="mt-3 pt-3 border-t border-violet-400/20">
+                <div class="text-xs text-gray-500 mb-1">🔗 Ссылка на пост:</div>
+                <a href="${c.post_link}" target="_blank" class="text-blue-400 hover:underline text-sm break-all">${c.post_link}</a>
+              </div>
+            ` : ''}
+            
+            ${c.conditions ? `
+              <div class="mt-3 pt-3 border-t border-violet-400/20">
+                <div class="text-xs text-gray-500 mb-1">📋 Условия участия:</div>
+                <div class="text-sm text-gray-300">${c.conditions}</div>
+              </div>
+            ` : ''}
+          `;
+          
+          // Добавляем отображение победителей, если они есть
+          let winnersHtml = '';
+          try {
+            const winners = winnersData?.winners || [];
+            const isConfirmed = winnersData?.is_confirmed || false;
+            
+            // Показываем победителей только если они выбраны (даже если не подтверждены)
+            if (winners && winners.length > 0) {
+              winnersHtml = `<div class="mt-3 pt-3 border-t border-violet-400/20">
+                <div class="text-xs text-gray-500 mb-2">🏆 Победители (${winners.length}):</div>
+                <div class="space-y-2">
+                  ${winners.map((w, idx) => {
+                    const place = w.place || (idx + 1);
+                    const userDisplay = w.user_username ? `@${w.user_username}` : (w.user_id ? `ID: ${w.user_id}` : 'Неизвестно');
+                    // Нормализуем ссылку на приз
+                    let prizeLink = w.prize_link;
+                    if (prizeLink && !prizeLink.startsWith('http://') && !prizeLink.startsWith('https://')) {
+                      prizeLink = 'https://' + prizeLink;
+                    }
+                    const prizeDisplay = prizeLink ? `<a href="${prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз ${place} места</a>` : '<span class="text-gray-500">Нет приза</span>';
+                    return `
+                    <div class="flex flex-col gap-1 text-sm p-2 rounded-lg bg-black/20 border border-violet-400/20">
+                      <div class="flex items-center gap-2">
+                        <span class="text-violet-400 font-bold flex-shrink-0">${place} место</span>
+                        <span class="text-gray-300">${userDisplay}</span>
+                      </div>
+                      <div class="flex items-center gap-2 text-xs">
+                        <a href="${w.comment_link}" target="_blank" class="text-blue-400 hover:underline break-all flex-1 min-w-0">${w.comment_link}</a>
+                      </div>
+                      <div class="text-xs text-gray-400">
+                        Приз: ${prizeDisplay}
+                      </div>
+                    </div>
+                  `;
+                  }).join('')}
+                </div>
+              </div>`;
+            }
+          } catch (e) {
+            console.error('Ошибка загрузки победителей:', e);
+          }
+          
+          // Добавляем победителей в карточку
+          if (winnersHtml) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = winnersHtml;
+            card.appendChild(tempDiv.firstElementChild);
+          }
+          
+          // Добавляем количество участников для всех конкурсов
+          const participantsCountHtml = `
+            <div class="mt-3 pt-3 border-t border-violet-400/20">
+              <div class="text-xs text-gray-500 mb-1">👥 Участников: <span class="text-violet-400 font-semibold" id="participants-count-${c.id}">${participantsCount}</span></div>
+            </div>
+          `;
+          const tempParticipantsDiv = document.createElement('div');
+          tempParticipantsDiv.innerHTML = participantsCountHtml;
+          card.appendChild(tempParticipantsDiv.firstElementChild);
+          
+          // Для конкурсов рисунков и коллекций добавляем кнопку участия
+          // Кнопка "Участвовать" показывается ТОЛЬКО для конкурсов рисунков/коллекций и ТОЛЬКО пока не истекло время приема работ
+          if (isDrawingContest || isCollectionContest) {
+            const photoSection = document.createElement('div');
+            photoSection.className = 'mt-3 pt-3 border-t border-violet-400/20';
+            
+            // Проверяем статус участника и загружаем UI
+            (async () => {
+              try {
+                // Проверяем, участвует ли пользователь и загружена ли фотография/коллекция
+                let participantResponse = null;
+                try {
+                  participantResponse = await window.fetchJSON(`/api/contests/${c.id}/participant-status?user_id=${currentUserId}`);
+                  console.log(`✅ Статус участника для конкурса ${c.id}:`, participantResponse);
+                } catch (error) {
+                  console.error(`❌ Ошибка при получении статуса участника для конкурса ${c.id}:`, error);
+                  // Если запрос не удался, но это не критично, продолжаем с дефолтными значениями
+                  // Это может произойти, если конкурс еще не создан или есть проблемы с сетью
+                  participantResponse = {
+                    is_participating: false,
+                    has_photo: false,
+                    has_collection: false
+                  };
+                }
+                
+                const hasPhoto = isDrawingContest ? (participantResponse?.has_photo || false) : false;
+                const hasCollection = isCollectionContest ? (participantResponse?.has_collection || false) : false;
+                const isParticipating = participantResponse?.is_participating || false;
+                const submissionEndDate = c.submission_end_date;
+                const votingEndDate = c.end_at || c.end_date || c.voting_end_date;
+                
+                // Проверяем права доступа для оценивания (для жюри)
+                const jury = c.jury;
+                let canVote = true; // По умолчанию все могут оценивать (если жюри выключено)
+                if (jury && typeof jury === 'object' && jury.enabled === true) {
+                  // Жюри включено - проверяем, является ли пользователь членом жюри или создателем
+                  const isCreator = c.created_by === currentUserId;
+                  const juryMembers = jury.members || [];
+                  const isJuryMember = juryMembers.some(member => member.user_id === currentUserId);
+                  canVote = isCreator || isJuryMember;
+                }
+                
+                const now = new Date();
+                const submissionEnd = submissionEndDate ? new Date(submissionEndDate) : null;
+                const votingEnd = votingEndDate ? new Date(votingEndDate) : null;
+                
+                let canUpload = false;
+                let canParticipate = false;
+                let timeMessage = '';
+                let isSubmissionPeriodActive = false;
+                let isVotingPeriodActive = false;
+                let hasVotingEnded = false;
+                let votingMessage = '';
+                
+                if (submissionEnd) {
+                  if (now.getTime() <= submissionEnd.getTime()) {
+                    isSubmissionPeriodActive = true;
+                    canUpload = true;
+                    canParticipate = true;
+                    timeMessage = `⏰ Прием работ до: ${toMoscowDateTime(submissionEnd)}`;
+                  } else {
+                    timeMessage = `⏰ Прием работ завершен: ${toMoscowDateTime(submissionEnd)}`;
+                  }
+                } else {
+                  timeMessage = '⏰ Дата окончания приема работ не указана';
+                }
+                
+                if (votingEnd) {
+                  const votingDisplay = toMoscowDateTime(votingEnd);
+                  const afterSubmission = submissionEnd ? now.getTime() > submissionEnd.getTime() : true;
+                  if (!afterSubmission) {
+                    votingMessage = `🗳️ Голосование до: ${votingDisplay}`;
+                  } else if (now.getTime() <= votingEnd.getTime()) {
+                    isVotingPeriodActive = true;
+                    votingMessage = `🗳️ Голосование до: ${votingDisplay}`;
+                  } else {
+                    hasVotingEnded = true;
+                    votingMessage = `🗳️ Голосование завершено: ${votingDisplay}`;
+                  }
+                }
+                
+                if (!submissionEnd) {
+                  canUpload = false;
+                  canParticipate = false;
+                  isSubmissionPeriodActive = false;
+                } else if (!isSubmissionPeriodActive) {
+                  canUpload = false;
+                  canParticipate = false;
+                }
+                
+                // Определяем, что показывать на основе статуса пользователя
+                // Кнопка "Участвовать" показывается ТОЛЬКО если:
+                // 1. Это конкурс рисунков или коллекций (уже проверено выше)
+                // 2. Пользователь НЕ участвует
+                // 3. Время приема работ еще не истекло
+                const hasSubmitted = isDrawingContest ? hasPhoto : hasCollection;
+                
+                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}`);
+                
+                let photoHtml = '';
+                
+                if (hasSubmitted && isSubmissionPeriodActive) {
+                  // Работа уже загружена, но время приема работ еще не истекло
+                  const submittedText = isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена';
+                  photoHtml = `
+                    <div class="text-sm text-green-400 mb-2">${submittedText}</div>
+                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                  `;
+                } else if (hasSubmitted && !isSubmissionPeriodActive && isParticipating === true) {
+                  // Работа загружена, время приема работ истекло, пользователь участвует
+                  const submittedText = isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена';
+                  if (isVotingPeriodActive && canVote) {
+                    photoHtml = `
+                      <div class="text-sm text-green-400 mb-2">${submittedText}</div>
+                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                      <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                        🗳️ Голосовать
+                      </button>
+                    `;
+                  } else {
+                    photoHtml = `
+                      <div class="text-sm text-green-400 mb-2">${submittedText}</div>
+                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    `;
+                  }
+                } else if (isParticipating === true && canUpload && isSubmissionPeriodActive && !hasSubmitted) {
+                  // Пользователь участвует, но еще не загрузил работу, и время приема работ еще не истекло
+                  if (isDrawingContest) {
+                    photoHtml = `
+                      <div class="text-sm text-gray-300 mb-2">📸 Загрузите фотографию</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                      <input type="file" id="photo-input-${c.id}" accept="image/*" class="hidden" />
+                      <button id="upload-photo-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm">
+                        📤 Загрузить фотографию
+                      </button>
+                    `;
+                  } else if (isCollectionContest) {
+                    photoHtml = `
+                      <div class="text-sm text-gray-300 mb-2">🖼️ Отправьте коллекцию из 9 NFT</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                      <button id="submit-collection-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm">
+                        🖼️ Отправить коллекцию
+                      </button>
+                    `;
+                  }
+                } else if (!isParticipating && canParticipate && isSubmissionPeriodActive) {
+                  // Пользователь НЕ участвует, время приема работ еще не истекло - показываем кнопку "Участвовать"
+                  // ЭТА КНОПКА ПОКАЗЫВАЕТСЯ ТОЛЬКО ДЛЯ КОНКУРСОВ РИСУНКОВ И ТОЛЬКО ПОКА НЕ ИСТЕКЛО ВРЕМЯ ПРИЕМА РАБОТ
+                  photoHtml = `
+                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    <button id="participate-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                      ✨ Участвовать
+                    </button>
+                  `;
+                } else if (!isSubmissionPeriodActive) {
+                  // Время приема работ истекло
+                  if (isParticipating === true) {
+                    // Пользователь участвует - показываем кнопку "Голосовать" если период голосования активен и есть права доступа
+                    if (isVotingPeriodActive && canVote) {
+                      photoHtml = `
+                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                        <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                          🗳️ Голосовать
+                        </button>
+                      `;
+                    } else {
+                      photoHtml = `
+                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                      `;
+                    }
+                  } else {
+                    // Пользователь НЕ участвует - не показываем кнопку "Участвовать", только сообщение
+                    photoHtml = `
+                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    `;
+                  }
+                } else {
+                  // Другие случаи (например, пользователь участвует, но время истекло)
+                  photoHtml = `
+                    <div class="text-sm text-gray-400 mb-2">${timeMessage || 'Конкурс активен'}</div>
+                  `;
+                }
+                
+                if (votingMessage && (!isSubmissionPeriodActive || isVotingPeriodActive || hasVotingEnded)) {
+                  const votingClass = isVotingPeriodActive ? 'text-pink-400' : 'text-gray-500';
+                  photoHtml += `
+                    <div class="text-xs ${votingClass} mb-2">${votingMessage}</div>
+                  `;
+                }
+                
+                // Добавляем обработчик кнопки "Голосовать" только если есть права доступа
+                if (canVote && isVotingPeriodActive && !isSubmissionPeriodActive) {
+                  setTimeout(() => {
+                    const voteBtn = document.getElementById(`vote-btn-${c.id}`);
+                    if (voteBtn) {
+                      voteBtn.addEventListener('click', () => {
+                        window.openVotingModal(c.id);
+                      });
+                    }
+                  }, 100);
+                }
+                
+                // Проверяем статус итогов для конкурсов рисунков
+                let resultsButtonHtml = '';
+                if (hasVotingEnded || (!isSubmissionPeriodActive && !isVotingPeriodActive)) {
+                  try {
+                    const resultsResponse = await window.fetchJSON(`/api/contests/${c.id}/results`).catch(() => ({ results_calculated: false }));
+                    const resultsCalculated = resultsResponse?.results_calculated || false;
+                    
+                    if (!resultsCalculated) {
+                      // Для user кнопка "Подсчет итогов" НЕ показывается вообще
+                      // Она показывается только для создателя в creator.html
+                    } else {
+                      // Показываем кнопку "Посмотреть итоги" для всех после подсчета
+                      resultsButtonHtml = `
+                        <button id="view-results-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold mt-2">
+                          🏆 Посмотреть итоги
+                        </button>
+                      `;
+                    }
+                  } catch (e) {
+                    console.error('Ошибка проверки статуса итогов:', e);
+                  }
+                }
+                
+                photoSection.innerHTML = photoHtml + resultsButtonHtml;
+                
+                // Добавляем обработчики кнопок
+                if (resultsButtonHtml) {
+                  setTimeout(() => {
+                    const viewResultsBtn = document.getElementById(`view-results-btn-${c.id}`);
+                    if (viewResultsBtn) {
+                      viewResultsBtn.addEventListener('click', () => {
+                        window.showDrawingResults(c.id);
+                      });
+                    }
+                    
+                    const calculateResultsBtn = document.getElementById(`calculate-results-btn-${c.id}`);
+                    if (calculateResultsBtn) {
+                      calculateResultsBtn.addEventListener('click', () => {
+                        window.calculateDrawingResults(c.id);
+                      });
+                    }
+                  }, 100);
+                }
+                
+                // Добавляем обработчик кнопки "Участвовать"
+                // Кнопка показывается только если: !isParticipating && canParticipate && isSubmissionPeriodActive
+                if (!isParticipating && canParticipate && isSubmissionPeriodActive) {
+                  // Небольшая задержка для гарантии, что элемент добавлен в DOM
+                  setTimeout(() => {
+                    const participateBtn = document.getElementById(`participate-btn-${c.id}`);
+                    if (participateBtn) {
+                      participateBtn.addEventListener('click', async () => {
+                        // Дополнительная проверка времени перед участием
+                        const submissionEndDate = c.submission_end_date;
+                        if (submissionEndDate) {
+                          const now = new Date();
+                          const endDate = new Date(submissionEndDate);
+                          
+                          // Проверяем, не истекло ли время приема работ
+                          if (now.getTime() > endDate.getTime()) {
+                            alert('❌ Время приема работ истекло. Вы не можете присоединиться к конкурсу.');
+                            // Обновляем список конкурсов, чтобы скрыть кнопку
+                            await window.loadContests(true);
+                            return;
+                          }
+                        }
+                        
+                        participateBtn.disabled = true;
+                        participateBtn.textContent = '⏳ Проверка...';
+                        
+                        try {
+                          const username = window.Telegram?.WebApp?.initDataUnsafe?.user?.username || '';
+                          const response = await window.fetchJSON(`/api/contests/${c.id}/participate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              user_id: currentUserId,
+                              username: username
+                            })
+                          });
+                          
+                          if (response.success) {
+                            // Успешно присоединились к конкурсу рисунков
+                            // Не показываем alert, сразу обновляем UI, чтобы показать форму загрузки фотографии
+                            
+                            // Обновляем количество участников
+                            const participantsCountEl = document.getElementById(`participants-count-${c.id}`);
+                            if (participantsCountEl) {
+                              const newCount = parseInt(participantsCountEl.textContent) + 1;
+                              participantsCountEl.textContent = newCount;
+                            }
+                            
+                            // Перезагружаем список конкурсов, чтобы показать форму загрузки фотографии
+                            // Используем полную перезагрузку, чтобы обновить статус участника
+                            await window.loadContests();
+                          } else if (response.requires_subscription && response.not_subscribed) {
+                            // Показываем модальное окно с неподписанными каналами/чатами
+                            window.showSubscriptionModal(c.id, response.not_subscribed, currentUserId, username);
+                            participateBtn.disabled = false;
+                            participateBtn.textContent = '✨ Участвовать';
+                          } else {
+                            alert('❌ ' + (response.message || 'Ошибка при присоединении к конкурсу'));
+                            participateBtn.disabled = false;
+                            participateBtn.textContent = '✨ Участвовать';
+                          }
+                        } catch (error) {
+                          console.error('Ошибка участия в конкурсе:', error);
+                          let errorMessage = 'Ошибка при присоединении к конкурсу';
+                          let shouldReload = false;
+                          
+                          try {
+                            const errorResponse = await error.response?.json();
+                            if (errorResponse?.detail) {
+                              errorMessage = errorResponse.detail;
+                              // Если ошибка связана с истекшим deadline, обновляем список конкурсов
+                              if (errorResponse.detail.includes('Время приема работ истекло') || 
+                                  errorResponse.detail.includes('истекло')) {
+                                shouldReload = true;
+                              }
+                            } else if (errorResponse?.message) {
+                              errorMessage = errorResponse.message;
+                            }
+                          } catch (e) {
+                            if (error.message) {
+                              errorMessage = error.message;
+                            }
+                          }
+                          
+                          alert('❌ ' + errorMessage);
+                          
+                          // Если deadline истек, обновляем список конкурсов, чтобы скрыть кнопку
+                          if (shouldReload) {
+                            await window.loadContests();
+                          } else {
+                            participateBtn.disabled = false;
+                            participateBtn.textContent = '✨ Участвовать';
+                          }
+                        }
+                      });
+                    }
+                  }, 100);
+                }
+                
+                // Добавляем обработчик загрузки фотографии (если пользователь уже участвует)
+                // Загрузка возможна только если время приема работ еще не истекло
+                if (isParticipating === true && canUpload && !hasSubmitted && isSubmissionPeriodActive && isDrawingContest) {
+                  // Небольшая задержка для гарантии, что элемент добавлен в DOM
+                  setTimeout(() => {
+                    const photoInput = document.getElementById(`photo-input-${c.id}`);
+                    const uploadBtn = document.getElementById(`upload-photo-btn-${c.id}`);
+                    
+                    if (uploadBtn && photoInput) {
+                      uploadBtn.addEventListener('click', () => {
+                        photoInput.click();
+                      });
+                      
+                      photoInput.addEventListener('change', async (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        
+                        if (!file.type.startsWith('image/')) {
+                          alert('⚠️ Файл должен быть изображением');
+                          return;
+                        }
+                        
+                        if (file.size > 10 * 1024 * 1024) {
+                          alert('⚠️ Размер файла не должен превышать 10 МБ');
+                          return;
+                        }
+                        
+                        uploadBtn.disabled = true;
+                        uploadBtn.textContent = '⏳ Загрузка...';
+                        
+                        try {
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          formData.append('user_id', currentUserId);
+                          formData.append('user_username', window.Telegram?.WebApp?.initDataUnsafe?.user?.username || '');
+                          
+                          const response = await fetch(`/api/contests/${c.id}/upload-photo`, {
+                            method: 'POST',
+                            body: formData
+                          });
+                          
+                          const result = await response.json();
+                          
+                          if (response.ok && result.success) {
+                            alert('✅ ' + result.message);
+                            await window.loadContests(); // Обновляем список конкурсов
+                          } else {
+                            alert('❌ ' + (result.detail || result.message || 'Ошибка при загрузке фотографии'));
+                          }
+                        } catch (error) {
+                          console.error('Ошибка загрузки фотографии:', error);
+                          alert('❌ Ошибка при загрузке фотографии');
+                        } finally {
+                          uploadBtn.disabled = false;
+                          uploadBtn.textContent = '📤 Загрузить фотографию';
+                          photoInput.value = '';
+                        }
+                      });
+                    }
+                  }, 100);
+                }
+                
+                // Добавляем обработчик кнопки отправки коллекции (если пользователь уже участвует)
+                // Отправка возможна только если время приема работ еще не истекло
+                if (isParticipating === true && canUpload && !hasCollection && isSubmissionPeriodActive && isCollectionContest) {
+                  setTimeout(() => {
+                    const submitCollectionBtn = document.getElementById(`submit-collection-btn-${c.id}`);
+                    if (submitCollectionBtn) {
+                      submitCollectionBtn.addEventListener('click', () => {
+                        // Открываем модалку для отправки коллекции (будет реализована позже)
+                        window.openCollectionSubmissionModal(c.id);
+                      });
+                    }
+                  }, 100);
+                }
+              } catch (error) {
+                console.error('Критическая ошибка при проверке статуса участника:', error);
+                // В случае критической ошибки (не связанной с API) используем дефолтные значения
+                // и показываем кнопку "Участвовать", если время приема работ еще не истекло
+                try {
+                  const submissionEndDate = c.submission_end_date;
+                  const now = new Date();
+                  let errorHtml = '';
+                  
+                  if (submissionEndDate) {
+                    const endDate = new Date(submissionEndDate);
+                    
+                    if (now.getTime() <= endDate.getTime()) {
+                      // Время приема работ еще не истекло - показываем кнопку без сообщения об ошибке
+                      // Используем дефолтные значения: пользователь не участвует
+                      const timeMessage = `⏰ Прием работ до: ${toMoscowDateTime(endDate)}`;
+                      errorHtml = `
+                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                        <button id="participate-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                          ✨ Участвовать
+                        </button>
+                      `;
+                    } else {
+                      // Время приема работ истекло
+                      errorHtml = `
+                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                        <div class="text-xs text-gray-500 mb-2">⏰ Прием работ завершен: ${toMoscowDateTime(endDate)}</div>
+                      `;
+                    }
+                  } else {
+                    // Если deadline не указан, не показываем кнопку
+                    errorHtml = `
+                      <div class="text-sm text-gray-400 mb-2">⏰ Информация о времени приема работ недоступна</div>
+                    `;
+                  }
+                  
+                  photoSection.innerHTML = errorHtml;
+                  
+                  // Если кнопка была добавлена, добавляем обработчик
+                  if (submissionEndDate) {
+                    const now = new Date();
+                    const endDate = new Date(submissionEndDate);
+                    if (now.getTime() <= endDate.getTime()) {
+                      setTimeout(() => {
+                        const participateBtn = document.getElementById(`participate-btn-${c.id}`);
+                        if (participateBtn) {
+                          participateBtn.addEventListener('click', async () => {
+                            participateBtn.disabled = true;
+                            participateBtn.textContent = '⏳ Проверка...';
+                            
+                            try {
+                              const username = window.Telegram?.WebApp?.initDataUnsafe?.user?.username || '';
+                              const response = await window.fetchJSON(`/api/contests/${c.id}/participate`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  user_id: currentUserId,
+                                  username: username
+                                })
+                              });
+                              
+                              if (response.success) {
+                                // Успешно присоединились к конкурсу рисунков
+                                // Не показываем alert, сразу обновляем UI, чтобы показать форму загрузки фотографии
+                                const participantsCountEl = document.getElementById(`participants-count-${c.id}`);
+                                if (participantsCountEl) {
+                                  const newCount = parseInt(participantsCountEl.textContent) + 1;
+                                  participantsCountEl.textContent = newCount;
+                                }
+                                // Перезагружаем список конкурсов, чтобы показать форму загрузки фотографии
+                                await window.loadContests();
+                              } else if (response.requires_subscription && response.not_subscribed) {
+                                window.showSubscriptionModal(c.id, response.not_subscribed, currentUserId, username);
+                                participateBtn.disabled = false;
+                                participateBtn.textContent = '✨ Участвовать';
+                              } else {
+                                alert('❌ ' + (response.message || 'Ошибка при присоединении к конкурсу'));
+                                participateBtn.disabled = false;
+                                participateBtn.textContent = '✨ Участвовать';
+                              }
+                            } catch (error) {
+                              console.error('Ошибка участия в конкурсе:', error);
+                              let errorMessage = 'Ошибка при присоединении к конкурсу';
+                              let shouldReload = false;
+                              
+                              try {
+                                const errorResponse = await error.response?.json();
+                                if (errorResponse?.detail) {
+                                  errorMessage = errorResponse.detail;
+                                  // Если ошибка связана с истекшим deadline, обновляем список конкурсов
+                                  if (errorResponse.detail.includes('Время приема работ истекло') || 
+                                      errorResponse.detail.includes('истекло')) {
+                                    shouldReload = true;
+                                  }
+                                } else if (errorResponse?.message) {
+                                  errorMessage = errorResponse.message;
+                                }
+                              } catch (e) {
+                                if (error.message) {
+                                  errorMessage = error.message;
+                                }
+                              }
+                              
+                              alert('❌ ' + errorMessage);
+                              
+                              // Если deadline истек, обновляем список конкурсов, чтобы скрыть кнопку
+                              if (shouldReload) {
+                                await window.loadContests();
+                              } else {
+                                participateBtn.disabled = false;
+                                participateBtn.textContent = '✨ Участвовать';
+                              }
+                            }
+                          });
+                        }
+                      }, 100);
+                    }
+                  }
+                } catch (innerError) {
+                  console.error('Ошибка при обработке ошибки:', innerError);
+                  // В случае ошибки просто показываем кнопку без дополнительной обработки
+                  photoSection.innerHTML = `
+                    <button id="participate-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                      ✨ Участвовать
+                    </button>
+                  `;
+                }
+              }
+            })();
+            
+            card.appendChild(photoSection);
+          }
+          
+          contestList.appendChild(card);
+          
+          // Анимируем появление новой карточки
+          setTimeout(() => {
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+          }, 10);
+        });
+        } catch (e) {
+          contestList.innerHTML = '<div class="text-red-400 text-center py-4">Ошибка загрузки конкурсов</div>';
+        }
+      }
+
+      // ⭐ Система опыта и уровней для пользователей
+      // Уровни: 1 (0-100), 2 (100-300), 3 (300-600), 4 (600-1000), 5 (1000+)
+      function getLevelInfo(experience) {
+        const levels = [
+          { level: 1, minExp: 0, maxExp: 100 },
+          { level: 2, minExp: 100, maxExp: 300 },
+          { level: 3, minExp: 300, maxExp: 600 },
+          { level: 4, minExp: 600, maxExp: 1000 },
+          { level: 5, minExp: 1000, maxExp: Infinity }
+        ];
+        
+        for (const levelInfo of levels) {
+          if (experience >= levelInfo.minExp && experience < levelInfo.maxExp) {
+            return {
+              level: levelInfo.level,
+              currentExp: experience - levelInfo.minExp,
+              maxExp: levelInfo.maxExp === Infinity ? experience : levelInfo.maxExp - levelInfo.minExp,
+              nextLevelExp: levelInfo.maxExp
+            };
+          }
+        }
+        
+        // Если опыт больше максимального для уровня 5
+        return {
+          level: 5,
+          currentExp: experience - 1000,
+          maxExp: experience - 1000,
+          nextLevelExp: experience
+        };
+      }
+
+      function updateUserExperienceUI(experience, contestsParticipated, contestsWon) {
+        const levelInfo = getLevelInfo(experience);
+        const progressPercent = levelInfo.maxExp > 0 
+          ? Math.min(100, (levelInfo.currentExp / levelInfo.maxExp) * 100)
+          : 0;
+        
+        // Обновляем бейдж уровня
+        const levelBadge = document.getElementById('level-badge');
+        if (levelBadge) {
+          levelBadge.textContent = `Уровень ${levelInfo.level}`;
+        }
+        
+        // Обновляем текущий опыт
+        const currentExpEl = document.getElementById('current-experience');
+        if (currentExpEl) {
+          currentExpEl.textContent = experience;
+        }
+        
+        // Обновляем полоску прогресса
+        const progressBar = document.getElementById('experience-progress-bar');
+        if (progressBar) {
+          progressBar.style.width = `${progressPercent}%`;
+        }
+        
+        // Обновляем границы уровня
+        const currentLevelExp = document.getElementById('current-level-exp');
+        const nextLevelExp = document.getElementById('next-level-exp');
+        if (currentLevelExp) {
+          currentLevelExp.textContent = levelInfo.currentExp;
+        }
+        if (nextLevelExp) {
+          nextLevelExp.textContent = levelInfo.nextLevelExp === Infinity ? '∞' : levelInfo.nextLevelExp;
+        }
+        
+        // Обновляем статистику
+        const contestsParticipatedEl = document.getElementById('contests-participated');
+        const contestsWonEl = document.getElementById('contests-won');
+        if (contestsParticipatedEl) {
+          contestsParticipatedEl.textContent = contestsParticipated;
+        }
+        if (contestsWonEl) {
+          contestsWonEl.textContent = contestsWon;
+        }
+      }
+
+      // Загрузка опыта для пользователя из базы данных
+      async function loadUserExperience(userId) {
+        try {
+          // Получаем профиль с опытом из API
+          const profile = await window.fetchJSON(`/api/profile?tg_id=${userId}`);
+          
+          const experience = profile.experience || 0;
+          const contestsParticipated = profile.contests_participated || 0;
+          const contestsWon = profile.contests_won || 0;
+          
+          updateUserExperienceUI(experience, contestsParticipated, contestsWon);
+        } catch (e) {
+          console.error('Ошибка загрузки опыта пользователя:', e);
+          updateUserExperienceUI(0, 0, 0);
+        }
+      }
+
+      // Profile - делаем функцию доступной глобально
+      window.loadProfile = async function() {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const tgId = params.get('tg_id');
+          const p = await window.fetchJSON(`/api/profile?tg_id=${tgId || ''}`);
+          
+          const usernameEl = document.getElementById('profile-username');
+          if (usernameEl) {
+            // Показываем username если есть, иначе роль
+            if (p.username) {
+              usernameEl.textContent = p.username;
+            } else {
+              const role = p.status || p.role || 'user';
+              usernameEl.textContent = role === 'user' ? 'Пользователь' : role;
+            }
+          }
+          const profileIdEl = document.getElementById('profile-id');
+          if (profileIdEl && p.id) profileIdEl.textContent = p.id;
+          if (p.first_login) document.getElementById('profile-first-login').textContent = toMoscowDateTime(p.first_login);
+          if (p.status) document.getElementById('profile-status').textContent = p.status;
+          
+          // Загружаем опыт и уровни для пользователя
+          if (tgId) {
+            await loadUserExperience(parseInt(tgId));
+          }
+        } catch (e) {
+          const params = new URLSearchParams(window.location.search);
+          const pid = params.get('tg_id');
+          const puser = params.get('username');
+          const prole = params.get('role');
+          
+          if (pid && !document.getElementById('profile-id').textContent) {
+            document.getElementById('profile-id').textContent = pid;
+          }
+          const usernameEl = document.getElementById('profile-username');
+          if (usernameEl && !usernameEl.textContent) {
+            // Показываем username из параметров или роль
+            if (puser) {
+              usernameEl.textContent = puser;
+            } else {
+              const role = prole || 'user';
+              usernameEl.textContent = role === 'user' ? 'Пользователь' : role;
+            }
+          }
+          if (prole) {
+            document.getElementById('profile-status').textContent = prole;
+          }
+        }
+      }
+
+      // Rating - загрузка рейтинга
+      let currentRatingRole = 'user';
+      
+      window.loadRating = async function(role = 'user') {
+        try {
+          currentRatingRole = role;
+          const ratingList = document.getElementById('rating-list');
+          if (!ratingList) return;
+          
+          ratingList.innerHTML = '<div class="text-center text-gray-400 py-8">Загрузка рейтинга...</div>';
+          
+          const response = await window.fetchJSON(`/api/rating?role=${role}`);
+          
+          if (!response.success || !response.ratings) {
+            ratingList.innerHTML = '<div class="text-center text-red-400 py-8">Ошибка загрузки рейтинга</div>';
+            return;
+          }
+          
+          const ratings = response.ratings;
+          if (ratings.length === 0) {
+            ratingList.innerHTML = '<div class="text-center text-gray-400 py-8">Рейтинг пуст</div>';
+            return;
+          }
+          
+          let html = '';
+          ratings.forEach((item) => {
+            const avatarHtml = item.avatar_url 
+              ? `<img src="${item.avatar_url}" alt="${item.username}" class="w-10 h-10 rounded-full object-cover" />`
+              : `<div class="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-lg font-bold">${item.username ? item.username.charAt(0).toUpperCase() : '?'}</div>`;
+            
+            html += `
+              <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30 flex items-center gap-3">
+                <div class="text-2xl font-bold text-violet-400 w-10 text-center flex-shrink-0">${item.place}</div>
+                <div class="w-10 h-10 flex-shrink-0 flex items-center justify-center">${avatarHtml}</div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold text-white truncate">${item.username || `User_${item.telegram_id}`}</div>
+                  <div class="text-sm text-gray-400 whitespace-nowrap">Побед: ${item.wins} | Участий: ${item.participations}</div>
+                </div>
+                <div class="text-right flex-shrink-0 w-20">
+                  <div class="text-xl font-bold text-violet-400">${item.rating}</div>
+                  <div class="text-xs text-gray-400">рейтинг</div>
+                </div>
+              </div>
+            `;
+          });
+          
+          ratingList.innerHTML = html;
+        } catch (e) {
+          console.error('Ошибка загрузки рейтинга:', e);
+          const ratingList = document.getElementById('rating-list');
+          if (ratingList) {
+            ratingList.innerHTML = '<div class="text-center text-red-400 py-8">Ошибка загрузки рейтинга</div>';
+          }
+        }
+      };
+      
+      // Обработчики переключения рейтинга
+      setTimeout(function() {
+        const usersBtn = document.getElementById('rating-users-btn');
+        const adminsBtn = document.getElementById('rating-admins-btn');
+        
+        if (usersBtn) {
+          usersBtn.addEventListener('click', () => {
+            usersBtn.classList.add('active');
+            if (adminsBtn) adminsBtn.classList.remove('active');
+            window.loadRating('user');
+          });
+        }
+        
+        if (adminsBtn) {
+          adminsBtn.addEventListener('click', () => {
+            adminsBtn.classList.add('active');
+            if (usersBtn) usersBtn.classList.remove('active');
+            window.loadRating('admin');
+          });
+        }
+      }, 1000);
+
+      // First-login marker
+      try {
+        if (!localStorage.getItem('first_login_ts')) {
+          const ts = new Date().toISOString();
+          localStorage.setItem('first_login_ts', ts);
+          fetch('/api/profile/first_login', { method: 'POST' }).catch(() => {});
+        }
+        const stored = localStorage.getItem('first_login_ts');
+        if (stored) document.getElementById('profile-first-login').textContent = toMoscowDateTime(stored);
+      } catch (e) {}
+
+      // Contact owner functionality - устанавливаем после показа панели
+      function setupContactOwnerHandlers() {
+        const contactOwnerBtn = document.getElementById('contact-owner-btn');
+        const contactOwnerModal = document.getElementById('contact-owner-modal');
+        const closeContactModal = document.getElementById('close-contact-modal');
+        const sendContactMessage = document.getElementById('send-contact-message');
+
+        function openModal(el) { 
+          if (!el) return;
+          el.classList.remove('hidden');
+          // Убеждаемся, что модалка кликабельна
+          el.style.pointerEvents = 'auto';
+          el.style.zIndex = '30';
+          // Убеждаемся, что все элементы внутри модалки кликабельны
+          const clickableElements = el.querySelectorAll('button, input, textarea, a, select');
+          clickableElements.forEach(elem => {
+            elem.style.pointerEvents = 'auto';
+            elem.style.zIndex = '1';
+          });
+          // Блокируем скролл body
+          document.body.classList.add('modal-open');
+        }
+        function closeModal(el) { 
+          if (!el) return;
+          el.classList.add('hidden');
+          // Разблокируем скролл body
+          document.body.classList.remove('modal-open');
+        }
+
+        if (contactOwnerBtn) {
+          // Удаляем старый обработчик если есть
+          const newBtn = contactOwnerBtn.cloneNode(true);
+          contactOwnerBtn.parentNode.replaceChild(newBtn, contactOwnerBtn);
+          
+          newBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('✅ Клик по кнопке "Связь с владельцем"');
+            if (contactOwnerModal) {
+              openModal(contactOwnerModal);
+            }
+          });
+        }
+
+        if (closeContactModal) {
+          // Удаляем старый обработчик если есть
+          const newCloseBtn = closeContactModal.cloneNode(true);
+          closeContactModal.parentNode.replaceChild(newCloseBtn, closeContactModal);
+          
+          newCloseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(contactOwnerModal);
+            const messageInput = document.getElementById('contact-message-text');
+            if (messageInput) messageInput.value = '';
+          });
+        }
+
+        if (sendContactMessage) {
+          // Удаляем старый обработчик если есть
+          const newSendBtn = sendContactMessage.cloneNode(true);
+          sendContactMessage.parentNode.replaceChild(newSendBtn, sendContactMessage);
+          
+          newSendBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const messageInput = document.getElementById('contact-message-text');
+            if (!messageInput) return;
+            
+            const messageText = messageInput.value.trim();
+            if (!messageText) {
+              alert('⚠️ Пожалуйста, введите сообщение');
+              return;
+            }
+
+            if (!currentUserId) {
+              alert('⚠️ Ошибка: не удалось определить ID пользователя');
+              return;
+            }
+
+            try {
+              await window.fetchJSON('/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  from_user_id: currentUserId,
+                  message_text: messageText
+                })
+              });
+              alert('✅ Сообщение отправлено владельцу!');
+              closeModal(contactOwnerModal);
+              messageInput.value = '';
+            } catch (e) {
+              console.error('Ошибка отправки сообщения:', e);
+              alert('Ошибка при отправке сообщения');
+            }
+          });
+        }
+      }
+
+      // Функция для показа модального окна с неподписанными каналами/чатами
+      // Делаем функцию доступной глобально
+      window.showSubscriptionModal = function(contestId, notSubscribed, userId, username) {
+        const modalEl = document.getElementById('subscription-modal');
+        const listEl = document.getElementById('subscription-list');
+        const verifyBtn = document.getElementById('verify-subscription-btn');
+        const closeBtn = document.getElementById('close-subscription-modal');
+        
+        if (!modalEl || !listEl || !verifyBtn || !closeBtn) {
+          console.error('Модальное окно не найдено');
+          return;
+        }
+        
+        // Заполняем список каналов/чатов
+        listEl.innerHTML = notSubscribed.map(sub => {
+          const link = sub.link.startsWith('http') ? sub.link : `https://${sub.link}`;
+          return `
+            <div class="subscription-item p-3 rounded-lg border border-violet-400/30 bg-black/30" data-username="${sub.username}">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-white font-semibold">${sub.name}</div>
+                  <div class="text-gray-400 text-sm">${sub.type === 'channel' ? '📢 Канал' : '💬 Чат'}</div>
+                </div>
+                <a href="${link}" target="_blank" class="neon-button px-4 py-2 rounded-lg text-sm font-semibold text-white">
+                  Присоединиться
+                </a>
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+        // Сбрасываем предыдущие обработчики, заменяя кнопки
+        const newVerifyBtn = verifyBtn.cloneNode(true);
+        verifyBtn.parentNode.replaceChild(newVerifyBtn, verifyBtn);
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        
+        // Обработчик кнопки "Выполнил"
+        newVerifyBtn.onclick = async () => {
+          newVerifyBtn.disabled = true;
+          newVerifyBtn.textContent = '⏳ Проверка...';
+          
+          try {
+            const response = await window.fetchJSON(`/api/contests/${contestId}/verify-subscription`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: userId,
+                username: username
+              })
+            });
+            
+            if (response.success) {
+              // Успешно присоединились к конкурсу рисунков
+              // Закрываем модальное окно
+              modalEl.classList.add('hidden');
+              
+              // Обновляем количество участников для конкурса рисунков
+              const participantsCountEl = document.getElementById(`participants-count-${contestId}`);
+              if (participantsCountEl) {
+                const currentCount = parseInt(participantsCountEl.textContent) || 0;
+                participantsCountEl.textContent = currentCount + 1;
+              }
+              
+              // Перезагружаем список конкурсов, чтобы показать форму загрузки фотографии
+              // Используем полную перезагрузку, чтобы обновить статус участника
+              await window.loadContests();
+            } else {
+              // Обновляем список неподписанных каналов/чатов, выделяя их красным
+              const items = listEl.querySelectorAll('.subscription-item');
+              items.forEach(item => {
+                item.classList.remove('border-red-500', 'bg-red-900/20');
+                const nameEl = item.querySelector('.text-white');
+                if (nameEl) {
+                  nameEl.classList.remove('text-red-400');
+                }
+              });
+              
+              if (response.not_subscribed && response.not_subscribed.length > 0) {
+                response.not_subscribed.forEach(notSub => {
+                  const item = Array.from(items).find(el => el.dataset.username === notSub.username);
+                  if (item) {
+                    item.classList.add('border-red-500', 'bg-red-900/20');
+                    const nameEl = item.querySelector('.text-white');
+                    if (nameEl) {
+                      nameEl.classList.add('text-red-400');
+                    }
+                  }
+                });
+                alert('❌ Вы не подписаны на некоторые каналы и чаты. Они выделены красным цветом.');
+              } else {
+                alert('❌ ' + (response.message || 'Ошибка проверки подписки'));
+              }
+            }
+          } catch (e) {
+            alert('❌ Ошибка: ' + (e.message || 'Не удалось проверить подписку'));
+          } finally {
+            newVerifyBtn.disabled = false;
+            newVerifyBtn.textContent = '✓ Выполнил';
+          }
+        };
+        
+        // Обработчик кнопки "Отмена"
+        newCloseBtn.onclick = () => {
+          modalEl.classList.add('hidden');
+        };
+        
+        // Показываем модальное окно
+        modalEl.classList.remove('hidden');
+      }
+      
+      // 🖼️ Логика для модалок коллекций NFT
+      let currentCollectionContestId = null;
+      let collectionNftLinks = [];
+      let collectionNftOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8]; // Порядок NFT в сетке
+      let draggedElement = null;
+      let draggedIndex = null;
+      
+      // Переменные для touch событий (мобильные устройства)
+      let touchStartElement = null;
+      let touchStartIndex = null;
+      let touchStartX = null;
+      let touchStartY = null;
+      let touchCurrentElement = null;
+      let touchGhostElement = null;
+
+      // Функция для открытия модалки ввода ссылок на NFT
+      window.openCollectionSubmissionModal = function(contestId) {
+        currentCollectionContestId = contestId;
+        collectionNftLinks = [];
+        collectionNftOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+        
+        const linksModal = document.getElementById('collection-links-modal');
+        const inputsContainer = document.getElementById('collection-links-inputs');
+        const continueBtn = document.getElementById('collection-links-continue');
+        const enteredCount = document.getElementById('collection-links-entered');
+        const errorEl = document.getElementById('collection-links-error');
+        
+        if (!linksModal || !inputsContainer) {
+          console.error('Модалка ввода ссылок не найдена');
+          return;
+        }
+        
+        // Очищаем предыдущие поля ввода
+        inputsContainer.innerHTML = '';
+        errorEl.classList.add('hidden');
+        errorEl.textContent = '';
+        
+        // Создаем 9 полей ввода
+        for (let i = 0; i < 9; i++) {
+          const inputWrapper = document.createElement('div');
+          inputWrapper.className = 'flex items-center gap-2';
+          inputWrapper.innerHTML = `
+            <label class="text-sm text-gray-400 w-8 flex-shrink-0">${i + 1}.</label>
+            <input 
+              type="text" 
+              id="nft-link-${i}" 
+              class="flex-1 bg-black/40 border border-violet-400/30 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:border-violet-400 focus:outline-none"
+              placeholder="t.me/nft/название-номер"
+              data-index="${i}"
+            />
+            <div id="nft-link-status-${i}" class="w-6 h-6 flex items-center justify-center"></div>
+          `;
+          inputsContainer.appendChild(inputWrapper);
+          
+          // Добавляем обработчик изменения для валидации
+          const input = inputWrapper.querySelector(`#nft-link-${i}`);
+          const statusEl = inputWrapper.querySelector(`#nft-link-status-${i}`);
+          
+          input.addEventListener('input', function() {
+            validateNftLink(i);
+            updateContinueButton();
+          });
+        }
+        
+        // Обновляем счетчик
+        enteredCount.textContent = '0';
+        continueBtn.disabled = true;
+        
+        // Показываем модалку
+        linksModal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+      };
+
+      // Валидация ссылки на NFT
+      function validateNftLink(index) {
+        const input = document.getElementById(`nft-link-${index}`);
+        const statusEl = document.getElementById(`nft-link-status-${index}`);
+        const errorEl = document.getElementById('collection-links-error');
+        
+        if (!input || !statusEl) return;
+        
+        const link = input.value.trim();
+        const nftLinkPattern = /^t\.me\/nft\/[a-zA-Z0-9_-]+$/;
+        
+        if (!link) {
+          statusEl.innerHTML = '';
+          collectionNftLinks[index] = null;
+          errorEl.classList.add('hidden');
+          return;
+        }
+        
+        if (nftLinkPattern.test(link)) {
+          statusEl.innerHTML = '<span class="text-green-400 text-xl">✓</span>';
+          collectionNftLinks[index] = link;
+          errorEl.classList.add('hidden');
+          input.classList.remove('border-red-400');
+          input.classList.add('border-green-400/50');
+        } else {
+          statusEl.innerHTML = '<span class="text-red-400 text-xl">✕</span>';
+          collectionNftLinks[index] = null;
+          errorEl.textContent = 'Неверный формат ссылки. Используйте формат: t.me/nft/название-номер';
+          errorEl.classList.remove('hidden');
+          input.classList.remove('border-green-400/50');
+          input.classList.add('border-red-400');
+        }
+        
+        updateLinkCount();
+      }
+
+      // Обновление счетчика введенных ссылок
+      function updateLinkCount() {
+        const enteredCount = document.getElementById('collection-links-entered');
+        const validLinks = collectionNftLinks.filter(link => link !== null && link !== undefined);
+        if (enteredCount) {
+          enteredCount.textContent = validLinks.length;
+        }
+      }
+
+      // Обновление кнопки "Продолжить"
+      function updateContinueButton() {
+        const continueBtn = document.getElementById('collection-links-continue');
+        const validLinks = collectionNftLinks.filter(link => link !== null && link !== undefined);
+        
+        if (continueBtn) {
+          if (validLinks.length === 9) {
+            continueBtn.disabled = false;
+          } else {
+            continueBtn.disabled = true;
+          }
+        }
+      }
+
+      // Функция для открытия модалки расстановки NFT
+      function openCollectionArrangeModal() {
+        const linksModal = document.getElementById('collection-links-modal');
+        const arrangeModal = document.getElementById('collection-arrange-modal');
+        const gridContainer = document.getElementById('collection-grid');
+        
+        if (!arrangeModal || !gridContainer) {
+          console.error('Модалка расстановки не найдена');
+          return;
+        }
+        
+        // Скрываем модалку ввода ссылок
+        if (linksModal) {
+          linksModal.classList.add('hidden');
+        }
+        
+        // Очищаем сетку
+        gridContainer.innerHTML = '';
+        
+        // Создаем сетку 3x3 с NFT
+        const validLinks = collectionNftLinks.filter(link => link !== null && link !== undefined);
+        if (validLinks.length !== 9) {
+          alert('Ошибка: должно быть 9 ссылок на NFT');
+          return;
+        }
+        
+        // Создаем элементы для сетки
+        for (let i = 0; i < 9; i++) {
+          const gridItem = document.createElement('div');
+          const linkIndex = collectionNftOrder[i];
+          const nftLink = collectionNftLinks[linkIndex];
+          
+          gridItem.className = 'aspect-square rounded-lg overflow-hidden border-2 border-violet-400/30 bg-black/40 cursor-move relative group';
+          gridItem.draggable = true;
+          gridItem.dataset.index = i;
+          gridItem.dataset.linkIndex = linkIndex;
+          gridItem.style.width = '100%';
+          gridItem.style.maxWidth = '100%';
+          gridItem.style.boxSizing = 'border-box';
+          gridItem.style.minWidth = '0';
+          gridItem.style.overflow = 'hidden';
+          
+          // Нормализуем ссылку
+          const normalizedLink = nftLink.startsWith('http') ? nftLink : (nftLink ? 'https://' + nftLink : '');
+          const previewUrl = `/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}`;
+          
+          gridItem.innerHTML = `
+            <div class="w-full h-full flex items-center justify-center bg-black/50 relative" style="width: 100%; height: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden;">
+              <img 
+                src="${previewUrl}" 
+                alt="NFT ${i + 1}"
+                class="w-full h-full object-cover"
+                draggable="false"
+                style="width: 100%; height: 100%; max-width: 100%; object-fit: cover; display: block;"
+                onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');"
+                onload="this.parentElement.querySelector('.nft-loading').classList.add('hidden');"
+                oncontextmenu="return false;"
+              />
+              <div class="nft-loading absolute inset-0 flex items-center justify-center bg-black/70" style="width: 100%; height: 100%; box-sizing: border-box;">
+                <div class="text-2xl opacity-70 animate-spin">⏳</div>
+              </div>
+              <div class="hidden w-full h-full flex items-center justify-center bg-black/50" style="width: 100%; height: 100%; box-sizing: border-box;">
+                <div class="text-2xl opacity-70">🖼️</div>
+              </div>
+              <div class="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded pointer-events-none" style="box-sizing: border-box;">
+                ${i + 1}
+              </div>
+            </div>
+          `;
+          
+          // Запрещаем контекстное меню (правый клик)
+          gridItem.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+          });
+          
+          // Запрещаем выделение текста при длительном нажатии
+          gridItem.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            return false;
+          });
+          
+          // Добавляем обработчики drag and drop (для ПК)
+          gridItem.addEventListener('dragstart', handleDragStart);
+          gridItem.addEventListener('dragover', handleDragOver);
+          gridItem.addEventListener('dragleave', handleDragLeave);
+          gridItem.addEventListener('drop', handleDrop);
+          gridItem.addEventListener('dragend', handleDragEnd);
+          
+          // Добавляем обработчики touch событий (для мобильных устройств)
+          gridItem.addEventListener('touchstart', handleTouchStart, { passive: false });
+          gridItem.addEventListener('touchmove', handleTouchMove, { passive: false });
+          gridItem.addEventListener('touchend', handleTouchEnd, { passive: false });
+          gridItem.addEventListener('touchcancel', handleTouchCancel, { passive: false });
+          
+          gridContainer.appendChild(gridItem);
+        }
+        
+        // Показываем модалку расстановки
+        arrangeModal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+      }
+
+      // Вспомогательная функция для замены двух элементов местами
+      function swapElements(el1, el2) {
+        const parent1 = el1.parentNode;
+        const parent2 = el2.parentNode;
+        
+        if (parent1 !== parent2) return false; // Элементы должны быть в одном родителе
+        
+        const next1 = el1.nextSibling;
+        const next2 = el2.nextSibling;
+        
+        // Вставляем el2 на место el1
+        parent1.insertBefore(el2, next1);
+        
+        // Вставляем el1 на место el2
+        // Если el2 был после el1, то next2 уже не существует или изменился
+        // Поэтому нужно найти правильную позицию
+        if (next2 && next2 !== el1) {
+          parent2.insertBefore(el1, next2);
+        } else {
+          // Если el2 был последним или next2 указывает на el1 (который уже перемещен)
+          // Нужно найти правильную позицию
+          const allChildren = Array.from(parent2.children);
+          const el2Index = allChildren.indexOf(el2);
+          if (el2Index < allChildren.length - 1) {
+            parent2.insertBefore(el1, allChildren[el2Index + 1]);
+          } else {
+            parent2.appendChild(el1);
+          }
+        }
+        
+        return true;
+      }
+
+      // Обработчики drag and drop
+      function handleDragStart(e) {
+        draggedElement = this;
+        draggedIndex = parseInt(this.dataset.index);
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        // Не передаем данные, чтобы предотвратить копирование
+        e.dataTransfer.setData('text/plain', this.dataset.index);
+        // Устанавливаем пустое изображение для drag preview
+        const dragImage = document.createElement('div');
+        dragImage.style.position = 'absolute';
+        dragImage.style.top = '-1000px';
+        dragImage.innerHTML = this.innerHTML;
+        document.body.appendChild(dragImage);
+        e.dataTransfer.setDragImage(dragImage, 0, 0);
+        setTimeout(() => document.body.removeChild(dragImage), 0);
+      }
+
+      function handleDragOver(e) {
+        if (e.preventDefault) {
+          e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+        
+        // Убираем подсветку со всех элементов
+        const gridItems = document.querySelectorAll('#collection-grid > div');
+        gridItems.forEach(item => {
+          if (item !== draggedElement) {
+            item.classList.remove('drag-over');
+          }
+        });
+        
+        // Подсвечиваем элемент, над которым перетаскиваем
+        if (this !== draggedElement) {
+          this.classList.add('drag-over');
+        }
+        
+        return false;
+      }
+
+      function handleDragLeave(e) {
+        // Убираем подсветку при уходе с элемента
+        this.classList.remove('drag-over');
+      }
+
+      function handleDrop(e) {
+        if (e.stopPropagation) {
+          e.stopPropagation();
+        }
+        
+        e.preventDefault();
+        
+        if (draggedElement && draggedElement !== this) {
+          const gridContainer = document.getElementById('collection-grid');
+          if (!gridContainer) return false;
+          
+          const sourceElement = draggedElement;
+          const targetElement = this;
+          
+          // Получаем текущие индексы до перестановки
+          const allItems = Array.from(gridContainer.children);
+          const sourceIndex = allItems.indexOf(sourceElement);
+          const targetIndex = allItems.indexOf(targetElement);
+          
+          if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return false;
+          
+          // Простая и надежная замена двух элементов
+          // Сохраняем ссылки на следующие элементы ДО перемещения
+          const sourceNextSibling = sourceElement.nextSibling;
+          const targetNextSibling = targetElement.nextSibling;
+          
+          // Если элементы соседние (индекс отличается на 1)
+          if (Math.abs(sourceIndex - targetIndex) === 1) {
+            // Простая замена соседних элементов
+            if (sourceIndex < targetIndex) {
+              // source перед target: target -> source, source -> после target
+              gridContainer.insertBefore(targetElement, sourceElement);
+              gridContainer.insertBefore(sourceElement, targetNextSibling);
+            } else {
+              // target перед source: source -> target, target -> после source
+              gridContainer.insertBefore(sourceElement, targetElement);
+              gridContainer.insertBefore(targetElement, sourceNextSibling);
+            }
+          } else {
+            // Элементы не соседние - используем два шага
+            // Шаг 1: Перемещаем target на место source
+            if (sourceNextSibling) {
+              gridContainer.insertBefore(targetElement, sourceNextSibling);
+            } else {
+              gridContainer.appendChild(targetElement);
+            }
+            
+            // Шаг 2: Перемещаем source на место target
+            // Теперь target уже перемещен, находим его новую позицию
+            const allItemsAfterStep1 = Array.from(gridContainer.children);
+            const targetNewIndex = allItemsAfterStep1.indexOf(targetElement);
+            
+            // Находим элемент, который был после target изначально
+            const targetOriginalNext = allItems[targetIndex + 1];
+            if (targetOriginalNext && targetOriginalNext !== sourceElement) {
+              // Вставляем source перед элементом, который был после target
+              gridContainer.insertBefore(sourceElement, targetOriginalNext);
+            } else if (targetNewIndex < allItemsAfterStep1.length - 1) {
+              // target не последний после перемещения, вставляем source после target
+              const afterTarget = allItemsAfterStep1[targetNewIndex + 1];
+              if (afterTarget && afterTarget !== sourceElement) {
+                gridContainer.insertBefore(sourceElement, afterTarget);
+              } else {
+                gridContainer.appendChild(sourceElement);
+              }
+            } else {
+              // target последний, добавляем source в конец
+              gridContainer.appendChild(sourceElement);
+            }
+          }
+          
+          // Обновляем data-index атрибуты и номера позиций
+          const newItems = Array.from(gridContainer.children);
+          newItems.forEach((item, idx) => {
+            item.dataset.index = idx;
+            // Обновляем номер позиции в бейдже
+            const positionBadge = item.querySelector('.absolute.top-2.left-2');
+            if (positionBadge) {
+              positionBadge.textContent = idx + 1;
+            }
+          });
+          
+          // Меняем местами в массиве order для сохранения правильного порядка ссылок
+          const tempOrder = collectionNftOrder[sourceIndex];
+          collectionNftOrder[sourceIndex] = collectionNftOrder[targetIndex];
+          collectionNftOrder[targetIndex] = tempOrder;
+        }
+        
+        // Убираем подсветку
+        const gridItems = document.querySelectorAll('#collection-grid > div');
+        gridItems.forEach(item => {
+          item.classList.remove('drag-over');
+        });
+        
+        return false;
+      }
+
+      function handleDragEnd(e) {
+        // Убираем класс dragging
+        if (this) {
+          this.classList.remove('dragging');
+        }
+        
+        // Убираем подсветку со всех элементов
+        const gridItems = document.querySelectorAll('#collection-grid > div');
+        gridItems.forEach(item => {
+          item.classList.remove('drag-over', 'dragging');
+        });
+        
+        draggedElement = null;
+        draggedIndex = null;
+      }
+
+      // Обработчики touch событий для мобильных устройств
+      function handleTouchStart(e) {
+        if (e.touches.length !== 1) return; // Обрабатываем только одно касание
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        touchStartElement = this;
+        touchStartIndex = parseInt(this.dataset.index);
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchCurrentElement = this;
+        
+        // Добавляем визуальную обратную связь
+        this.classList.add('dragging');
+        this.style.opacity = '0.7';
+        this.style.transform = 'scale(1.1)';
+        this.style.zIndex = '1000';
+        this.style.transition = 'none';
+        
+        // Создаем "призрачный" элемент для визуальной обратной связи
+        const rect = this.getBoundingClientRect();
+        touchGhostElement = this.cloneNode(true);
+        touchGhostElement.style.position = 'fixed';
+        touchGhostElement.style.left = rect.left + 'px';
+        touchGhostElement.style.top = rect.top + 'px';
+        touchGhostElement.style.width = rect.width + 'px';
+        touchGhostElement.style.height = rect.height + 'px';
+        touchGhostElement.style.pointerEvents = 'none';
+        touchGhostElement.style.zIndex = '10000';
+        touchGhostElement.style.opacity = '0.8';
+        touchGhostElement.style.transform = 'scale(1.05) rotate(2deg)';
+        touchGhostElement.style.boxShadow = '0 10px 40px rgba(124, 58, 237, 0.6), 0 0 60px rgba(236, 72, 153, 0.4)';
+        touchGhostElement.style.transition = 'none';
+        touchGhostElement.style.border = '2px solid rgba(167, 139, 250, 0.8)';
+        // Удаляем все обработчики событий из клона и отключаем взаимодействие
+        const allChildren = touchGhostElement.querySelectorAll('*');
+        allChildren.forEach(child => {
+          child.style.pointerEvents = 'none';
+        });
+        document.body.appendChild(touchGhostElement);
+        
+        // Убираем подсветку со всех элементов
+        const gridItems = document.querySelectorAll('#collection-grid > div');
+        gridItems.forEach(item => {
+          if (item !== this) {
+            item.classList.remove('drag-over');
+          }
+        });
+      }
+
+      function handleTouchMove(e) {
+        if (!touchStartElement || e.touches.length !== 1) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const touch = e.touches[0];
+        const currentX = touch.clientX;
+        const currentY = touch.clientY;
+        
+        // Обновляем позицию "призрачного" элемента
+        if (touchGhostElement) {
+          const rect = touchStartElement.getBoundingClientRect();
+          const offsetX = rect.width / 2;
+          const offsetY = rect.height / 2;
+          touchGhostElement.style.left = (currentX - offsetX) + 'px';
+          touchGhostElement.style.top = (currentY - offsetY) + 'px';
+        }
+        
+        // Определяем, над каким элементом находится палец
+        // Временно скрываем призрачный элемент для правильного определения элемента под пальцем
+        if (touchGhostElement) {
+          touchGhostElement.style.pointerEvents = 'none';
+          touchGhostElement.style.opacity = '0.5';
+        }
+        
+        const elementBelow = document.elementFromPoint(currentX, currentY);
+        let targetGridItem = null;
+        
+        if (elementBelow) {
+          // Ищем элемент сетки, перебирая родителей до тех пор, пока не найдем элемент с классом 'group'
+          let currentElement = elementBelow;
+          let depth = 0;
+          const maxDepth = 10; // Ограничение глубины поиска
+          
+          while (currentElement && depth < maxDepth && !targetGridItem) {
+            // Проверяем, является ли элемент элементом сетки
+            if (currentElement.id === 'collection-grid') {
+              break;
+            }
+            
+            // Проверяем, является ли элемент прямым дочерним элементом сетки
+            if (currentElement.parentElement && currentElement.parentElement.id === 'collection-grid') {
+              targetGridItem = currentElement;
+              break;
+            }
+            
+            // Проверяем, имеет ли элемент класс 'group' и является ли он дочерним элементом сетки
+            if (currentElement.classList && currentElement.classList.contains('group')) {
+              let parent = currentElement.parentElement;
+              while (parent) {
+                if (parent.id === 'collection-grid') {
+                  targetGridItem = currentElement;
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+              if (targetGridItem) break;
+            }
+            
+            currentElement = currentElement.parentElement;
+            depth++;
+          }
+          
+          // Если не нашли через перебор, пытаемся найти через closest
+          if (!targetGridItem) {
+            targetGridItem = elementBelow.closest('#collection-grid > div');
+          }
+        }
+        
+        // Восстанавливаем видимость призрачного элемента
+        if (touchGhostElement) {
+          touchGhostElement.style.pointerEvents = 'none';
+          touchGhostElement.style.opacity = '0.8';
+        }
+        
+        if (targetGridItem && targetGridItem !== touchStartElement) {
+          // Подсвечиваем элемент, над которым находится палец
+          const gridItems = document.querySelectorAll('#collection-grid > div');
+          gridItems.forEach(item => {
+            if (item !== touchStartElement) {
+              item.classList.remove('drag-over');
+            }
+          });
+          targetGridItem.classList.add('drag-over');
+          touchCurrentElement = targetGridItem;
+        } else {
+          // Убираем подсветку, если палец не над элементом сетки
+          const gridItems = document.querySelectorAll('#collection-grid > div');
+          gridItems.forEach(item => {
+            if (item !== touchStartElement) {
+              item.classList.remove('drag-over');
+            }
+          });
+          if (!targetGridItem || targetGridItem === touchStartElement) {
+            touchCurrentElement = null;
+          } else {
+            touchCurrentElement = targetGridItem;
+          }
+        }
+      }
+
+      function handleTouchEnd(e) {
+        if (!touchStartElement) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Убираем визуальные эффекты
+        touchStartElement.classList.remove('dragging');
+        touchStartElement.style.opacity = '';
+        touchStartElement.style.transform = '';
+        touchStartElement.style.zIndex = '';
+        touchStartElement.style.transition = '';
+        
+        // Удаляем "призрачный" элемент
+        if (touchGhostElement) {
+          try {
+            document.body.removeChild(touchGhostElement);
+          } catch (err) {
+            // Элемент уже удален
+          }
+          touchGhostElement = null;
+        }
+        
+        // Если палец был отпущен над другим элементом, меняем их местами
+        if (touchCurrentElement && touchCurrentElement !== touchStartElement) {
+          const gridContainer = document.getElementById('collection-grid');
+          if (gridContainer) {
+            const allItems = Array.from(gridContainer.children);
+            const sourceIndex = allItems.indexOf(touchStartElement);
+            const targetIndex = allItems.indexOf(touchCurrentElement);
+            
+            if (sourceIndex !== -1 && targetIndex !== -1 && sourceIndex !== targetIndex) {
+              // Сохраняем ссылки на следующие элементы ДО перестановки
+              const sourceNextSibling = touchStartElement.nextSibling;
+              const targetNextSibling = touchCurrentElement.nextSibling;
+              
+              // Если элементы соседние (индекс отличается на 1)
+              if (Math.abs(sourceIndex - targetIndex) === 1) {
+                // Простая замена соседних элементов
+                if (sourceIndex < targetIndex) {
+                  // source перед target: target -> source, source -> после target
+                  gridContainer.insertBefore(touchCurrentElement, touchStartElement);
+                  gridContainer.insertBefore(touchStartElement, targetNextSibling);
+                } else {
+                  // target перед source: source -> target, target -> после source
+                  gridContainer.insertBefore(touchStartElement, touchCurrentElement);
+                  gridContainer.insertBefore(touchCurrentElement, sourceNextSibling);
+                }
+              } else {
+                // Элементы не соседние - используем два шага
+                // Шаг 1: Перемещаем target на место source
+                if (sourceNextSibling) {
+                  gridContainer.insertBefore(touchCurrentElement, sourceNextSibling);
+                } else {
+                  gridContainer.appendChild(touchCurrentElement);
+                }
+                
+                // Шаг 2: Перемещаем source на место target
+                const allItemsAfterStep1 = Array.from(gridContainer.children);
+                const targetNewIndex = allItemsAfterStep1.indexOf(touchCurrentElement);
+                
+                // Находим элемент, который был после target изначально
+                const targetOriginalNext = allItems[targetIndex + 1];
+                if (targetOriginalNext && targetOriginalNext !== touchStartElement) {
+                  gridContainer.insertBefore(touchStartElement, targetOriginalNext);
+                } else if (targetNewIndex < allItemsAfterStep1.length - 1) {
+                  const afterTarget = allItemsAfterStep1[targetNewIndex + 1];
+                  if (afterTarget && afterTarget !== touchStartElement) {
+                    gridContainer.insertBefore(touchStartElement, afterTarget);
+                  } else {
+                    gridContainer.appendChild(touchStartElement);
+                  }
+                } else {
+                  gridContainer.appendChild(touchStartElement);
+                }
+              }
+              
+              // Обновляем data-index атрибуты и номера позиций
+              const newItems = Array.from(gridContainer.children);
+              newItems.forEach((item, idx) => {
+                item.dataset.index = idx;
+                // Обновляем номер позиции в бейдже
+                const positionBadge = item.querySelector('.absolute.top-2.left-2');
+                if (positionBadge) {
+                  positionBadge.textContent = idx + 1;
+                }
+              });
+              
+              // Меняем местами в массиве order для сохранения правильного порядка ссылок
+              const tempOrder = collectionNftOrder[sourceIndex];
+              collectionNftOrder[sourceIndex] = collectionNftOrder[targetIndex];
+              collectionNftOrder[targetIndex] = tempOrder;
+            }
+          }
+        }
+        
+        // Убираем подсветку со всех элементов
+        const gridItems = document.querySelectorAll('#collection-grid > div');
+        gridItems.forEach(item => {
+          item.classList.remove('drag-over', 'dragging');
+        });
+        
+        // Сбрасываем переменные
+        touchStartElement = null;
+        touchStartIndex = null;
+        touchStartX = null;
+        touchStartY = null;
+        touchCurrentElement = null;
+      }
+
+      function handleTouchCancel(e) {
+        if (!touchStartElement) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Убираем визуальные эффекты
+        touchStartElement.classList.remove('dragging');
+        touchStartElement.style.opacity = '';
+        touchStartElement.style.transform = '';
+        touchStartElement.style.zIndex = '';
+        touchStartElement.style.transition = '';
+        
+        // Удаляем "призрачный" элемент
+        if (touchGhostElement) {
+          try {
+            document.body.removeChild(touchGhostElement);
+          } catch (err) {
+            // Элемент уже удален
+          }
+          touchGhostElement = null;
+        }
+        
+        // Убираем подсветку со всех элементов
+        const gridItems = document.querySelectorAll('#collection-grid > div');
+        gridItems.forEach(item => {
+          item.classList.remove('drag-over', 'dragging');
+        });
+        
+        // Сбрасываем переменные
+        touchStartElement = null;
+        touchStartIndex = null;
+        touchStartX = null;
+        touchStartY = null;
+        touchCurrentElement = null;
+      }
+
+      // Обновление сетки после изменения порядка
+      function updateCollectionGrid() {
+        const gridContainer = document.getElementById('collection-grid');
+        if (!gridContainer) return;
+        
+        const validLinks = collectionNftLinks.filter(link => link !== null && link !== undefined);
+        if (validLinks.length !== 9) return;
+        
+        // Пересоздаем сетку с новым порядком
+        gridContainer.innerHTML = '';
+        
+        for (let i = 0; i < 9; i++) {
+          const gridItem = document.createElement('div');
+          const linkIndex = collectionNftOrder[i];
+          const nftLink = collectionNftLinks[linkIndex];
+          
+          gridItem.className = 'aspect-square rounded-lg overflow-hidden border-2 border-violet-400/30 bg-black/40 cursor-move relative group';
+          gridItem.draggable = true;
+          gridItem.dataset.index = i;
+          gridItem.dataset.linkIndex = linkIndex;
+          gridItem.style.width = '100%';
+          gridItem.style.maxWidth = '100%';
+          gridItem.style.boxSizing = 'border-box';
+          gridItem.style.minWidth = '0';
+          gridItem.style.overflow = 'hidden';
+          
+          const normalizedLink = nftLink.startsWith('http') ? nftLink : (nftLink ? 'https://' + nftLink : '');
+          const previewUrl = `/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}`;
+          
+          gridItem.innerHTML = `
+            <div class="w-full h-full flex items-center justify-center bg-black/50 relative" style="width: 100%; height: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden;">
+              <img 
+                src="${previewUrl}" 
+                alt="NFT ${i + 1}"
+                class="w-full h-full object-cover"
+                draggable="false"
+                style="width: 100%; height: 100%; max-width: 100%; object-fit: cover; display: block;"
+                onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');"
+                onload="this.parentElement.querySelector('.nft-loading').classList.add('hidden');"
+                oncontextmenu="return false;"
+              />
+              <div class="nft-loading absolute inset-0 flex items-center justify-center bg-black/70" style="width: 100%; height: 100%; box-sizing: border-box;">
+                <div class="text-2xl opacity-70 animate-spin">⏳</div>
+              </div>
+              <div class="hidden w-full h-full flex items-center justify-center bg-black/50" style="width: 100%; height: 100%; box-sizing: border-box;">
+                <div class="text-2xl opacity-70">🖼️</div>
+              </div>
+              <div class="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded pointer-events-none" style="box-sizing: border-box;">
+                ${i + 1}
+              </div>
+            </div>
+          `;
+          
+          // Запрещаем контекстное меню (правый клик)
+          gridItem.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+          });
+          
+          // Запрещаем выделение текста при длительном нажатии
+          gridItem.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            return false;
+          });
+          
+          // Добавляем обработчики drag and drop (для ПК)
+          gridItem.addEventListener('dragstart', handleDragStart);
+          gridItem.addEventListener('dragover', handleDragOver);
+          gridItem.addEventListener('dragleave', handleDragLeave);
+          gridItem.addEventListener('drop', handleDrop);
+          gridItem.addEventListener('dragend', handleDragEnd);
+          
+          // Добавляем обработчики touch событий (для мобильных устройств)
+          gridItem.addEventListener('touchstart', handleTouchStart, { passive: false });
+          gridItem.addEventListener('touchmove', handleTouchMove, { passive: false });
+          gridItem.addEventListener('touchend', handleTouchEnd, { passive: false });
+          gridItem.addEventListener('touchcancel', handleTouchCancel, { passive: false });
+          
+          gridContainer.appendChild(gridItem);
+        }
+      }
+
+      // Отправка коллекции
+      async function submitCollection() {
+        if (!currentCollectionContestId) {
+          alert('Ошибка: ID конкурса не найден');
+          return;
+        }
+        
+        const validLinks = collectionNftLinks.filter(link => link !== null && link !== undefined);
+        if (validLinks.length !== 9) {
+          alert('Ошибка: должно быть 9 ссылок на NFT');
+          return;
+        }
+        
+        // Формируем массив ссылок в правильном порядке
+        const orderedLinks = collectionNftOrder.map(index => collectionNftLinks[index]);
+        
+        const submitBtn = document.getElementById('collection-arrange-submit');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = '⏳ Отправка...';
+        }
+        
+        try {
+          const username = window.Telegram?.WebApp?.initDataUnsafe?.user?.username || '';
+          const response = await window.fetchJSON(`/api/contests/${currentCollectionContestId}/submit-collection`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: currentUserId,
+              username: username,
+              nft_links: orderedLinks
             })
+          });
+          
+          if (response.success) {
+            alert('✅ Коллекция успешно отправлена!');
+            
+            // Закрываем модалки
+            const arrangeModal = document.getElementById('collection-arrange-modal');
+            if (arrangeModal) {
+              arrangeModal.classList.add('hidden');
+            }
+            document.body.classList.remove('modal-open');
+            
+            // Обновляем список конкурсов
+            await loadContests();
+          } else {
+            alert('❌ Ошибка при отправке коллекции: ' + (response.message || 'Неизвестная ошибка'));
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Отправить коллекцию';
+            }
+          }
+        } catch (e) {
+          console.error('Ошибка отправки коллекции:', e);
+          alert('❌ Ошибка при отправке коллекции: ' + (e.message || 'Неизвестная ошибка'));
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Отправить коллекцию';
+          }
+        }
+      }
 
-        return {
-            "success": True,
-            "collections": sanitized,
-            "total": len(sanitized)
+      // Инициализация обработчиков событий модалок
+      function initCollectionModals() {
+        // Модалка ввода ссылок
+        const linksModal = document.getElementById('collection-links-modal');
+        const linksModalClose = document.getElementById('collection-links-modal-close');
+        const linksCancel = document.getElementById('collection-links-cancel');
+        const linksContinue = document.getElementById('collection-links-continue');
+        
+        // Модалка расстановки
+        const arrangeModal = document.getElementById('collection-arrange-modal');
+        const arrangeModalClose = document.getElementById('collection-arrange-modal-close');
+        const arrangeBack = document.getElementById('collection-arrange-back');
+        const arrangeSubmit = document.getElementById('collection-arrange-submit');
+        
+        // Закрытие модалки ввода ссылок
+        if (linksModalClose) {
+          linksModalClose.addEventListener('click', function() {
+            if (linksModal) linksModal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          });
+        }
+        
+        if (linksCancel) {
+          linksCancel.addEventListener('click', function() {
+            if (linksModal) linksModal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          });
+        }
+        
+        // Кнопка "Продолжить" в модалке ввода ссылок
+        if (linksContinue) {
+          linksContinue.addEventListener('click', function() {
+            const validLinks = collectionNftLinks.filter(link => link !== null && link !== undefined);
+            if (validLinks.length === 9) {
+              openCollectionArrangeModal();
+            }
+          });
+        }
+        
+        // Закрытие модалки расстановки
+        if (arrangeModalClose) {
+          arrangeModalClose.addEventListener('click', function() {
+            if (arrangeModal) arrangeModal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          });
+        }
+        
+        // Кнопка "Назад" в модалке расстановки
+        if (arrangeBack) {
+          arrangeBack.addEventListener('click', function() {
+            if (arrangeModal) arrangeModal.classList.add('hidden');
+            if (linksModal) linksModal.classList.remove('hidden');
+          });
+        }
+        
+        // Кнопка "Отправить коллекцию"
+        if (arrangeSubmit) {
+          arrangeSubmit.addEventListener('click', submitCollection);
+        }
+        
+        // Закрытие по клику вне модалки
+        if (linksModal) {
+          linksModal.addEventListener('click', function(e) {
+            if (e.target === linksModal) {
+              linksModal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+            }
+          });
+        }
+        
+        if (arrangeModal) {
+          arrangeModal.addEventListener('click', function(e) {
+            if (e.target === arrangeModal) {
+              arrangeModal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+            }
+          });
+        }
+      }
+
+      // Инициализируем обработчики модалок сразу
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCollectionModals);
+      } else {
+        initCollectionModals();
+      }
+
+      // 🎨 Система тем
+      const themes = {
+        default: {
+          name: 'По умолчанию',
+          id: 'default',
+          icon: '🟣',
+          description: 'Классическая фиолетово-розовая тема'
+        },
+        kitty: {
+          name: 'Kitty',
+          id: 'kitty',
+          icon: '🐱',
+          description: 'Милые розовые оттенки'
+        },
+        mario: {
+          name: 'Mario',
+          id: 'mario',
+          icon: '🍄',
+          description: 'Ретро стиль Super Mario Bros'
+        },
+        aot: {
+          name: 'Attack on Titan',
+          id: 'aot',
+          icon: '⚔️',
+          description: 'Сепия, пергамент, готический стиль'
+        }
+      };
+
+      // Загрузка текущей темы из localStorage
+      function loadTheme() {
+        const savedTheme = localStorage.getItem('selectedTheme') || 'default';
+        applyTheme(savedTheme);
+        setTimeout(() => {
+          updateIconsForTheme(savedTheme);
+        }, 300);
+      }
+
+      // Применение темы
+      function applyTheme(themeId) {
+        const body = document.body;
+        body.classList.remove('theme-kitty', 'theme-mario', 'theme-aot');
+        
+        if (themeId !== 'default') {
+          body.classList.add(`theme-${themeId}`);
+        }
+        
+        updateIconsForTheme(themeId);
+        localStorage.setItem('selectedTheme', themeId);
+        console.log('✅ Тема применена:', themeId);
+      }
+
+      // Функция для очистки всех иконок перед применением новой темы
+      function clearAllThemeIcons() {
+        // Скрываем изображение титана
+        const titanImage = document.getElementById('aot-titan-image');
+        if (titanImage) {
+          titanImage.classList.add('hidden');
+        }
+        const avatarEl = document.getElementById('profile-avatar');
+        if (avatarEl) {
+          avatarEl.textContent = avatarEl.textContent.replace(/[🍄⭐🪙👑🐱😸😻🙀😽😾😿👤👨👩]/g, '');
+          if (!avatarEl.textContent.trim()) {
+            avatarEl.textContent = '👤';
+          }
         }
 
-@app.post("/api/contests/{contest_id}/vote-collection")
-async def submit_collection_vote(contest_id: int, request: Request):
-    """Сохранить оценку за коллекцию конкурса коллекций"""
-    data = await request.json()
-    user_id = data.get("user_id")
-    collection_number = data.get("collection_number")
-    score = data.get("score")
+        const profileBtn = document.querySelector('[data-section="profile-section"]');
+        if (profileBtn) {
+          const text = profileBtn.textContent.replace(/[🍄🐱👤👨👩]/g, '').trim();
+          profileBtn.innerHTML = text || 'Профиль';
+        }
 
-    if not user_id or collection_number is None or score is None:
-        raise HTTPException(status_code=400, detail="Необходимо указать user_id, collection_number и score")
+        const contestsBtn = document.querySelector('[data-section="contests-section"]');
+        if (contestsBtn) {
+          const text = contestsBtn.textContent.replace(/[⭐🎁🏆🎯]/g, '').trim();
+          contestsBtn.innerHTML = text || 'Конкурсы';
+        }
 
-    try:
-        user_id = int(user_id)
-        collection_number = int(collection_number)
-        score = int(score)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Некорректные данные для голосования")
+        const ratingBtn = document.querySelector('[data-section="rating-section"]');
+        if (ratingBtn) {
+          const text = ratingBtn.textContent.replace(/[🪙💖⭐🌟]/g, '').trim();
+          ratingBtn.innerHTML = text || 'Рейтинг';
+        }
 
-    if score < 1 or score > 5:
-        raise HTTPException(status_code=400, detail="Оценка должна быть в диапазоне от 1 до 5")
+        const changeThemeBtn = document.getElementById('change-theme-btn');
+        if (changeThemeBtn) {
+          const text = changeThemeBtn.textContent.replace(/[🎮💝🎨]/g, '').trim();
+          changeThemeBtn.innerHTML = text || 'Сменить тему';
+        }
 
-    from models import Participant
+        const contactBtn = document.getElementById('contact-owner-btn');
+        if (contactBtn) {
+          const text = contactBtn.textContent.replace(/[📮💌📨]/g, '').trim();
+          contactBtn.innerHTML = text || 'Связь с владельцем';
+        }
 
-    async with async_session() as session:
-        giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-        giveaway = giveaway_result.scalars().first()
+        const levelBadgeSection = document.querySelector('h3.flex.items-center.gap-2');
+        if (levelBadgeSection) {
+          const starIcon = levelBadgeSection.querySelector('.text-violet-400');
+          if (starIcon) {
+            starIcon.textContent = starIcon.textContent.replace(/[🪙🐱💖⭐🌟]/g, '');
+            starIcon.style.animation = '';
+          }
+        }
 
-        if not giveaway:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        const profileSection = document.querySelector('#profile-section h2');
+        if (profileSection) {
+          const text = profileSection.textContent.replace(/[🍄🐱👤👨👩]/g, '').trim();
+          profileSection.innerHTML = text || 'Профиль';
+        }
 
-        contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
-        if contest_type != 'collection':
-            raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса коллекций")
+        const contestsSection = document.querySelector('#contests-section h2');
+        if (contestsSection) {
+          const text = contestsSection.textContent.replace(/[⭐🎁🏆🎯]/g, '').trim();
+          contestsSection.innerHTML = text || 'Конкурсы';
+        }
 
-        participant_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.user_id == user_id
-            )
-        )
-        participant = participant_result.scalars().first()
-        if not participant:
-            raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
+        const ratingSection = document.querySelector('#rating-section h2');
+        if (ratingSection) {
+          const text = ratingSection.textContent.replace(/[🪙💖⭐🌟]/g, '').trim();
+          ratingSection.innerHTML = text || 'Рейтинг';
+        }
+      }
 
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
+      // Обновление иконок для темы
+      function updateIconsForTheme(themeId) {
+        clearAllThemeIcons();
 
-    async with collection_data_lock:
-        collection_data = load_collection_data()
-        contest_entry = collection_data.get(str(contest_id))
-        if not contest_entry:
-            raise HTTPException(status_code=404, detail="Коллекции для голосования не найдены")
+        if (themeId === 'mario') {
+          const avatarEl = document.getElementById('profile-avatar');
+          if (avatarEl) {
+            const marioIcons = ['🍄', '⭐', '🪙', '👑'];
+            avatarEl.textContent = marioIcons[Math.floor(Math.random() * marioIcons.length)];
+          }
 
-        collections = contest_entry.get("collections", [])
-        collection = next((c for c in collections if c.get("collection_number") == collection_number), None)
-        if not collection:
-            raise HTTPException(status_code=404, detail="Коллекция не найдена")
+          const profileBtn = document.querySelector('[data-section="profile-section"]');
+          if (profileBtn) profileBtn.innerHTML = '🍄 Профиль';
 
-        if collection.get("participant_user_id") == user_id:
-            raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную коллекцию")
+          const contestsBtn = document.querySelector('[data-section="contests-section"]');
+          if (contestsBtn) contestsBtn.innerHTML = '⭐ Конкурсы';
 
-        votes = collection.setdefault("votes", {})
-        # Проверяем, не оценил ли пользователь уже эту коллекцию
-        if str(user_id) in votes:
-            raise HTTPException(status_code=400, detail="Вы уже оценили эту коллекцию. Повторная оценка не разрешена.")
-        
-        votes[str(user_id)] = score
+          const ratingBtn = document.querySelector('[data-section="rating-section"]');
+          if (ratingBtn) ratingBtn.innerHTML = '🪙 Рейтинг';
 
-        remaining = sum(
-            1
-            for c in collections
-            if c.get("participant_user_id") != user_id and str(user_id) not in (c.get("votes") or {})
-        )
+          const changeThemeBtn = document.getElementById('change-theme-btn');
+          if (changeThemeBtn) changeThemeBtn.innerHTML = '🎮 Сменить тему';
 
-        save_collection_data(collection_data)
+          const contactBtn = document.getElementById('contact-owner-btn');
+          if (contactBtn) contactBtn.innerHTML = '📮 Связь с владельцем';
 
-    return {
-        "success": True,
-        "score": score,
-        "collection_number": collection_number,
-        "remaining": remaining
-    }
-
-@app.get("/api/contests/{contest_id}/participants-count")
-async def get_participants_count(contest_id: int):
-    """Получить количество участников конкурса"""
-    try:
-        async with async_session() as session:
-            from models import Participant
-            result = await session.execute(
-                select(func.count(Participant.id)).where(Participant.giveaway_id == contest_id)
-            )
-            count = result.scalar() or 0
-            return {"count": count}
-    except Exception as e:
-        logger.error(f"Ошибка при получении количества участников: {e}", exc_info=True)
-        return {"count": 0}
-
-@app.post("/api/contests/{contest_id}/calculate-results")
-async def calculate_drawing_contest_results(contest_id: int, current_user_id: int = Query(...)):
-    """Подсчитать итоги конкурса рисунков (среднее арифметическое оценок)"""
-    try:
-        async with async_session() as session:
-            giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            if contest_type != 'drawing':
-                raise HTTPException(status_code=400, detail="Этот конкурс не является конкурсом рисунков")
-            
-            # Проверяем права доступа - только создатель может подсчитывать итоги
-            if giveaway.created_by != current_user_id:
-                # Проверяем, является ли пользователь админом или создателем
-                user_result = await session.execute(
-                    select(User).where(User.telegram_id == current_user_id)
-                )
-                user = user_result.scalars().first()
-                if not user or (user.role != "creator" and user.role != "admin"):
-                    raise HTTPException(status_code=403, detail="Только создатель конкурса может подсчитывать итоги")
-                if user.role == "admin" and giveaway.created_by != current_user_id:
-                    raise HTTPException(status_code=403, detail="Только создатель конкурса может подсчитывать итоги")
-            
-            # Проверяем, что время голосования истекло
-            msk_tz = pytz.timezone('Europe/Moscow')
-            now_msk = datetime.now(msk_tz)
-            voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-            if voting_end and now_msk <= voting_end:
-                raise HTTPException(status_code=400, detail="Время голосования еще не истекло")
-            
-            # Загружаем данные о работах
-            async with drawing_data_lock:
-                drawing_data = load_drawing_data()
-                contest_entry = drawing_data.get(str(contest_id))
-                if not contest_entry:
-                    raise HTTPException(status_code=404, detail="Данные о работах не найдены")
-                
-                works = contest_entry.get("works", [])
-                if not works:
-                    raise HTTPException(status_code=400, detail="Нет работ для подсчета")
-                
-                # Подсчитываем среднее арифметическое для каждой работы
-                results = []
-                from models import Participant
-                
-                for work in works:
-                    work_number = work.get("work_number")
-                    participant_user_id = work.get("participant_user_id")
-                    votes = work.get("votes", {}) or {}
-                    
-                    if not work_number or not participant_user_id:
-                        continue
-                    
-                    # Получаем username участника из таблицы User (приоритет) или Participant
-                    username = None
-                    user_result = await session.execute(
-                        select(User).where(User.telegram_id == participant_user_id)
-                    )
-                    user = user_result.scalars().first()
-                    if user and user.username:
-                        username = user.username
-                    else:
-                        # Если username нет в User, берем из Participant
-                        participant_result = await session.execute(
-                            select(Participant).where(
-                                Participant.giveaway_id == contest_id,
-                                Participant.user_id == participant_user_id
-                            )
-                        )
-                        participant = participant_result.scalars().first()
-                        if participant:
-                            username = participant.username
-                    
-                    # Подсчитываем среднее арифметическое
-                    scores = [int(score) for score in votes.values() if score]
-                    if scores:
-                        average_score = sum(scores) / len(scores)
-                    else:
-                        average_score = 0.0
-                    
-                    results.append({
-                        "work_number": work_number,
-                        "participant_user_id": participant_user_id,
-                        "username": username,
-                        "average_score": round(average_score, 2),
-                        "votes_count": len(scores),
-                        "photo_link": work.get("photo_link"),
-                        "local_path": work.get("local_path")
-                    })
-                
-                # Сортируем по среднему баллу (по убыванию)
-                results.sort(key=lambda x: x["average_score"], reverse=True)
-                
-                # Добавляем место (place) для каждой работы
-                for idx, result in enumerate(results):
-                    result["place"] = idx + 1
-                
-                # Сохраняем результаты в drawing_data
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
-                contest_entry["results_calculated"] = True
-                contest_entry["results_calculated_at"] = now_msk.isoformat()
-                contest_entry["results"] = results
-                
-                save_drawing_data(drawing_data)
-            
-            return {
-                "success": True,
-                "message": "Итоги успешно подсчитаны",
-                "results_count": len(results)
+          const levelBadgeSection = document.querySelector('h3.flex.items-center.gap-2');
+          if (levelBadgeSection) {
+            const starIcon = levelBadgeSection.querySelector('.text-violet-400');
+            if (starIcon) {
+              starIcon.textContent = '🪙';
+              starIcon.style.animation = '';
             }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при подсчете итогов конкурса {contest_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+          }
 
-@app.get("/api/contests/{contest_id}/results")
-async def get_drawing_contest_results(contest_id: int):
-    """Получить итоги конкурса рисунков"""
-    try:
-        async with async_session() as session:
-            giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            if contest_type != 'drawing':
-                raise HTTPException(status_code=400, detail="Этот конкурс не является конкурсом рисунков")
-            
-            # Получаем призы
-            prize_links = giveaway.prize_links if hasattr(giveaway, 'prize_links') and giveaway.prize_links else []
-            if not isinstance(prize_links, list):
-                prize_links = []
-            
-            # Загружаем данные о результатах
-            async with drawing_data_lock:
-                drawing_data = load_drawing_data()
-                contest_entry = drawing_data.get(str(contest_id))
-                if not contest_entry:
-                    # Если данных нет, возвращаем что итоги не подсчитаны (это нормально для нового конкурса)
-                    logger.info(f"Данные о конкурсе {contest_id} не найдены в drawing_contests.json, возвращаем results_calculated=false")
-                    return {
-                        "results_calculated": False,
-                        "message": "Итоги еще не подсчитаны"
-                    }
-                
-                results_calculated = contest_entry.get("results_calculated", False)
-                if not results_calculated:
-                    return {
-                        "results_calculated": False,
-                        "message": "Итоги еще не подсчитаны"
-                    }
-                
-                results = contest_entry.get("results", [])
-                
-                # Обновляем username из таблицы User для каждого результата
-                for result in results:
-                    participant_user_id = result.get("participant_user_id")
-                    if participant_user_id:
-                        user_result = await session.execute(
-                            select(User).where(User.telegram_id == participant_user_id)
-                        )
-                        user = user_result.scalars().first()
-                        if user and user.username:
-                            result["username"] = user.username
-                    
-                    place = result.get("place", 0)
-                    if place > 0 and place <= len(prize_links):
-                        result["prize_link"] = prize_links[place - 1]
-                    else:
-                        result["prize_link"] = None
-                
-                return {
-                    "results_calculated": True,
-                    "results": results,
-                    "prize_links": prize_links
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при получении итогов конкурса {contest_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+          const profileSection = document.querySelector('#profile-section h2');
+          if (profileSection) profileSection.innerHTML = '🍄 Профиль';
 
-@app.post("/api/contests/{contest_id}/calculate-collection-results")
-async def calculate_collection_contest_results(contest_id: int, current_user_id: int = Query(...)):
-    """Подсчитать итоги конкурса коллекций (среднее арифметическое оценок)"""
-    try:
-        async with async_session() as session:
-            giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-            giveaway = giveaway_result.scalars().first()
-            
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            if contest_type != 'collection':
-                raise HTTPException(status_code=400, detail="Этот конкурс не является конкурсом коллекций")
-            
-            # Проверяем права доступа
-            if hasattr(giveaway, 'created_by') and giveaway.created_by and giveaway.created_by != current_user_id:
-                raise HTTPException(status_code=403, detail="Только создатель конкурса может подсчитывать итоги")
-            
-            # Проверяем, что время голосования истекло
-            msk_tz = pytz.timezone('Europe/Moscow')
-            now_msk = datetime.now(msk_tz)
-            voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-            if voting_end and now_msk <= voting_end:
-                raise HTTPException(status_code=400, detail="Время голосования еще не истекло")
-            
-            # Загружаем данные о коллекциях
-            async with collection_data_lock:
-                collection_data = load_collection_data()
-                contest_entry = collection_data.get(str(contest_id))
-                if not contest_entry:
-                    raise HTTPException(status_code=404, detail="Данные о коллекциях не найдены")
-                
-                collections = contest_entry.get("collections", [])
-                if not collections:
-                    raise HTTPException(status_code=400, detail="Нет коллекций для подсчета")
-                
-                # Подсчитываем среднее арифметическое для каждой коллекции
-                results = []
-                from models import Participant
-                
-                for collection in collections:
-                    collection_number = collection.get("collection_number")
-                    participant_user_id = collection.get("participant_user_id")
-                    votes = collection.get("votes", {}) or {}
-                    nft_links = collection.get("nft_links", [])
-                    
-                    if not collection_number or not participant_user_id:
-                        continue
-                    
-                    # Получаем username участника из таблицы User (приоритет) или Participant
-                    username = None
-                    user_result = await session.execute(
-                        select(User).where(User.telegram_id == participant_user_id)
-                    )
-                    user = user_result.scalars().first()
-                    if user and user.username:
-                        username = user.username
-                    else:
-                        # Если username нет в User, берем из Participant
-                        participant_result = await session.execute(
-                            select(Participant).where(
-                                Participant.giveaway_id == contest_id,
-                                Participant.user_id == participant_user_id
-                            )
-                        )
-                        participant = participant_result.scalars().first()
-                        if participant:
-                            username = participant.username
-                    
-                    # Подсчитываем среднее арифметическое
-                    scores = [int(score) for score in votes.values() if score]
-                    if scores:
-                        average_score = sum(scores) / len(scores)
-                    else:
-                        average_score = 0.0
-                    
-                    results.append({
-                        "collection_number": collection_number,
-                        "participant_user_id": participant_user_id,
-                        "username": username,
-                        "average_score": round(average_score, 2),
-                        "votes_count": len(scores),
-                        "nft_links": nft_links
-                    })
-                
-                # Сортируем по среднему баллу (по убыванию)
-                results.sort(key=lambda x: x["average_score"], reverse=True)
-                
-                # Добавляем место (place) для каждой коллекции
-                for idx, result in enumerate(results):
-                    result["place"] = idx + 1
-                
-                # Сохраняем результаты в collection_data
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
-                contest_entry["results_calculated"] = True
-                contest_entry["results_calculated_at"] = now_msk.isoformat()
-                contest_entry["results"] = results
-                
-                save_collection_data(collection_data)
-            
-            return {
-                "success": True,
-                "message": "Итоги успешно подсчитаны",
-                "results_count": len(results)
+          const contestsSection = document.querySelector('#contests-section h2');
+          if (contestsSection) contestsSection.innerHTML = '⭐ Конкурсы';
+
+          const ratingSection = document.querySelector('#rating-section h2');
+          if (ratingSection) ratingSection.innerHTML = '🪙 Рейтинг';
+
+        } else if (themeId === 'kitty') {
+          const avatarEl = document.getElementById('profile-avatar');
+          if (avatarEl) {
+            const kitties = ['🐱', '😸', '😻', '🙀', '😽', '😾', '😿'];
+            avatarEl.textContent = kitties[Math.floor(Math.random() * kitties.length)];
+          }
+
+          const profileBtn = document.querySelector('[data-section="profile-section"]');
+          if (profileBtn) profileBtn.innerHTML = '🐱 Профиль';
+
+          const contestsBtn = document.querySelector('[data-section="contests-section"]');
+          if (contestsBtn) contestsBtn.innerHTML = '🎁 Конкурсы';
+
+          const ratingBtn = document.querySelector('[data-section="rating-section"]');
+          if (ratingBtn) ratingBtn.innerHTML = '💖 Рейтинг';
+
+          const changeThemeBtn = document.getElementById('change-theme-btn');
+          if (changeThemeBtn) changeThemeBtn.innerHTML = '<span class="kitty-btn-icon">💝</span> Сменить тему';
+
+          const contactBtn = document.getElementById('contact-owner-btn');
+          if (contactBtn) contactBtn.innerHTML = '<span class="kitty-btn-icon">💌</span> Связь с владельцем';
+
+          const levelBadgeSection = document.querySelector('h3.flex.items-center.gap-2');
+          if (levelBadgeSection) {
+            const starIcon = levelBadgeSection.querySelector('.text-violet-400');
+            if (starIcon) {
+              starIcon.textContent = '🐱';
+              starIcon.style.animation = 'kitty-bounce 1.5s ease-in-out infinite';
             }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при подсчете итогов конкурса коллекций {contest_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+          }
 
-@app.get("/api/contests/{contest_id}/collection-results")
-async def get_collection_contest_results(contest_id: int):
-    """Получить итоги конкурса коллекций"""
-    try:
-        async with async_session() as session:
-            giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-            giveaway = giveaway_result.scalars().first()
+          const profileSection = document.querySelector('#profile-section h2');
+          if (profileSection) profileSection.innerHTML = '🐱 Профиль';
+
+          const contestsSection = document.querySelector('#contests-section h2');
+          if (contestsSection) contestsSection.innerHTML = '🎁 Конкурсы';
+
+          const ratingSection = document.querySelector('#rating-section h2');
+          if (ratingSection) ratingSection.innerHTML = '💖 Рейтинг';
+
+        } else if (themeId === 'aot') {
+          // Показываем изображение титана
+          const titanImage = document.getElementById('aot-titan-image');
+          if (titanImage) {
+            titanImage.classList.remove('hidden');
+          }
+
+          const avatarEl = document.getElementById('profile-avatar');
+          if (avatarEl) avatarEl.textContent = '⚔️';
+
+          const profileBtn = document.querySelector('[data-section="profile-section"]');
+          if (profileBtn) profileBtn.innerHTML = '⚔️ Профиль';
+
+          const contestsBtn = document.querySelector('[data-section="contests-section"]');
+          if (contestsBtn) contestsBtn.innerHTML = '🛡️ Конкурсы';
+
+          const ratingBtn = document.querySelector('[data-section="rating-section"]');
+          if (ratingBtn) ratingBtn.innerHTML = '🏆 Рейтинг';
+
+          const changeThemeBtn = document.getElementById('change-theme-btn');
+          if (changeThemeBtn) changeThemeBtn.innerHTML = '⚔️ Сменить тему';
+
+          const contactBtn = document.getElementById('contact-owner-btn');
+          if (contactBtn) contactBtn.innerHTML = '📨 Связь с владельцем';
+
+          const profileSection = document.querySelector('#profile-section h2');
+          if (profileSection) profileSection.innerHTML = '⚔️ Профиль';
+
+          const contestsSection = document.querySelector('#contests-section h2');
+          if (contestsSection) contestsSection.innerHTML = '🛡️ Конкурсы';
+
+          const ratingSection = document.querySelector('#rating-section h2');
+          if (ratingSection) ratingSection.innerHTML = '🏆 Рейтинг';
+
+        } else {
+          // Скрываем изображение титана для других тем
+          const titanImage = document.getElementById('aot-titan-image');
+          if (titanImage) {
+            titanImage.classList.add('hidden');
+          }
+          const avatarEl = document.getElementById('profile-avatar');
+          if (avatarEl) avatarEl.textContent = '👤';
+
+          const profileBtn = document.querySelector('[data-section="profile-section"]');
+          if (profileBtn) profileBtn.innerHTML = '👤 Профиль';
+
+          const contestsBtn = document.querySelector('[data-section="contests-section"]');
+          if (contestsBtn) contestsBtn.innerHTML = '🏆 Конкурсы';
+
+          const ratingBtn = document.querySelector('[data-section="rating-section"]');
+          if (ratingBtn) ratingBtn.innerHTML = '⭐ Рейтинг';
+
+          const changeThemeBtn = document.getElementById('change-theme-btn');
+          if (changeThemeBtn) changeThemeBtn.innerHTML = '<span class="kitty-btn-icon">🎨</span> Сменить тему';
+
+          const contactBtn = document.getElementById('contact-owner-btn');
+          if (contactBtn) contactBtn.innerHTML = '📨 Связь с владельцем';
+
+          const levelBadgeSection = document.querySelector('h3.flex.items-center.gap-2');
+          if (levelBadgeSection) {
+            const starIcon = levelBadgeSection.querySelector('.text-violet-400');
+            if (starIcon) {
+              starIcon.textContent = '⭐';
+              starIcon.style.animation = '';
+            }
+          }
+
+          const profileSection = document.querySelector('#profile-section h2');
+          if (profileSection) profileSection.innerHTML = '👤 Профиль';
+
+          const contestsSection = document.querySelector('#contests-section h2');
+          if (contestsSection) contestsSection.innerHTML = '🏆 Конкурсы';
+
+          const ratingSection = document.querySelector('#rating-section h2');
+          if (ratingSection) ratingSection.innerHTML = '⭐ Рейтинг';
+        }
+      }
+
+      // Инициализация модального окна выбора темы
+      function initThemeSelector() {
+        const themeModal = document.getElementById('theme-selector-modal');
+        const changeThemeBtn = document.getElementById('change-theme-btn');
+        const closeThemeModal = document.getElementById('close-theme-modal');
+        const themesList = document.getElementById('themes-list');
+
+        if (!themeModal || !changeThemeBtn || !closeThemeModal || !themesList) {
+          console.error('Элементы модального окна темы не найдены');
+          return;
+        }
+
+        function renderThemes() {
+          updateThemeSelector();
+        }
+
+        changeThemeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          renderThemes();
+          themeModal.classList.remove('hidden');
+          document.body.classList.add('modal-open');
+        });
+
+        closeThemeModal.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          themeModal.classList.add('hidden');
+          document.body.classList.remove('modal-open');
+        });
+
+        themeModal.addEventListener('click', (e) => {
+          if (e.target === themeModal) {
+            themeModal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          }
+        });
+      }
+
+      // 🛒 Система магазина
+      const shopItems = {
+        avatarStars: [
+          { id: 'star-gold', icon: '⭐', name: 'Золотая звезда', price: 10, priceType: 'stars' },
+          { id: 'star-silver', icon: '✨', name: 'Серебряная звезда', price: 5, priceType: 'stars' },
+          { id: 'star-rainbow', icon: '🌟', name: 'Радужная звезда', price: 20, priceType: 'stars' },
+          { id: 'star-diamond', icon: '💎', name: 'Алмазная звезда', price: 50, priceType: 'stars' },
+          { id: 'star-fire', icon: '🔥', name: 'Огненная звезда', price: 30, priceType: 'stars' },
+          { id: 'star-ice', icon: '❄️', name: 'Ледяная звезда', price: 25, priceType: 'stars' }
+        ],
+        themes: [
+          { 
+            id: 'kitty', 
+            name: 'Kitty', 
+            icon: '🐱', 
+            priceStars: 150, 
+            priceTON: 1, 
+            priceGifts: null, 
+            description: 'Милые котики и лапки на каждом шагу' 
+          },
+          { 
+            id: 'mario', 
+            name: 'Mario', 
+            icon: '🍄', 
+            priceStars: 250, 
+            priceTON: 2, 
+            priceGifts: null, 
+            description: 'Ретро стиль Super Mario Bros с пиксельной графикой' 
+          }
+        ],
+        nftGifts: [
+          { id: 'nft-gift-1', icon: '🎁', name: 'NFT Подарок 1', price: 200, priceType: 'stars', nftLink: '' },
+          { id: 'nft-gift-2', icon: '🎁', name: 'NFT Подарок 2', price: 300, priceType: 'stars', nftLink: '' },
+          { id: 'nft-gift-3', icon: '🎁', name: 'NFT Подарок 3', price: 500, priceType: 'stars', nftLink: '' }
+        ]
+      };
+
+      // Получение купленных товаров из localStorage
+      function getPurchasedItems() {
+        try {
+          const purchased = localStorage.getItem('purchasedItems');
+          return purchased ? JSON.parse(purchased) : { avatarStars: [], themes: [], nftGifts: [] };
+        } catch (e) {
+          return { avatarStars: [], themes: [], nftGifts: [] };
+        }
+      }
+
+      // Сохранение купленных товаров
+      function savePurchasedItems(items) {
+        try {
+          localStorage.setItem('purchasedItems', JSON.stringify(items));
+        } catch (e) {
+          console.error('Ошибка сохранения купленных товаров:', e);
+        }
+      }
+
+      // Проверка, куплен ли товар
+      function isItemPurchased(category, itemId) {
+        const purchased = getPurchasedItems();
+        return purchased[category] && purchased[category].includes(itemId);
+      }
+
+      // Добавление купленного товара
+      function addPurchasedItem(category, itemId) {
+        const purchased = getPurchasedItems();
+        if (!purchased[category]) {
+          purchased[category] = [];
+        }
+        if (!purchased[category].includes(itemId)) {
+          purchased[category].push(itemId);
+          savePurchasedItems(purchased);
+        }
+      }
+
+      // Текущий выбранный товар для покупки
+      let currentPurchaseItem = null;
+
+      // Покупка товара - показываем модалку выбора способа оплаты
+      async function purchaseItem(category, itemId) {
+        const item = shopItems[category]?.find(i => i.id === itemId);
+        if (!item) {
+          alert('❌ Товар не найден');
+          return;
+        }
+
+        if (isItemPurchased(category, itemId)) {
+          alert('✅ Этот товар уже куплен!');
+          return;
+        }
+
+        // Проверяем доступность Telegram WebApp для реальной оплаты
+        const isWebAppAvailable = window.Telegram?.WebApp?.initDataUnsafe;
+        if (!isWebAppAvailable) {
+          console.warn('⚠️ Telegram WebApp недоступен. Приложение должно быть открыто через бота в Telegram для реальной оплаты.');
+          console.warn('📱 Для тестирования доступен тестовый режим (товары будут добавлены без реальной оплаты).');
+        }
+
+        // Сохраняем текущий товар
+        currentPurchaseItem = { category, itemId, item };
+
+        // Показываем модалку выбора способа оплаты
+        showPaymentMethodModal();
+      }
+
+      // Показ модалки выбора способа оплаты
+      function showPaymentMethodModal() {
+        if (!currentPurchaseItem) return;
+
+        const modal = document.getElementById('payment-method-modal');
+        const methodsList = document.getElementById('payment-methods-list');
+        
+        if (!modal || !methodsList) return;
+
+        const { item } = currentPurchaseItem;
+
+        // Получаем цены для разных способов оплаты
+        let priceStars = item.priceStars || item.price || 0;
+        let priceTON = item.priceTON || 0;
+        let priceGifts = item.priceGifts;
+
+        // Способы оплаты
+        const paymentMethods = [
+          {
+            id: 'stars',
+            name: 'Telegram Stars',
+            icon: '⭐',
+            description: priceStars > 0 ? `${priceStars} ⭐` : 'Недоступно',
+            available: priceStars > 0,
+            price: priceStars
+          },
+          {
+            id: 'ton',
+            name: 'CryptoBot',
+            icon: '🤖',
+            description: priceTON > 0 ? `${priceTON} TON` : 'Недоступно',
+            available: priceTON > 0,
+            price: priceTON
+          },
+          {
+            id: 'gifts',
+            name: 'NFT Gifts',
+            icon: '🎁',
+            description: priceGifts !== null ? (typeof priceGifts === 'number' ? `${priceGifts} ⭐` : priceGifts) : 'Скоро',
+            available: priceGifts !== null && typeof priceGifts === 'number',
+            price: priceGifts
+          }
+        ];
+
+        methodsList.innerHTML = paymentMethods.map(method => `
+          <div class="rounded-lg border ${method.available ? 'border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40' : 'border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60'} p-4 transition-all" 
+               ${method.available ? `onclick="window.selectPaymentMethod('${method.id}')"` : ''}>
+            <div class="flex items-center gap-3">
+              <div class="text-3xl">${method.icon}</div>
+              <div class="flex-1">
+                <div class="font-semibold text-white">${method.name}</div>
+                <div class="text-sm ${method.available ? 'text-gray-400' : 'text-gray-500'}">${method.description}</div>
+              </div>
+              ${method.available ? '<div class="text-violet-400 text-xl">→</div>' : '<div class="text-gray-500 text-sm">Недоступно</div>'}
+            </div>
+          </div>
+        `).join('');
+
+        modal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+      }
+
+      // Выбор способа оплаты
+      async function selectPaymentMethod(methodId) {
+        if (!currentPurchaseItem) return;
+
+        const { category, itemId, item } = currentPurchaseItem;
+        const paymentModal = document.getElementById('payment-method-modal');
+
+        // Закрываем модалку выбора способа оплаты
+        if (paymentModal) {
+          paymentModal.classList.add('hidden');
+          document.body.classList.remove('modal-open');
+        }
+
+        try {
+          if (methodId === 'stars') {
+            await processStarsPayment(category, itemId, item);
+          } else if (methodId === 'ton') {
+            await processTONPayment(category, itemId, item);
+          } else if (methodId === 'gifts') {
+            await processGiftsPayment(category, itemId, item);
+          }
+        } catch (error) {
+          console.error('Ошибка обработки оплаты:', error);
+          alert('❌ Ошибка при обработке оплаты');
+        }
+      }
+
+      // Обработка оплаты через Telegram Stars
+      async function processStarsPayment(category, itemId, item) {
+        // Получаем цену в Stars
+        const price = item.priceStars || item.price || 0;
+        if (price <= 0) {
+          alert('❌ Цена не указана для этого товара');
+          return;
+        }
+        
+        // Создаем invoice через сервер - отправляем счет пользователю в бота
+        try {
+          console.log(`📋 Создание счета для покупки: ${item.name}, цена: ${price} ⭐`);
+          const response = await window.fetchJSON('/api/payment/create-stars-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: item.name,
+              description: `Покупка: ${item.name}`,
+              amount: price,
+              user_id: currentUserId,
+              category: category,
+              item_id: itemId
+            })
+          });
+          
+          // Детальное логирование ответа для отладки
+          console.log('📋 Ответ сервера получен (сырой):', response);
+          console.log('📋 Тип response:', typeof response);
+          
+          // Проверяем ответ от сервера
+          if (!response) {
+            console.error('❌ Не получен ответ от сервера');
+            alert('❌ Ошибка при создании счета: не получен ответ от сервера.');
+            return;
+          }
+          
+          // Проверяем, что response - объект
+          if (typeof response !== 'object') {
+            console.error('❌ Ответ не является объектом:', response);
+            alert('❌ Ошибка при создании счета: неверный формат ответа от сервера.');
+            return;
+          }
+          
+          // Проверяем success (может быть true, 'true', 1, и т.д.)
+          const isSuccess = response.success === true || 
+                           response.success === 'true' || 
+                           response.success === 1 ||
+                           (typeof response.success === 'string' && response.success.toLowerCase() === 'true');
+          
+          console.log('📋 response.success:', response.success);
+          console.log('📋 response.success === true:', response.success === true);
+          console.log('📋 isSuccess (расширенная проверка):', isSuccess);
+          console.log('📋 JSON ответа:', JSON.stringify(response));
+          
+          if (isSuccess) {
+            // Счет успешно отправлен в бота, уведомляем пользователя
+            console.log('✅ Счет успешно создан! Показываем сообщение пользователю.');
+            alert('✅ Счет на оплату ' + price + ' ⭐ отправлен в бота!\n\nПерейдите в чат с ботом, чтобы оплатить покупку. После оплаты товар будет добавлен автоматически.');
+            return;
+          }
+          
+          // Если success не true, показываем ошибку
+          const errorMsg = response.message || response.detail || 'Неизвестная ошибка';
+          console.error('❌ Ошибка создания счета. Ответ сервера:', response);
+          console.error('❌ response.success =', response.success, '(тип:', typeof response.success, ')');
+          console.error('❌ Полный response:', JSON.stringify(response, null, 2));
+          alert('❌ Ошибка при создании счета: ' + String(errorMsg));
+          return;
+          
+        } catch (error) {
+          console.error('❌ Исключение при создании invoice:', error);
+          console.error('❌ Тип ошибки:', typeof error);
+          console.error('❌ error.message:', error.message);
+          console.error('❌ error.response:', error.response);
+          console.error('❌ Полная ошибка:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          
+          // Проверяем, есть ли детали ошибки (безопасно, без eval)
+          let errorMessage = 'Неизвестная ошибка';
+          
+          if (error && typeof error === 'object') {
+            if (error.message && typeof error.message === 'string') {
+              errorMessage = error.message;
+            } else if (error.response && typeof error.response === 'object') {
+              // Пытаемся получить детали из response
+              if (error.response.detail && typeof error.response.detail === 'string') {
+                errorMessage = error.response.detail;
+              } else if (error.response.message && typeof error.response.message === 'string') {
+                errorMessage = error.response.message;
+              }
+            } else if (error.detail && typeof error.detail === 'string') {
+              errorMessage = error.detail;
+            }
+          }
+          
+          // Не показываем ошибку, если это не критичная проблема
+          if (!errorMessage.includes('Счет отправлен') && !errorMessage.includes('успешно')) {
+            alert('❌ Ошибка при создании счета: ' + String(errorMessage));
+          }
+        }
+        
+        // Fallback для тестирования (когда WebApp недоступен)
+        if (!window.Telegram?.WebApp?.openInvoice) {
+          // Fallback: симулируем покупку для тестирования (когда WebApp недоступен)
+          if (confirm(`Купить "${item.name}" за ${price} ⭐?\n\n(Тестовый режим: Telegram WebApp недоступен)`)) {
+            // В тестовом режиме сразу добавляем товар без проверки оплаты
+            addPurchasedItem(category, itemId);
+            alert(`✅ ${item.name} успешно куплен! (Тестовый режим)`);
+            renderShop();
+            updateThemeSelector();
+          }
+        }
+      }
+
+      // Обработка оплаты через TON
+      async function processTONPayment(category, itemId, item) {
+        // Получаем цену в TON
+        const tonAmount = item.priceTON || 0;
+        if (tonAmount <= 0) {
+          alert('❌ Цена не указана для этого товара');
+          return;
+        }
+        
+        // Создаем счет через CryptoBot API
+        try {
+          const response = await window.fetchJSON('/api/payment/create-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: tonAmount,
+              currency: 'TON',
+              description: `Покупка: ${item.name}`,
+              user_id: currentUserId,
+              category: category,
+              item_id: itemId
+            })
+          });
+          
+          if (!response.success || !response.invoice_url) {
+            alert('❌ Ошибка при создании счета. Попробуйте позже.');
+            return;
+          }
+          
+          // Открываем ссылку на оплату через Telegram WebApp
+          if (window.Telegram?.WebApp?.openLink) {
+            // Используем Telegram WebApp API для открытия ссылки
+            window.Telegram.WebApp.openLink(response.invoice_url);
+          } else {
+            // Fallback для обычного браузера
+            window.open(response.invoice_url, '_blank');
+          }
+          
+          // Показываем сообщение пользователю
+          alert(`✅ Счет создан!\n\n💳 Сумма: ${tonAmount} TON\n👤 Счет для вашего аккаунта (ID: ${currentUserId})\n\nОткройте CryptoBot для оплаты.\nПосле оплаты товар будет добавлен автоматически.`);
+          
+          // Периодически проверяем статус оплаты
+          const invoiceId = response.invoice_id;
+          let checkCount = 0;
+          const maxChecks = 60; // Проверяем 60 раз (5 минут)
+          
+          const checkInterval = setInterval(async () => {
+            checkCount++;
             
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
-            if contest_type != 'collection':
-                raise HTTPException(status_code=400, detail="Этот конкурс не является конкурсом коллекций")
-            
-            # Получаем призы
-            prize_links = giveaway.prize_links if hasattr(giveaway, 'prize_links') and giveaway.prize_links else []
-            if not isinstance(prize_links, list):
-                prize_links = []
-            
-            # Загружаем данные о результатах
-            async with collection_data_lock:
-                collection_data = load_collection_data()
-                contest_entry = collection_data.get(str(contest_id))
-                if not contest_entry:
-                    return {
-                        "results_calculated": False,
-                        "message": "Итоги еще не подсчитаны"
-                    }
-                
-                results_calculated = contest_entry.get("results_calculated", False)
-                if not results_calculated:
-                    return {
-                        "results_calculated": False,
-                        "message": "Итоги еще не подсчитаны"
-                    }
-                
-                results = contest_entry.get("results", [])
-                
-                # Обновляем username из таблицы User для каждого результата
-                for result in results:
-                    participant_user_id = result.get("participant_user_id")
-                    if participant_user_id:
-                        user_result = await session.execute(
-                            select(User).where(User.telegram_id == participant_user_id)
-                        )
-                        user = user_result.scalars().first()
-                        if user and user.username:
-                            result["username"] = user.username
-                    
-                    place = result.get("place", 0)
-                    if place > 0 and place <= len(prize_links):
-                        result["prize_link"] = prize_links[place - 1]
-                    else:
-                        result["prize_link"] = None
-                
-                return {
-                    "results_calculated": True,
-                    "results": results,
-                    "prize_links": prize_links
+            try {
+              const verifyResponse = await window.fetchJSON('/api/payment/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  invoice_id: invoiceId,
+                  category: category,
+                  itemId: itemId,
+                  userId: currentUserId
+                })
+              });
+              
+              if (verifyResponse.verified) {
+                clearInterval(checkInterval);
+                addPurchasedItem(category, itemId);
+                alert(`✅ ${item.name} успешно куплен!`);
+                renderShop();
+                updateThemeSelector();
+              } else if (checkCount >= maxChecks) {
+                clearInterval(checkInterval);
+                alert('⏱ Время ожидания оплаты истекло. Если вы оплатили, товар будет добавлен автоматически.');
+              }
+            } catch (error) {
+              console.error('Ошибка проверки оплаты:', error);
+              if (checkCount >= maxChecks) {
+                clearInterval(checkInterval);
+              }
+            }
+          }, 5000); // Проверяем каждые 5 секунд
+          
+        } catch (error) {
+          console.error('Ошибка создания счета:', error);
+          alert('❌ Ошибка при создании счета: ' + (error.message || 'Неизвестная ошибка'));
+        }
+      }
+
+      // Обработка оплаты через NFT Gifts
+      async function processGiftsPayment(category, itemId, item) {
+        // Проверяем, доступны ли Gifts для этого товара
+        if (item.priceGifts === null || typeof item.priceGifts !== 'number') {
+          alert('❌ Оплата через NFT Gifts пока недоступна для этого товара');
+          return;
+        }
+        
+        // Получаем ID креатора для отправки подарка
+        try {
+          const response = await window.fetchJSON('/api/payment/get-creator-id');
+          const creatorId = response.creator_id || '';
+          
+          if (!creatorId) {
+            alert('❌ ID креатора не настроен. Обратитесь к администратору.');
+            return;
+          }
+
+          // Для Gifts нужно использовать специальный API Telegram
+          // Создаем invoice для Gifts
+          const invoice = {
+            title: item.name,
+            description: `Покупка: ${item.name} (NFT подарок)`,
+            payload: JSON.stringify({ category, itemId, userId: currentUserId, paymentMethod: 'gifts', creatorId: creatorId }),
+            provider_token: '', // Для Gifts
+            currency: 'XTR', // Gifts оплачиваются через Stars
+            prices: [{ label: item.name, amount: item.priceGifts * 100 }], // В копейках Stars
+            max_tip_amount: 0,
+            suggested_tip_amounts: [],
+            start_parameter: `shop_${category}_${itemId}_gifts`,
+            provider_data: JSON.stringify({ category, itemId, paymentMethod: 'gifts', creatorId: creatorId })
+          };
+
+          // Открываем платежное окно Telegram для Gifts
+          if (window.Telegram?.WebApp?.openInvoice) {
+            window.Telegram.WebApp.openInvoice(invoice, async (status) => {
+              if (status === 'paid') {
+                // Проверяем оплату на сервере
+                const verified = await verifyPayment(category, itemId, 'gifts', invoice.payload);
+                if (verified) {
+                  addPurchasedItem(category, itemId);
+                  alert(`✅ ${item.name} успешно куплен! Подарок отправлен креатору.`);
+                  renderShop();
+                  updateThemeSelector();
+                } else {
+                  alert('❌ Ошибка при проверке оплаты. Обратитесь в поддержку.');
                 }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при получении итогов конкурса коллекций {contest_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+              } else if (status === 'failed') {
+                alert('❌ Ошибка при оплате');
+              }
+            });
+          } else {
+            // Fallback: симулируем покупку для тестирования (когда WebApp недоступен)
+            if (confirm(`Купить "${item.name}" за ${item.priceGifts} ⭐ (NFT Gifts)?\n\n(Тестовый режим: Telegram WebApp недоступен)`)) {
+              // В тестовом режиме сразу добавляем товар без проверки оплаты
+              addPurchasedItem(category, itemId);
+              alert(`✅ ${item.name} успешно куплен! (Тестовый режим)`);
+              renderShop();
+              updateThemeSelector();
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка получения ID креатора:', error);
+          alert('❌ Ошибка при получении данных для оплаты');
+        }
+      }
 
-@app.post("/api/contests/{contest_id}/confirm-winners")
-async def confirm_contest_winners(contest_id: int, current_user_id: int = Query(default=None)):
-    """Подтверждает победителей конкурса (финализирует выбор).
+      // Проверка оплаты на сервере
+      async function verifyPayment(invoiceId, category, itemId, userId) {
+        try {
+          const response = await window.fetchJSON('/api/payment/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invoice_id: invoiceId,
+              category: category,
+              itemId: itemId,
+              userId: userId
+            })
+          });
+          return response.verified === true;
+        } catch (error) {
+          console.error('Ошибка проверки оплаты:', error);
+          return false;
+        }
+      }
 
-    Подтверждать победителей может только владелец конкурса (created_by).
-    """
-    try:
-        # Проверяем права доступа
-        async with async_session() as session:
-            giveaway_result = await session.execute(
-                select(Giveaway).where(Giveaway.id == contest_id)
-            )
-            giveaway = giveaway_result.scalars().first()
-            if not giveaway:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
+      // Рендеринг магазина
+      function renderShop() {
+        const purchased = getPurchasedItems();
 
-            if current_user_id is not None and giveaway.created_by is not None:
-                try:
-                    if int(giveaway.created_by) != int(current_user_id):
-                        raise HTTPException(
-                            status_code=403,
-                            detail="Подтверждать победителей может только создатель конкурса",
-                        )
-                except (TypeError, ValueError):
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Подтверждать победителей может только создатель конкурса",
-                    )
+        // Рендерим темы
+        const themesContainer = document.getElementById('themes-shop');
+        if (themesContainer) {
+          themesContainer.innerHTML = shopItems.themes.map(item => {
+            const isPurchased = isItemPurchased('themes', item.id);
+            return `
+              <div class="rounded-lg border ${isPurchased ? 'border-green-400/50 bg-green-900/20' : 'border-violet-400/30 bg-black/30'} p-4">
+                <div class="flex items-center gap-4">
+                  <div class="text-4xl">${item.icon}</div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-white mb-1">${item.name}</div>
+                    <div class="text-sm text-gray-400 mb-2">${item.description}</div>
+                    <div class="text-xs text-violet-400">
+                      ${item.priceStars ? `${item.priceStars} ⭐` : ''} 
+                      ${item.priceTON ? ` • ${item.priceTON} TON (CryptoBot)` : ''}
+                      ${item.priceGifts === null ? ' • NFT: Скоро' : ''}
+                    </div>
+                  </div>
+                  <button 
+                    onclick="window.purchaseItem('themes', '${item.id}')"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold ${isPurchased ? 'bg-green-600/50 text-green-200 cursor-not-allowed' : 'neon-button'}"
+                    ${isPurchased ? 'disabled' : ''}
+                  >
+                    ${isPurchased ? '✓ Куплено' : 'Купить'}
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
 
-        result = await confirm_winners(contest_id)
-        return {"success": True, "message": "Победители подтверждены"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при подтверждении победителей: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+      // Обновление селектора тем с купленными темами
+      function updateThemeSelector() {
+        const purchased = getPurchasedItems();
+        const purchasedThemes = purchased.themes || [];
 
-
-@app.delete("/api/contests/{contest_id}")
-async def delete_contest(contest_id: int, current_user_id: int = Query(None)):
-    """Удалить конкурс. Админ может удалять только свои конкурсы."""
-    async with async_session() as session:
-        try:
-            result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-            contest = result.scalars().first()
-            if not contest:
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
+        // Обновляем рендер тем в модалке - показываем только доступные темы
+        const themesList = document.getElementById('themes-list');
+        if (themesList) {
+          const currentTheme = localStorage.getItem('selectedTheme') || 'default';
+          themesList.innerHTML = '';
+          
+          // Всегда показываем тему "По умолчанию"
+          const defaultTheme = themes.default;
+          if (defaultTheme) {
+            const isActive = 'default' === currentTheme;
+            const themeCard = document.createElement('div');
+            themeCard.className = `rounded-lg border p-4 cursor-pointer transition-all ${
+              isActive 
+                ? 'border-violet-400 bg-violet-500/20' 
+                : 'border-violet-400/30 bg-black/30 hover:border-violet-400/50 hover:bg-black/40'
+            }`;
+            themeCard.innerHTML = `
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="text-3xl">${defaultTheme.icon}</div>
+                  <div>
+                    <div class="font-semibold text-white">${defaultTheme.name}</div>
+                    <div class="text-sm text-gray-400">${defaultTheme.description}</div>
+                  </div>
+                </div>
+                ${isActive ? '<div class="text-violet-400 text-xl">✓</div>' : ''}
+              </div>
+            `;
             
-            # Проверяем права доступа
-            if current_user_id:
-                user_result = await session.execute(
-                    select(User).where(User.telegram_id == current_user_id)
-                )
-                user = user_result.scalars().first()
-                
-                if user:
-                    if user.role == "admin":
-                        # Админ может удалять только свои конкурсы
-                        if contest.created_by != current_user_id:
-                            raise HTTPException(status_code=403, detail="Вы можете удалять только свои конкурсы")
-                    elif user.role == "creator":
-                        # Создатель может удалять любые конкурсы
-                        pass
-                    else:
-                        # Обычный пользователь не может удалять конкурсы
-                        raise HTTPException(status_code=403, detail="Недостаточно прав для удаления конкурса")
+            themeCard.addEventListener('click', () => {
+              applyTheme('default');
+              updateThemeSelector();
+              const themeModal = document.getElementById('theme-selector-modal');
+              if (themeModal) {
+                setTimeout(() => {
+                  themeModal.classList.add('hidden');
+                  document.body.classList.remove('modal-open');
+                }, 300);
+              }
+            });
             
-            # Проверяем, подтвержден ли конкурс
-            if hasattr(contest, 'is_confirmed') and contest.is_confirmed:
-                raise HTTPException(status_code=403, detail="Нельзя удалить подтвержденный конкурс")
-            
-            # Удаляем всех победителей конкурса
-            from models import Winner, Participant
-            winners_result = await session.execute(
-                select(Winner).where(Winner.giveaway_id == contest_id)
-            )
-            winners = winners_result.scalars().all()
-            for winner in winners:
-                await session.delete(winner)
-            
-            # Удаляем всех участников конкурса
-            participants_result = await session.execute(
-                select(Participant).where(Participant.giveaway_id == contest_id)
-            )
-            participants = participants_result.scalars().all()
-            for participant in participants:
-                await session.delete(participant)
-            
-            # Проверяем тип конкурса - если это конкурс рисунков, удаляем данные из файла
-            contest_type = getattr(contest, 'contest_type', 'random_comment')
-            if contest_type == 'drawing':
-                async with drawing_data_lock:
-                    drawing_data = load_drawing_data()
-                    contest_key = str(contest_id)
-                    if contest_key in drawing_data:
-                        # Удаляем данные о конкурсе из файла
-                        del drawing_data[contest_key]
-                        save_drawing_data(drawing_data)
-                        logger.info(f"🗑️ Удалены данные конкурса рисунков {contest_id} из файла drawing_contests.json")
-                    
-                    # Также удаляем папку с загруженными фотографиями
-                    try:
-                        import shutil
-                        work_dir = os.path.join(DRAWING_UPLOADS_DIR, f"contest_{contest_id}")
-                        if os.path.exists(work_dir):
-                            shutil.rmtree(work_dir)
-                            logger.info(f"🗑️ Удалена папка с фотографиями конкурса {contest_id}: {work_dir}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Не удалось удалить папку с фотографиями конкурса {contest_id}: {e}")
-            
-            # Удаляем сам конкурс
-            await session.delete(contest)
-            await session.commit()
-            return {"success": True, "message": "Конкурс удален"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            await session.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/admins/{admin_id}")
-async def delete_admin(admin_id: int):
-    """Удалить администратора (изменить роль на user)"""
-    async with async_session() as session:
-        try:
-            result = await session.execute(select(User).where(User.telegram_id == admin_id))
-            user = result.scalars().first()
-            if not user:
-                raise HTTPException(status_code=404, detail="Администратор не найден")
-            user.role = "user"
-            await session.commit()
-            return {"success": True, "message": "Администратор удален"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            await session.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/admins/{admin_id}")
-async def update_admin(admin_id: int, request: Request):
-    """Обновить данные администратора"""
-    data = await request.json()
-    async with async_session() as session:
-        try:
-            result = await session.execute(select(User).where(User.telegram_id == admin_id))
-            user = result.scalars().first()
-            if not user:
-                raise HTTPException(status_code=404, detail="Администратор не найден")
-            
-            # Обновляем поля, если они переданы
-            channel_link = data.get("channel_link")
-            chat_link = data.get("chat_link")
-            if channel_link is not None:
-                user.channel_link = channel_link if channel_link else None
-            if chat_link is not None:
-                user.chat_link = chat_link if chat_link else None
-            
-            await session.commit()
-            return {"success": True, "message": "Администратор обновлен"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            await session.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/contests/{contest_id}")
-async def update_contest(contest_id: int, request: Request):
-    """Обновить данные конкурса"""
-    try:
-        data = await request.json()
-        logger.info(f"Обновление конкурса {contest_id}: получены данные {list(data.keys())}")
-    except Exception as e:
-        logger.error(f"Ошибка парсинга JSON в update_contest: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Ошибка парсинга данных: {str(e)}")
-    
-    async with async_session() as session:
-        try:
-            result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
-            contest = result.scalars().first()
-            if not contest:
-                logger.warning(f"Конкурс {contest_id} не найден")
-                raise HTTPException(status_code=404, detail="Конкурс не найден")
-            
-            # Проверяем права доступа
-            current_user_id = data.get("current_user_id")
-            if current_user_id:
-                user_result = await session.execute(
-                    select(User).where(User.telegram_id == current_user_id)
-                )
-                user = user_result.scalars().first()
-                
-                if user:
-                    if user.role == "admin":
-                        # Админ может изменять только свои конкурсы
-                        if contest.created_by != current_user_id:
-                            raise HTTPException(status_code=403, detail="Вы можете изменять только свои конкурсы")
-                    elif user.role == "creator":
-                        # Создатель может изменять любые конкурсы
-                        pass
-                    else:
-                        # Обычный пользователь не может изменять конкурсы
-                        raise HTTPException(status_code=403, detail="Недостаточно прав для изменения конкурса")
-            
-            # Обновляем поля, если они переданы
-            if "title" in data or "name" in data:
-                contest.name = data.get("title") or data.get("name")
-            if "prize" in data:
-                contest.prize = data.get("prize")
-            if "end_date" in data or "end_at" in data:
-                end_date = data.get("end_date") or data.get("end_at")
-                if end_date:
-                    try:
-                        # Попытка распарсить дату в разных форматах
-                        if isinstance(end_date, str):
-                            # Убираем Z и обрабатываем
-                            end_date_clean = end_date.replace('Z', '').replace('+00:00', '')
-                            if 'T' in end_date_clean:
-                                contest.end_date = datetime.fromisoformat(end_date_clean)
-                            else:
-                                contest.end_date = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
-                        else:
-                            contest.end_date = end_date
-                    except Exception:
-                        pass  # Игнорируем ошибки парсинга даты
-            if "start_at" in data:
-                start_at = data.get("start_at")
-                # start_at может храниться в другом поле или не поддерживаться
-            if "post_link" in data:
-                new_post_link = data.get("post_link")
-                # Получаем тип конкурса (возможно, он был обновлен выше, если contest_type обновлялся раньше)
-                contest_type = getattr(contest, 'contest_type', 'random_comment') if hasattr(contest, 'contest_type') else 'random_comment'
-                
-                # Валидация в зависимости от типа конкурса
-                if contest_type == "random_comment":
-                    # Для рандом комментариев post_link обязателен
-                    if not new_post_link or not new_post_link.strip():
-                        raise HTTPException(status_code=400, detail="❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)")
-                    
-                    # Проверяем уникальность post_link только для конкурсов рандом комментариев
-                    existing_contest = await session.execute(
-                        select(Giveaway).where(
-                            Giveaway.post_link == new_post_link,
-                            Giveaway.id != contest_id,  # Исключаем текущий конкурс
-                            Giveaway.post_link.isnot(None),
-                            Giveaway.post_link != ""
-                        )
-                    )
-                    existing = existing_contest.scalars().first()
-                    if existing:
-                        raise HTTPException(status_code=400, detail=f"❌ Этот пост уже используется в конкурсе (ID: {existing.id}). Один пост может иметь только один конкурс.")
-                    
-                    contest.post_link = new_post_link
-                else:
-                    # Для конкурсов рисунков post_link не требуется и может быть пустым
-                    contest.post_link = new_post_link if new_post_link and new_post_link.strip() else None
-            if "discussion_group_link" in data:
-                contest.discussion_group_link = data.get("discussion_group_link") or None
-            if "conditions" in data:
-                contest.conditions = data.get("conditions")
-            if "winners_count" in data:
-                contest.winners_count = data.get("winners_count")
-            if "submission_end_date" in data:
-                submission_end_date = data.get("submission_end_date")
-                if submission_end_date:
-                    try:
-                        if isinstance(submission_end_date, str):
-                            submission_end_date_clean = submission_end_date.replace('Z', '').replace('+00:00', '')
-                            if 'T' in submission_end_date_clean:
-                                contest.submission_end_date = datetime.fromisoformat(submission_end_date_clean)
-                            else:
-                                contest.submission_end_date = datetime.fromisoformat(f"{submission_end_date_clean}T00:00:00")
-                        else:
-                            contest.submission_end_date = submission_end_date
-                    except Exception as e:
-                        logger.warning(f"Ошибка парсинга submission_end_date: {e}")
-                else:
-                    contest.submission_end_date = None
-            if "contest_type" in data:
-                new_contest_type = data.get("contest_type")
-                old_contest_type = getattr(contest, 'contest_type', 'random_comment')
-                contest.contest_type = new_contest_type
-                
-                # Валидация полей в зависимости от типа конкурса при обновлении
-                if new_contest_type == "drawing":
-                    # Для конкурса рисунков требуется submission_end_date
-                    if "submission_end_date" not in data and not contest.submission_end_date:
-                        raise HTTPException(status_code=400, detail="❌ Для конкурса рисунков обязательна дата окончания приема работ (submission_end_date)")
-                    # post_link не требуется для конкурса рисунков, но если его убрали - это нормально
-                elif new_contest_type == "random_comment":
-                    # Для рандом комментариев требуется post_link
-                    if "post_link" in data:
-                        new_post_link = data.get("post_link")
-                        if not new_post_link or not new_post_link.strip():
-                            raise HTTPException(status_code=400, detail="❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)")
-                    elif not contest.post_link or not contest.post_link.strip():
-                        raise HTTPException(status_code=400, detail="❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)")
-                    # submission_end_date не требуется для рандом комментариев - можно обнулить
-                    if old_contest_type == "drawing" and "submission_end_date" not in data:
-                        contest.submission_end_date = None
-            
-            if "prize_links" in data:
-                prize_links = data.get("prize_links")
-                logger.info(f"Обновление призов для конкурса {contest_id}: получено {len(prize_links) if isinstance(prize_links, list) else 0} призов, тип: {type(prize_links)}")
-                if isinstance(prize_links, list):
-                    contest.prize_links = prize_links
-                    logger.info(f"Призы сохранены в БД: {prize_links}")
-                else:
-                    contest.prize_links = None
-                    logger.warning(f"prize_links не является списком: {type(prize_links)}, значение: {prize_links}")
-            
-            # Проверяем, подтвержден ли конкурс
-            if hasattr(contest, 'is_confirmed') and contest.is_confirmed:
-                raise HTTPException(status_code=403, detail="Нельзя редактировать подтвержденный конкурс")
-            
-            # Финальная валидация полей в зависимости от типа конкурса
-            # (проверяем после всех обновлений, чтобы убедиться, что все поля корректны)
-            final_contest_type = getattr(contest, 'contest_type', 'random_comment') if hasattr(contest, 'contest_type') else 'random_comment'
-            
-            if final_contest_type == "drawing":
-                # Для конкурса рисунков требуется submission_end_date
-                if not contest.submission_end_date:
-                    raise HTTPException(status_code=400, detail="❌ Для конкурса рисунков обязательна дата окончания приема работ (submission_end_date)")
-                # post_link не требуется для конкурса рисунков
-            elif final_contest_type == "random_comment":
-                # Для рандом комментариев требуется post_link
-                if not contest.post_link or not contest.post_link.strip():
-                    raise HTTPException(status_code=400, detail="❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)")
-                # submission_end_date не требуется для рандом комментариев
-            
-            await session.commit()
-            # Обновляем объект из БД, чтобы убедиться, что изменения сохранены
-            await session.refresh(contest)
-            logger.info(f"Конкурс {contest_id} успешно обновлен. prize_links после сохранения: {contest.prize_links}")
-            return {"success": True, "message": "Конкурс обновлен"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            await session.rollback()
-            logger.error(f"Ошибка при обновлении конкурса {contest_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Ошибка при обновлении конкурса: {str(e)}")
-
-@app.get("/api/nft-preview")
-async def get_nft_preview(nft_link: str = Query(...)):
-    """Получить превью изображения NFT из Telegram ссылки"""
-    from fastapi.responses import RedirectResponse, Response
-    import aiohttp
-    import re
-    
-    try:
-        # Нормализуем ссылку
-        if not nft_link.startswith('http'):
-            nft_link = 'https://' + nft_link
-        
-        # Сначала пытаемся получить изображение через парсинг HTML страницы
-        # Это более надежный способ для Telegram NFT
-        try:
-            async with aiohttp.ClientSession() as session:
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            themesList.appendChild(themeCard);
+          }
+          
+          // Показываем только купленные темы
+          purchasedThemes.forEach(themeId => {
+            const theme = shopItems.themes.find(t => t.id === themeId);
+            if (theme) {
+              const isActive = themeId === currentTheme;
+              const themeCard = document.createElement('div');
+              themeCard.className = `rounded-lg border p-4 cursor-pointer transition-all ${
+                isActive 
+                  ? 'border-violet-400 bg-violet-500/20' 
+                  : 'border-violet-400/30 bg-black/30 hover:border-violet-400/50 hover:bg-black/40'
+              }`;
+              themeCard.innerHTML = `
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="text-3xl">${theme.icon}</div>
+                    <div>
+                      <div class="font-semibold text-white">${theme.name}</div>
+                      <div class="text-sm text-gray-400">${theme.description}</div>
+                    </div>
+                  </div>
+                  ${isActive ? '<div class="text-violet-400 text-xl">✓</div>' : ''}
+                </div>
+              `;
+              
+              themeCard.addEventListener('click', () => {
+                applyTheme(themeId);
+                updateThemeSelector();
+                const themeModal = document.getElementById('theme-selector-modal');
+                if (themeModal) {
+                  setTimeout(() => {
+                    themeModal.classList.add('hidden');
+                    document.body.classList.remove('modal-open');
+                  }, 300);
                 }
-                async with session.get(nft_link, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status == 200:
-                        html = await resp.text()
-                        
-                        # Ищем og:image в мета-тегах
-                        og_image_match = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
-                        if og_image_match:
-                            image_url = og_image_match.group(1)
-                            logger.info(f"✅ Найдено изображение через og:image: {image_url}")
-                            # Используем 301 (Permanent Redirect) вместо 307 для лучшей совместимости
-                            return RedirectResponse(url=image_url, status_code=301)
-                        
-                        # Ищем обычный meta image
-                        image_match = re.search(r'<meta\s+name=["\']image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
-                        if image_match:
-                            image_url = image_match.group(1)
-                            logger.info(f"✅ Найдено изображение через meta image: {image_url}")
-                            return RedirectResponse(url=image_url, status_code=301)
-                        
-                        # Ищем img теги с классом или id, связанными с NFT
-                        img_match = re.search(r'<img[^>]+(?:class|id)=["\'][^"\']*(?:nft|preview|image|photo)[^"\']*["\'][^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
-                        if img_match:
-                            image_url = img_match.group(1)
-                            # Если относительный URL, делаем его абсолютным
-                            if image_url.startswith('/'):
-                                from urllib.parse import urljoin
-                                image_url = urljoin(nft_link, image_url)
-                            logger.info(f"✅ Найдено изображение через img тег: {image_url}")
-                            return RedirectResponse(url=image_url, status_code=301)
-        except Exception as e:
-            logger.debug(f"Не удалось получить изображение из HTML: {e}")
+              });
+              
+              themesList.appendChild(themeCard);
+            }
+          });
+        }
+      }
+
+      // Экспортируем функции для глобального доступа
+      window.purchaseItem = purchaseItem;
+      window.selectPaymentMethod = selectPaymentMethod;
+      window.renderShop = renderShop;
+      window.updateThemeSelector = updateThemeSelector;
+
+      // Инициализация модалки выбора способа оплаты
+      function initPaymentMethodModal() {
+        const modal = document.getElementById('payment-method-modal');
+        const closeBtn = document.getElementById('close-payment-modal');
         
-        # Альтернативный способ: пытаемся получить превью через Telegram Bot API
-        try:
-            from aiogram import Bot
-            from config import BOT_TOKEN
-            
-            bot = Bot(token=BOT_TOKEN)
-            try:
-                preview = await bot.get_web_page_preview(url=nft_link)
-                
-                if preview and hasattr(preview, 'photo') and preview.photo:
-                    photo = preview.photo
-                    if hasattr(photo, 'sizes') and photo.sizes:
-                        largest = max(photo.sizes, key=lambda x: getattr(x, 'w', 0) * getattr(x, 'h', 0))
-                        if hasattr(largest, 'location'):
-                            file_id = largest.location.file_id if hasattr(largest.location, 'file_id') else None
-                            if file_id:
-                                file = await bot.get_file(file_id)
-                                file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
-                                session = await bot.get_session()
-                                if session:
-                                    await session.close()
-                                logger.info(f"✅ Найдено изображение через Telegram Bot API: {file_url}")
-                                return RedirectResponse(url=file_url, status_code=301)
-                
-                session = await bot.get_session()
-                if session:
-                    await session.close()
-            except Exception as e:
-                session = await bot.get_session()
-                if session:
-                    await session.close()
-                logger.debug(f"Telegram Bot API не смог получить превью: {e}")
-        except Exception as e:
-            logger.debug(f"Ошибка при использовании Telegram Bot API: {e}")
-        
-        # Если ничего не получилось, возвращаем прозрачный пиксель
-        logger.warning(f"⚠️ Не удалось получить изображение для NFT: {nft_link}")
-        transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
-        return Response(content=transparent_pixel, media_type="image/png")
-    except Exception as e:
-        logger.error(f"Ошибка в get_nft_preview: {e}", exc_info=True)
-        transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
-        return Response(content=transparent_pixel, media_type="image/png")
+        if (closeBtn) {
+          closeBtn.addEventListener('click', () => {
+            if (modal) {
+              modal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+            }
+            currentPurchaseItem = null;
+          });
+        }
 
-@app.get("/api/chat-info")
-async def get_chat_info(link: str = Query(...)):
-    """Получить название чата/канала по ссылке через Telegram Bot API"""
-    try:
-        # Извлекаем username из ссылки
-        match = re.search(r'(?:t\.me|telegram\.me)/([a-zA-Z0-9_]+)|@([a-zA-Z0-9_]+)', link)
-        if not match:
-            return {"title": link, "username": None, "error": "Неверный формат ссылки"}
-        
-        username = match.group(1) or match.group(2)
-        if not username:
-            return {"title": link, "username": None, "error": "Не удалось извлечь username"}
-        
-        bot = Bot(token=BOT_TOKEN)
-        try:
-            # Пытаемся получить информацию о чате/канале
-            chat = await bot.get_chat(f"@{username}")
-            title = chat.title if chat.title else f"@{username}"
-            try:
-                session = await bot.get_session()
-                await session.close()
-            except Exception:
-                pass
-            return {"title": title, "username": username}
-        except Exception as e:
-            try:
-                session = await bot.get_session()
-                await session.close()
-            except Exception:
-                pass
-            # Если не удалось получить название, возвращаем username
-            return {"title": f"@{username}", "username": username, "error": str(e)}
-    except Exception as e:
-        return {"title": link, "username": None, "error": str(e)}
+        if (modal) {
+          modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+              modal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+              currentPurchaseItem = null;
+            }
+          });
+        }
+      }
 
-# ------------------- MESSAGES API -------------------
+      // Инициализация магазина при загрузке секции
+      function initShop() {
+        renderShop();
+        initPaymentMethodModal();
+      }
 
-@app.post("/api/messages")
-async def create_message(request: Request):
-    """Создать сообщение (от админа/пользователя к создателю)"""
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-    
-    from_user_id = data.get("from_user_id")
-    message_text = data.get("message_text", "").strip()
-    
-    if not from_user_id:
-        raise HTTPException(status_code=400, detail="from_user_id is required")
-    
-    if not message_text:
-        raise HTTPException(status_code=400, detail="message_text is required")
-    
-    try:
-        async with async_session() as session:
-            message = Message(
-                from_user_id=int(from_user_id),
-                to_user_id=None,  # Сообщения для создателя
-                message_text=message_text,
-                status="pending",
-                created_at=datetime.now(timezone.utc)
-            )
-            session.add(message)
-            await session.commit()
-        return {"success": True, "message_id": message.id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@app.get("/api/messages")
-async def list_messages(user_id: int = Query(None), status: str = Query(None)):
-    """Получить список сообщений"""
-    try:
-        async with async_session() as session:
-            query = select(Message)
-            
-            # Если передан user_id, фильтруем сообщения для создателя (все pending)
-            if user_id:
-                # Для создателя показываем все pending сообщения
-                query = query.where(Message.status == (status or "pending"))
-            else:
-                if status:
-                    query = query.where(Message.status == status)
-            
-            query = query.order_by(Message.created_at.desc())
-            result = await session.execute(query)
-            messages = result.scalars().all()
-            
-            return [{
-                "id": m.id,
-                "from_user_id": m.from_user_id,
-                "message_text": m.message_text,
-                "status": m.status,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-                "responded_at": m.responded_at.isoformat() if m.responded_at else None
-            } for m in messages]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/messages/unread-count")
-async def get_unread_count():
-    """Получить количество непрочитанных сообщений (pending)"""
-    try:
-        async with async_session() as session:
-            result = await session.execute(
-                select(Message).where(Message.status == "pending")
-            )
-            messages = result.scalars().all()
-            count = len(messages)
-            return {"count": count}
-    except Exception as e:
-        logger.error(f"Ошибка при получении количества непрочитанных сообщений: {e}", exc_info=True)
-        # Возвращаем 0 вместо ошибки, чтобы не ломать UI
-        return {"count": 0}
-
-@app.put("/api/messages/{message_id}/respond")
-async def respond_to_message(message_id: int, request: Request):
-    """Одобрить или отклонить сообщение и отправить ответ пользователю"""
-    try:
-        data = await request.json()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-    
-    action = data.get("action")  # "approve" или "reject"
-    if action not in ["approve", "reject"]:
-        raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'")
-    
-    try:
-        async with async_session() as session:
-            # Получаем сообщение
-            result = await session.execute(
-                select(Message).where(Message.id == message_id)
-            )
-            message = result.scalars().first()
-            
-            if not message:
-                raise HTTPException(status_code=404, detail="Message not found")
-            
-            if message.status != "pending":
-                raise HTTPException(status_code=400, detail="Message already responded")
-            
-            # Обновляем статус
-            message.status = "approved" if action == "approve" else "rejected"
-            message.responded_at = datetime.now(timezone.utc)
-            
-            # Отправляем сообщение пользователю через Telegram бота
-            try:
-                bot = Bot(token=BOT_TOKEN)
-                from_user_id = message.from_user_id
-                
-                if action == "approve":
-                    response_text = "✅ Ваше сообщение было одобрено!"
-                else:
-                    response_text = "❌ Ваше сообщение было отклонено."
-                
-                await bot.send_message(
-                    chat_id=from_user_id,
-                    text=response_text
-                )
-                try:
-                    bot_session = await bot.get_session()
-                    await bot_session.close()
-                except Exception:
-                    pass
-            except Exception as bot_error:
-                # Логируем ошибку, но не прерываем процесс
-                print(f"⚠️ Ошибка отправки сообщения в Telegram: {bot_error}")
-            
-            await session.commit()
-            return {"success": True, "status": message.status}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Drawing contest endpoints removed - all drawing contest functionality has been rolled back
-
-DRAWING_DATA_FILE = os.path.join(ROOT_DIR, "drawing_contests.json")
-DRAWING_UPLOADS_DIR = os.path.join(ROOT_DIR, "drawing_uploads")
-drawing_data_lock = asyncio.Lock()
-
-COLLECTION_DATA_FILE = os.path.join(ROOT_DIR, "collection_contests.json")
-collection_data_lock = asyncio.Lock()
-
-
-def _ensure_dir(path: str):
-    try:
-        os.makedirs(path, exist_ok=True)
-    except Exception as e:
-        logger.error(f"Не удалось создать директорию {path}: {e}")
-
-
-def load_drawing_data() -> dict:
-    if not os.path.exists(DRAWING_DATA_FILE):
-        return {}
-    try:
-        with open(DRAWING_DATA_FILE, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if not content:
-                # Файл пустой, возвращаем пустой словарь
-                logger.warning(f"Файл {DRAWING_DATA_FILE} пустой, возвращаем пустой словарь")
-                return {}
-            return json.loads(content)
-    except json.JSONDecodeError as e:
-        logger.error(f"Ошибка парсинга JSON в файле данных конкурсов рисунков: {e}")
-        # Если файл поврежден, создаем резервную копию и возвращаем пустой словарь
-        try:
-            backup_path = DRAWING_DATA_FILE + ".backup_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-            if os.path.exists(DRAWING_DATA_FILE):
-                import shutil
-                shutil.copy2(DRAWING_DATA_FILE, backup_path)
-                logger.warning(f"Создана резервная копия поврежденного файла: {backup_path}")
-        except Exception:
-            pass
-        return {}
-    except Exception as e:
-        logger.error(f"Не удалось прочитать файл данных конкурсов рисунков: {e}")
-        return {}
-
-
-def save_drawing_data(data: dict) -> None:
-    _ensure_dir(os.path.dirname(DRAWING_DATA_FILE) or ROOT_DIR)
-    temp_path = DRAWING_DATA_FILE + ".tmp"
-    try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(temp_path, DRAWING_DATA_FILE)
-    except Exception as e:
-        logger.error(f"Не удалось сохранить файл данных конкурсов рисунков: {e}")
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
-
-
-_ensure_dir(DRAWING_UPLOADS_DIR)
-
-
-def load_collection_data() -> dict:
-    if not os.path.exists(COLLECTION_DATA_FILE):
-        return {}
-    try:
-        with open(COLLECTION_DATA_FILE, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if not content:
-                logger.warning(f"Файл {COLLECTION_DATA_FILE} пустой, возвращаем пустой словарь")
-                return {}
-            return json.loads(content)
-    except json.JSONDecodeError as e:
-        logger.error(f"Ошибка парсинга JSON в файле данных конкурсов коллекций: {e}")
-        try:
-            backup_path = COLLECTION_DATA_FILE + ".backup_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-            if os.path.exists(COLLECTION_DATA_FILE):
-                import shutil
-                shutil.copy2(COLLECTION_DATA_FILE, backup_path)
-                logger.warning(f"Создана резервная копия поврежденного файла: {backup_path}")
-        except Exception:
-            pass
-        return {}
-    except Exception as e:
-        logger.error(f"Не удалось прочитать файл данных конкурсов коллекций: {e}")
-        return {}
-
-
-def save_collection_data(data: dict) -> None:
-    _ensure_dir(os.path.dirname(COLLECTION_DATA_FILE) or ROOT_DIR)
-    temp_path = COLLECTION_DATA_FILE + ".tmp"
-    try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(temp_path, COLLECTION_DATA_FILE)
-    except Exception as e:
-        logger.error(f"Не удалось сохранить файл данных конкурсов коллекций: {e}")
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+      // ВЫЗЫВАЕМ ИНИЦИАЛИЗАЦИЮ ПОСЛЕ ОПРЕДЕЛЕНИЯ ВСЕХ ФУНКЦИЙ
+      console.log('✅ Все функции определены, запускаем инициализацию');
+      
+      // Инициализируем темы после загрузки DOM
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          loadTheme();
+          setTimeout(initThemeSelector, 100);
+          setTimeout(initShop, 200);
+        });
+      } else {
+        loadTheme();
+        setTimeout(initThemeSelector, 100);
+        setTimeout(initShop, 200);
+      }
+      
+      startInit();
+    })();
+  </script>
+</body>
+</html>
