@@ -2032,13 +2032,14 @@ async def upload_photo_for_drawing_contest(
                 except ImportError:
                     LocalBufferedInputFile = None
 
+                # Определяем ID создателя конкурса - фото должно отправляться ему
                 preferred_creator_id = getattr(giveaway, 'created_by', None)
                 chat_candidates = []
                 if preferred_creator_id is not None:
                     chat_candidates.append(preferred_creator_id)
                 if CREATOR_ID:
                     chat_candidates.append(CREATOR_ID)
-                chat_candidates.append(user_id)
+                # НЕ добавляем user_id - фото должно отправляться создателю, а не пользователю
 
                 def normalize_chat_id(value):
                     try:
@@ -2054,9 +2055,15 @@ async def upload_photo_for_drawing_contest(
                     break
 
                 if chat_id is None:
-                    chat_id = user_id
+                    # Если не удалось определить создателя, используем CREATOR_ID или выбрасываем ошибку
+                    if CREATOR_ID:
+                        chat_id = normalize_chat_id(CREATOR_ID)
+                    else:
+                        raise HTTPException(status_code=500, detail="Не удалось определить создателя конкурса для отправки фотографии")
                 else:
                     chat_id = normalize_chat_id(chat_id)
+                
+                logger.info(f"📤 Отправка фото конкурса {contest_id} создателю {chat_id} от пользователя {user_id}")
 
                 def build_buffered_input():
                     if LocalBufferedInputFile is None:
@@ -2150,26 +2157,18 @@ async def upload_photo_for_drawing_contest(
                     caption_user = f"Конкурс рисунков #{contest_id}\nВаша работа #{work_number}"
 
                     try:
+                        logger.info(f"📤 Попытка отправить фото конкурса {contest_id} создателю {chat_id}")
                         sent_message = await send_photo_with_fallback(chat_id, caption_creator)
+                        logger.info(f"✅ Фото успешно отправлено создателю {chat_id}, message_id={sent_message.message_id}")
                     except Exception as send_error:
-                        if chat_id != user_id:
-                            try:
-                                sent_message = await send_photo_with_fallback(user_id, caption_user)
-                                chat_id = user_id
-                            except Exception:
-                                try:
-                                    if os.path.exists(local_path):
-                                        os.remove(local_path)
-                                except Exception:
-                                    pass
-                                raise HTTPException(status_code=500, detail="Не удалось отправить фотографию в Telegram") from send_error
-                        else:
-                            try:
-                                if os.path.exists(local_path):
-                                    os.remove(local_path)
-                            except Exception:
-                                pass
-                            raise HTTPException(status_code=500, detail="Не удалось отправить фотографию в Telegram") from send_error
+                        logger.error(f"❌ Ошибка при отправке фото создателю {chat_id}: {send_error}", exc_info=True)
+                        try:
+                            if os.path.exists(local_path):
+                                os.remove(local_path)
+                        except Exception:
+                            pass
+                        error_detail = f"Не удалось отправить фотографию создателю конкурса. Убедитесь, что создатель начал диалог с ботом. Ошибка: {str(send_error)}"
+                        raise HTTPException(status_code=500, detail=error_detail) from send_error
 
                     photo_file_id = sent_message.photo[-1].file_id if sent_message.photo else None
                     photo_message_id = sent_message.message_id
