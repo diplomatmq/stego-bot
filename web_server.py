@@ -1034,6 +1034,7 @@ async def create_giveaway(request: Request):
     created_by = data.get("created_by")
     prize_links = data.get("prize_links", [])  # Массив ссылок на NFT-подарки
     contest_type = data.get("contest_type", "random_comment")  # Тип конкурса: "random_comment", "drawing" или "collection"
+    jury = data.get("jury")  # Данные жюри: {"enabled": true/false, "members": [{"user_id": 123, "channel_link": "t.me/..."}, ...]}
  
     # Базовая валидация: всегда нужно название
     if not name:
@@ -1208,6 +1209,7 @@ async def create_giveaway(request: Request):
             created_at=created_at_msk,
             created_by=created_by if created_by else None,
             contest_type=contest_type,
+            jury=jury if jury else None,  # Сохраняем данные жюри
         )
         session.add(new_giveaway)
         await session.commit()
@@ -1279,7 +1281,7 @@ async def list_giveaways(admin_id: int = Query(None)):
             
             # Build SELECT query with only existing columns
             base_cols = ['id', 'post_link', 'created_at']
-            optional_cols = {'name': 'name', 'prize': 'prize', 'end_date': 'end_date', 'conditions': 'conditions', 'discussion_group_link': 'discussion_group_link', 'prize_links': 'prize_links', 'contest_type': 'contest_type', 'submission_end_date': 'submission_end_date', 'winners_count': 'winners_count', 'start_date': 'start_date'}
+            optional_cols = {'name': 'name', 'prize': 'prize', 'end_date': 'end_date', 'conditions': 'conditions', 'discussion_group_link': 'discussion_group_link', 'prize_links': 'prize_links', 'contest_type': 'contest_type', 'submission_end_date': 'submission_end_date', 'winners_count': 'winners_count', 'start_date': 'start_date', 'jury': 'jury'}
             
             select_cols = []
             for col in base_cols:
@@ -1423,6 +1425,15 @@ async def list_giveaways(admin_id: int = Query(None)):
                 start_date = row_dict.get('start_date') if 'start_date' in existing_columns else None
                 created_by = row_dict.get('created_by') if has_created_by else None
                 
+                # Парсим jury если это JSON строка
+                jury = row_dict.get('jury') if 'jury' in existing_columns else None
+                if isinstance(jury, str):
+                    try:
+                        import json
+                        jury = json.loads(jury) if jury else None
+                    except:
+                        jury = None
+                
                 giveaways_list.append({
                     "id": row_dict.get('id'),
                     "title": row_dict.get('name') or row_dict.get('post_link') or 'Без названия',
@@ -1446,6 +1457,7 @@ async def list_giveaways(admin_id: int = Query(None)):
                     "is_confirmed": is_confirmed,
                     "winners_count": winners_count,
                     "contest_type": contest_type,
+                    "jury": jury,  # Добавляем данные жюри в ответ
                 })
             
             return giveaways_list
@@ -1795,7 +1807,25 @@ async def participate_in_contest(contest_id: int, request: Request):
                     "name": "Канал создателя"
                 })
             
-            # 3. Извлекаем ссылки из условий конкурса (включая дополнительные условия)
+            # 3. Каналы жюри (если жюри включено)
+            jury = getattr(giveaway, 'jury', None)
+            if jury and isinstance(jury, dict) and jury.get('enabled', False):
+                jury_members = jury.get('members', [])
+                for member in jury_members:
+                    channel_link = member.get('channel_link')
+                    if channel_link:
+                        channel_username = parse_telegram_username(channel_link)
+                        if channel_username:
+                            # Проверяем, что этот канал еще не добавлен
+                            if not any(sub["username"] == channel_username for sub in required_subscriptions):
+                                required_subscriptions.append({
+                                    "type": "channel",
+                                    "link": channel_link,
+                                    "username": channel_username,
+                                    "name": "Канал жюри"
+                                })
+            
+            # 4. Извлекаем ссылки из условий конкурса (включая дополнительные условия)
             # Парсим поле conditions для поиска ссылок на каналы/чаты
             if giveaway.conditions:
                 # Ищем все ссылки вида t.me/username или @username в тексте условий
@@ -2403,7 +2433,25 @@ async def verify_subscription(contest_id: int, request: Request):
                     "name": "Канал создателя"
                 })
             
-            # 3. Извлекаем ссылки из условий конкурса (включая дополнительные условия)
+            # 3. Каналы жюри (если жюри включено)
+            jury = getattr(giveaway, 'jury', None)
+            if jury and isinstance(jury, dict) and jury.get('enabled', False):
+                jury_members = jury.get('members', [])
+                for member in jury_members:
+                    channel_link = member.get('channel_link')
+                    if channel_link:
+                        channel_username = parse_telegram_username(channel_link)
+                        if channel_username:
+                            # Проверяем, что этот канал еще не добавлен
+                            if not any(sub["username"] == channel_username for sub in required_subscriptions):
+                                required_subscriptions.append({
+                                    "type": "channel",
+                                    "link": channel_link,
+                                    "username": channel_username,
+                                    "name": "Канал жюри"
+                                })
+            
+            # 4. Извлекаем ссылки из условий конкурса (включая дополнительные условия)
             # Парсим поле conditions для поиска ссылок на каналы/чаты
             if giveaway.conditions:
                 # Ищем все ссылки вида t.me/username или @username в тексте условий
@@ -2636,10 +2684,21 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
                 "is_own": False  # Все работы здесь уже не свои, так как мы их отфильтровали
             })
 
+        # Проверяем, может ли пользователь оценивать работы (для жюри)
+        jury = getattr(giveaway, 'jury', None)
+        can_vote = True
+        if jury and isinstance(jury, dict) and jury.get('enabled', False):
+            # Жюри включено - проверяем, является ли пользователь членом жюри или создателем
+            is_creator = giveaway.created_by == user_id
+            jury_members = jury.get('members', [])
+            is_jury_member = any(member.get('user_id') == user_id for member in jury_members)
+            can_vote = is_creator or is_jury_member
+        
         return {
             "success": True,
             "works": sanitized,
-            "total": len(sanitized)
+            "total": len(sanitized),
+            "can_vote": can_vote  # Информация о правах доступа для оценивания
         }
 
 @app.post("/api/contests/{contest_id}/vote")
@@ -2676,15 +2735,30 @@ async def submit_vote(contest_id: int, request: Request):
         if contest_type != 'drawing':
             raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
 
-        participant_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.user_id == user_id
+        # Проверяем права доступа: если жюри включено, только жюри и создатель могут оценивать
+        jury = getattr(giveaway, 'jury', None)
+        if jury and isinstance(jury, dict) and jury.get('enabled', False):
+            # Жюри включено - проверяем, является ли пользователь членом жюри или создателем
+            is_creator = giveaway.created_by == user_id
+            jury_members = jury.get('members', [])
+            is_jury_member = any(member.get('user_id') == user_id for member in jury_members)
+            
+            if not (is_creator or is_jury_member):
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Оценивать работы могут только члены жюри и создатель конкурса"
+                )
+        else:
+            # Жюри выключено - проверяем, что пользователь участвует в конкурсе
+            participant_result = await session.execute(
+                select(Participant).where(
+                    Participant.giveaway_id == contest_id,
+                    Participant.user_id == user_id
+                )
             )
-        )
-        participant = participant_result.scalars().first()
-        if not participant:
-            raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
+            participant = participant_result.scalars().first()
+            if not participant:
+                raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
 
         msk_tz = pytz.timezone('Europe/Moscow')
         now_msk = datetime.now(msk_tz)
