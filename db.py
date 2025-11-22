@@ -261,7 +261,15 @@ async def init_db():
                 if 'submission_end_date' not in existing_giveaway_columns:
                     await conn.execute(text("ALTER TABLE giveaways ADD COLUMN submission_end_date DATETIME"))
                     print("✅ Добавлена колонка giveaways.submission_end_date")
+                
+                if 'jury' not in existing_giveaway_columns:
+                    # Для SQLite JSON хранится как TEXT, для PostgreSQL как JSONB
+                    if IS_SQLITE:
+                        await conn.execute(text("ALTER TABLE giveaways ADD COLUMN jury TEXT"))
+                    else:
+                        await conn.execute(text("ALTER TABLE giveaways ADD COLUMN jury JSONB"))
+                    print("✅ Добавлена колонка giveaways.jury")
             except Exception as e:
-                print(f"⚠️ Migration giveaways (contest_type, submission_end_date) error: {e}")
+                print(f"⚠️ Migration giveaways (contest_type, submission_end_date, jury) error: {e}")
     
     print("✅ База данных инициализирована")
