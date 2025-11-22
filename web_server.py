@@ -2010,8 +2010,26 @@ async def upload_photo_for_drawing_contest(
             if not file.content_type or not file.content_type.startswith('image/'):
                 raise HTTPException(status_code=400, detail="Файл должен быть изображением")
             
-            # Читаем файл
-            file_content = await file.read()
+            # Сохраняем имя файла ДО чтения (после чтения объект file может быть заблокирован)
+            original_filename = file.filename or "photo.jpg"
+            
+            # Читаем файл ОДИН РАЗ - после этого объект file больше не используется
+            # Важно: читаем файл до всех операций с базой данных, чтобы избежать проблем с блокировкой тела запроса
+            try:
+                file_content = await file.read()
+                # Закрываем файл явно после чтения
+                await file.close()
+            except Exception as e:
+                logger.error(f"Ошибка при чтении файла: {e}", exc_info=True)
+                try:
+                    await file.close()
+                except:
+                    pass
+                raise HTTPException(status_code=400, detail=f"Ошибка при чтении файла: {str(e)}")
+            
+            if len(file_content) == 0:
+                raise HTTPException(status_code=400, detail="Файл пуст")
+            
             if len(file_content) > 10 * 1024 * 1024:  # 10 MB
                 raise HTTPException(status_code=400, detail="Размер файла не должен превышать 10 МБ")
             
@@ -2146,7 +2164,7 @@ async def upload_photo_for_drawing_contest(
                     if LocalBufferedInputFile is None:
                         return None
                     try:
-                        return LocalBufferedInputFile(file_content, filename=file.filename)
+                        return LocalBufferedInputFile(file_content, filename=original_filename)
                     except Exception:
                         return None
 
@@ -2157,7 +2175,7 @@ async def upload_photo_for_drawing_contest(
                     if FSInputFile is not None:
                         tmp_path = None
                         try:
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=(f"_{file.filename}" if file.filename else "")) as tmp:
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=(f"_{original_filename}" if original_filename else "")) as tmp:
                                 tmp.write(file_content)
                                 tmp_path = tmp.name
                             return await bot.send_photo(chat_id=target_chat_id, photo=FSInputFile(tmp_path), caption=caption)
@@ -2209,7 +2227,7 @@ async def upload_photo_for_drawing_contest(
                     else:
                         work_number = len(works) + 1
 
-                    file_ext = os.path.splitext(file.filename or "")[1].lower()
+                    file_ext = os.path.splitext(original_filename or "")[1].lower()
                     if not file_ext or len(file_ext) > 5:
                         file_ext = ".jpg"
                     work_dir = os.path.join(DRAWING_UPLOADS_DIR, f"contest_{contest_id}")
