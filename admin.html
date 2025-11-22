@@ -1271,6 +1271,37 @@
           <input id="drawing-contest-voting-end" type="datetime-local" class="input-field w-full p-2 rounded" />
           <p class="text-xs text-gray-500 mt-1">Между окончанием приема и окончанием голосования должно быть минимум 10 минут</p>
         </div>
+        
+        <!-- Секция жюри -->
+        <div class="border-t border-violet-500/30 pt-3 mt-3">
+          <div class="flex items-center justify-between mb-3">
+            <label class="block text-sm text-gray-400">👨‍⚖️ Жюри</label>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="drawing-contest-jury-enabled" class="sr-only peer" />
+              <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-violet-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+            </label>
+          </div>
+          
+          <div id="drawing-contest-jury-settings" class="hidden space-y-3">
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">Количество членов жюри</label>
+              <div class="flex items-center gap-3">
+                <button type="button" id="drawing-jury-count-decrease" class="w-10 h-10 rounded-full bg-violet-600 hover:bg-violet-700 text-white font-bold text-xl flex items-center justify-center transition-colors">−</button>
+                <div class="flex-1 relative overflow-hidden" style="height: 60px;">
+                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <div id="drawing-jury-count-value" class="text-3xl font-bold text-violet-400 transition-transform duration-300" style="line-height: 60px;">1</div>
+                  </div>
+                </div>
+                <button type="button" id="drawing-jury-count-increase" class="w-10 h-10 rounded-full bg-violet-600 hover:bg-violet-700 text-white font-bold text-xl flex items-center justify-center transition-colors">+</button>
+              </div>
+              <input type="hidden" id="drawing-contest-jury-count" value="1" />
+            </div>
+            
+            <div id="drawing-contest-jury-members" class="space-y-2">
+              <!-- Члены жюри будут добавляться динамически -->
+            </div>
+          </div>
+        </div>
       </div>
       <button id="submit-drawing-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить данные</button>
       <button id="update-drawing-contest" class="neon-button w-full mt-4 py-3 rounded-lg hidden">Сохранить изменения</button>
@@ -3476,6 +3507,68 @@
         });
       }
       
+      // Обработчики для жюри
+      let currentJuryCount = 1;
+      const juryEnabledCheckbox = document.getElementById('drawing-contest-jury-enabled');
+      const jurySettingsDiv = document.getElementById('drawing-contest-jury-settings');
+      const juryMembersDiv = document.getElementById('drawing-contest-jury-members');
+      const juryCountDecrease = document.getElementById('drawing-jury-count-decrease');
+      const juryCountIncrease = document.getElementById('drawing-jury-count-increase');
+      
+      // Функция для обновления полей членов жюри
+      function updateJuryMembers(count) {
+        if (!juryMembersDiv) return;
+        
+        const minCount = 1;
+        const maxCount = 20;
+        if (count < minCount) count = minCount;
+        if (count > maxCount) count = maxCount;
+        
+        currentJuryCount = count;
+        const countInput = document.getElementById('drawing-contest-jury-count');
+        if (countInput) countInput.value = count;
+        
+        const countValueEl = document.getElementById('drawing-jury-count-value');
+        if (countValueEl) countValueEl.textContent = count;
+        
+        juryMembersDiv.innerHTML = '';
+        for (let i = 0; i < count; i++) {
+          const memberDiv = document.createElement('div');
+          memberDiv.className = 'space-y-2 p-3 bg-gray-800/50 rounded border border-violet-500/20';
+          memberDiv.innerHTML = `
+            <label class="block text-xs text-gray-400 mb-1">Член жюри ${i + 1}</label>
+            <input type="number" class="jury-member-id input-field w-full p-2 rounded text-sm" placeholder="Telegram ID" data-index="${i}" style="pointer-events: auto;" />
+            <input type="text" class="jury-member-channel input-field w-full p-2 rounded text-sm" placeholder="Ссылка на канал (t.me/...)" data-index="${i}" style="pointer-events: auto;" />
+          `;
+          juryMembersDiv.appendChild(memberDiv);
+        }
+      }
+      
+      // Переключатель жюри
+      if (juryEnabledCheckbox && jurySettingsDiv) {
+        juryEnabledCheckbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            jurySettingsDiv.classList.remove('hidden');
+            updateJuryMembers(currentJuryCount);
+          } else {
+            jurySettingsDiv.classList.add('hidden');
+          }
+        });
+      }
+      
+      // Кнопки изменения количества членов жюри
+      if (juryCountDecrease) {
+        juryCountDecrease.addEventListener('click', () => {
+          updateJuryMembers(currentJuryCount - 1);
+        });
+      }
+      
+      if (juryCountIncrease) {
+        juryCountIncrease.addEventListener('click', () => {
+          updateJuryMembers(currentJuryCount + 1);
+        });
+      }
+      
       if (closeDrawingContestModal && drawingContestModal) {
         closeDrawingContestModal.addEventListener('click', () => {
           currentEditContestId = null;
@@ -3485,6 +3578,11 @@
           if (updateBtn) updateBtn.classList.add('hidden');
           const modalTitle = document.getElementById('drawing-contest-modal-title');
           if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
+          // Сбрасываем состояние жюри
+          if (juryEnabledCheckbox) juryEnabledCheckbox.checked = false;
+          if (jurySettingsDiv) jurySettingsDiv.classList.add('hidden');
+          currentJuryCount = 1;
+          if (juryMembersDiv) juryMembersDiv.innerHTML = '';
           closeModal(drawingContestModal);
         });
       }
@@ -3538,6 +3636,55 @@
           const now = new Date();
           const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
           
+          // Собираем данные жюри
+          let juryData = null;
+          const juryEnabled = juryEnabledCheckbox && juryEnabledCheckbox.checked;
+          if (juryEnabled && juryMembersDiv) {
+            const members = [];
+            const memberIdInputs = juryMembersDiv.querySelectorAll('.jury-member-id');
+            const memberChannelInputs = juryMembersDiv.querySelectorAll('.jury-member-channel');
+            
+            for (let i = 0; i < memberIdInputs.length; i++) {
+              const userId = memberIdInputs[i]?.value.trim();
+              const channelLink = memberChannelInputs[i]?.value.trim();
+              
+              if (userId && channelLink) {
+                try {
+                  const userIdNum = parseInt(userId);
+                  if (isNaN(userIdNum)) {
+                    alert(`⚠️ Некорректный Telegram ID для члена жюри ${i + 1}`);
+                    return;
+                  }
+                  members.push({
+                    user_id: userIdNum,
+                    channel_link: channelLink
+                  });
+                } catch (e) {
+                  alert(`⚠️ Ошибка при обработке данных члена жюри ${i + 1}: ${e.message}`);
+                  return;
+                }
+              } else if (userId || channelLink) {
+                alert(`⚠️ Пожалуйста, заполните все поля для члена жюри ${i + 1}`);
+                return;
+              }
+            }
+            
+            if (members.length > 0) {
+              juryData = {
+                enabled: true,
+                members: members
+              };
+            } else {
+              alert('⚠️ Если жюри включено, необходимо добавить хотя бы одного члена жюри');
+              return;
+            }
+          } else {
+            juryData = {
+              enabled: false,
+              members: []
+            };
+          }
+          
           const payload = {
             title: contestTitle,
             name: contestTitle,
@@ -3551,7 +3698,8 @@
             contest_type: 'drawing',
             post_link: '',
             channel_link: adminChannelLink,
-            discussion_group_link: adminChatLink
+            discussion_group_link: adminChatLink,
+            jury: juryData
           };
           
           try {
