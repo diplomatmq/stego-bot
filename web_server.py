@@ -2239,8 +2239,10 @@ async def upload_photo_for_drawing_contest(
 
                     # Создаем кнопку "Аннулировать" под фото
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    callback_data = f"cancel_work:{contest_id}:{work_number}:{user_id}"
+                    logger.info(f"🔘 Создана кнопка 'Аннулировать' с callback_data: {callback_data}")
                     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="❌ Аннулировать", callback_data=f"cancel_work:{contest_id}:{work_number}:{user_id}")]
+                        [InlineKeyboardButton(text="❌ Аннулировать", callback_data=callback_data)]
                     ])
 
                     try:
