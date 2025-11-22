@@ -561,6 +561,14 @@ async def run_bot():
     logging.info("✅ Callback handler для проверки подписки зарегистрирован через декоратор")
     logging.info("✅ Callback handler для аннулирования работ зарегистрирован через декоратор")
     
+    # Явно регистрируем обработчик аннулирования (на случай, если декоратор не сработал)
+    from functools import partial
+    dp.register_callback_query_handler(
+        cancel_work_callback_handler,
+        lambda c: c.data and (c.data.startswith('cancel_work:') or c.data.startswith('cancel:'))
+    )
+    logging.info("✅ Обработчик аннулирования явно зарегистрирован")
+    
     # Регистрируем хендлеры из других модулей
     register_giveaway_handlers(dp)
     register_creator_handlers(dp)
