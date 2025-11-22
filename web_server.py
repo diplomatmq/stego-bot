@@ -134,26 +134,24 @@ def _as_datetime(value: Optional[Union[str, datetime]]) -> Optional[datetime]:
 
 
 def to_iso(value: Optional[Union[str, datetime]]) -> Optional[str]:
-    """Возвращает ISO-строку в МСК (UTC+3)."""
+    """Возвращает ISO-строку без timezone."""
     dt = _as_datetime(value)
     if not dt:
         return None
-    if dt.tzinfo is None:
-        dt = MSK_TZ.localize(dt)
-    else:
-        dt = dt.astimezone(MSK_TZ)
+    # Убираем timezone, если есть
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
     return dt.isoformat()
 
 
 def to_datetime_local(value: Optional[Union[str, datetime]]) -> Optional[str]:
-    """Возвращает строку для input[type=datetime-local] (МСК)."""
+    """Возвращает строку для input[type=datetime-local] без timezone."""
     dt = _as_datetime(value)
     if not dt:
         return None
-    if dt.tzinfo is None:
-        dt = MSK_TZ.localize(dt)
-    else:
-        dt = dt.astimezone(MSK_TZ)
+    # Убираем timezone, если есть
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
     return dt.strftime('%Y-%m-%dT%H:%M')
 
 @app.get("/api/health")
@@ -1194,7 +1192,7 @@ async def create_giveaway(request: Request):
             # Для конкурса рисунков post_link не обязателен (может быть NULL)
             final_post_link = post_link if post_link and post_link.strip() else None
         
-        created_at_msk = datetime.now(MSK_TZ).replace(tzinfo=None)
+        created_at_msk = datetime.now()
 
         new_giveaway = Giveaway(
             name=name,
@@ -1225,8 +1223,7 @@ async def create_giveaway(request: Request):
                 if contest_key not in drawing_data:
                     # Создаем начальную запись для конкурса рисунков
                     preferred_creator_id = created_by if created_by else None
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    now_msk = datetime.now(msk_tz)
+                    now_msk = datetime.now()
                     drawing_data[contest_key] = {
                         "contest_id": new_giveaway.id,
                         "title": name,
@@ -1246,8 +1243,7 @@ async def create_giveaway(request: Request):
                 if contest_key not in collection_data:
                     # Создаем начальную запись для конкурса коллекций
                     preferred_creator_id = created_by if created_by else None
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    now_msk = datetime.now(msk_tz)
+                    now_msk = datetime.now()
                     collection_data[contest_key] = {
                         "contest_id": new_giveaway.id,
                         "title": name,
@@ -1343,8 +1339,7 @@ async def list_giveaways(admin_id: int = Query(None)):
                 # Автоматически выбираем победителей, если конкурс окончен и победители еще не выбраны
                 contest_id = row_dict.get('id')
                 if end_date and not is_confirmed and not winners_selected_at:
-                    # Преобразуем дату в МСК для сравнения
-                    msk_tz = pytz.timezone('Europe/Moscow')
+                    # Просто парсим дату без timezone - сравниваем с временем сервера
                     end_date_obj = None
                     
                     try:
@@ -1358,44 +1353,39 @@ async def list_giveaways(admin_id: int = Query(None)):
                                 try:
                                     # Пробуем парсить с микросекундами
                                     if '.' in end_date_clean:
-                                        end_date_naive = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S.%f')
+                                        end_date_obj = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S.%f')
                                     else:
-                                        end_date_naive = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S')
-                                    # Считаем, что это МСК время (как указал пользователь)
-                                    end_date_obj = msk_tz.localize(end_date_naive)
+                                        end_date_obj = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S')
                                 except ValueError:
                                     # Если не получилось, пробуем ISO формат
-                                    end_date_clean = end_date_clean.replace('Z', '').replace('+00:00', '')
+                                    end_date_clean = end_date_clean.replace('Z', '').replace('+00:00', '').replace('+03:00', '')
                                     if 'T' in end_date_clean:
-                                        end_date_naive = datetime.fromisoformat(end_date_clean)
+                                        end_date_obj = datetime.fromisoformat(end_date_clean)
                                     else:
-                                        end_date_naive = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
-                                    # Считаем, что это МСК время
-                                    end_date_obj = msk_tz.localize(end_date_naive) if end_date_naive.tzinfo is None else end_date_naive.astimezone(msk_tz)
+                                        end_date_obj = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
+                                    # Убираем timezone, если есть
+                                    if end_date_obj.tzinfo is not None:
+                                        end_date_obj = end_date_obj.replace(tzinfo=None)
                             else:
                                 # ISO формат с T
-                                end_date_clean = end_date_clean.replace('Z', '').replace('+00:00', '')
+                                end_date_clean = end_date_clean.replace('Z', '').replace('+00:00', '').replace('+03:00', '')
                                 if 'T' in end_date_clean:
-                                    end_date_naive = datetime.fromisoformat(end_date_clean)
+                                    end_date_obj = datetime.fromisoformat(end_date_clean)
                                 else:
-                                    end_date_naive = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
-                                # Считаем, что это МСК время
-                                end_date_obj = msk_tz.localize(end_date_naive) if end_date_naive.tzinfo is None else end_date_naive.astimezone(msk_tz)
+                                    end_date_obj = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
+                                # Убираем timezone, если есть
+                                if end_date_obj.tzinfo is not None:
+                                    end_date_obj = end_date_obj.replace(tzinfo=None)
                         elif isinstance(end_date, datetime):
-                            # Если это уже datetime объект
-                            if end_date.tzinfo is None:
-                                # Если naive datetime, считаем что это МСК
-                                end_date_obj = msk_tz.localize(end_date)
-                            else:
-                                # Если timezone-aware, преобразуем в МСК
-                                end_date_obj = end_date.astimezone(msk_tz)
+                            # Если это уже datetime объект, просто убираем timezone
+                            end_date_obj = end_date.replace(tzinfo=None) if end_date.tzinfo is not None else end_date
                     except Exception as e:
                         logger.warning(f"⚠️ Не удалось преобразовать end_date в datetime для конкурса {contest_id}: {end_date}, ошибка: {e}")
                         end_date_obj = None
                     
                     if end_date_obj:
-                        current_time_msk = datetime.now(msk_tz)
-                        logger.debug(f"🔍 Проверка конкурса {contest_id}: end_date={end_date_obj}, current_time={current_time_msk}, окончен={end_date_obj < current_time_msk}")
+                        current_time = datetime.now()
+                        logger.debug(f"🔍 Проверка конкурса {contest_id}: end_date={end_date_obj}, current_time={current_time}, окончен={end_date_obj < current_time}")
                         # Удален автоматический выбор победителей - теперь только через кнопку "Подвести итоги"
                     else:
                         logger.warning(f"⚠️ Не удалось преобразовать end_date в datetime для конкурса {contest_id}: {end_date}")
@@ -1711,16 +1701,14 @@ async def check_subscription(bot: Bot, chat_username: str, user_id: int) -> bool
         return False
 
 def normalize_datetime_to_msk(dt):
-    """Приводит datetime к timezone-aware формату в МСК времени"""
+    """Просто возвращает naive datetime для сравнения с временем сервера.
+    Убраны все преобразования timezone - время сравнивается напрямую."""
     if dt is None:
         return None
-    msk_tz = pytz.timezone('Europe/Moscow')
-    if dt.tzinfo is None:
-        # Если datetime naive, считаем что он в МСК времени
-        return msk_tz.localize(dt)
-    else:
-        # Если datetime уже timezone-aware, преобразуем в МСК
-        return dt.astimezone(msk_tz)
+    # Просто убираем timezone, если есть - сравниваем naive datetime с datetime.now()
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
 
 @app.post("/api/contests/{contest_id}/participate")
 async def participate_in_contest(contest_id: int, request: Request):
@@ -1863,8 +1851,7 @@ async def participate_in_contest(contest_id: int, request: Request):
             # Для конкурса рисунков проверяем deadline приема работ
             contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
             if contest_type == 'drawing' and giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
+                now_msk = datetime.now()
                 submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
                 
                 if now_msk > submission_end:
@@ -1981,8 +1968,7 @@ async def upload_photo_for_drawing_contest(
             
             # Проверяем время окончания приема работ
             if giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
+                now_msk = datetime.now()
                 submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
                 
                 if now_msk > submission_end:
@@ -2196,17 +2182,14 @@ async def upload_photo_for_drawing_contest(
                     contest_key = str(contest_id)
                     contest_entry = drawing_data.get(contest_key)
                     if not contest_entry:
-                        msk_tz = pytz.timezone('Europe/Moscow')
                         created_at_msk = None
                         if getattr(giveaway, 'created_at', None):
-                            # Конвертируем UTC время в МСК
-                            created_at_utc = giveaway.created_at
-                            if created_at_utc.tzinfo is None:
-                                # Если naive datetime, считаем что это UTC
-                                created_at_utc = created_at_utc.replace(tzinfo=timezone.utc)
-                            created_at_msk = created_at_utc.astimezone(msk_tz)
+                            # Просто используем время создания как есть, убираем timezone если есть
+                            created_at_msk = giveaway.created_at
+                            if created_at_msk.tzinfo is not None:
+                                created_at_msk = created_at_msk.replace(tzinfo=None)
                         else:
-                            created_at_msk = datetime.now(msk_tz)
+                            created_at_msk = datetime.now()
                         contest_entry = {
                             "contest_id": contest_id,
                             "title": getattr(giveaway, 'name', '') or getattr(giveaway, 'title', '') or '',
@@ -2282,8 +2265,7 @@ async def upload_photo_for_drawing_contest(
                         "participant_user_id": user_id,
                         "votes": {}
                     }
-                    msk_tz = pytz.timezone('Europe/Moscow')
-                    now_msk = datetime.now(msk_tz)
+                    now_msk = datetime.now()
                     work_record.update({
                         "photo_link": photo_link,
                         "photo_message_id": photo_message_id,
@@ -2364,8 +2346,7 @@ async def submit_collection_for_contest(
             
             # Проверяем время окончания приема работ
             if giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
+                now_msk = datetime.now()
                 submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
                 
                 if now_msk > submission_end:
@@ -2580,8 +2561,7 @@ async def verify_subscription(contest_id: int, request: Request):
             # Для конкурса рисунков проверяем deadline приема работ
             contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
             if contest_type == 'drawing' and giveaway.submission_end_date:
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
+                now_msk = datetime.now()
                 submission_end = normalize_datetime_to_msk(giveaway.submission_end_date)
                 
                 if now_msk > submission_end:
@@ -2740,8 +2720,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         if not participant:
             raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
 
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
+        now_msk = datetime.now()
         submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
         if submission_end and now_msk <= submission_end:
             raise HTTPException(status_code=400, detail="Голосование еще не началось")
@@ -2867,8 +2846,7 @@ async def submit_vote(contest_id: int, request: Request):
             if not participant:
                 raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
 
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
+        now_msk = datetime.now()
         submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
         if submission_end and now_msk <= submission_end:
             raise HTTPException(status_code=400, detail="Голосование еще не началось")
@@ -2963,8 +2941,7 @@ async def get_collection_voting_queue(contest_id: int, user_id: int = Query(...)
         if not participant:
             raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
 
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
+        now_msk = datetime.now()
         submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
         if submission_end and now_msk <= submission_end:
             raise HTTPException(status_code=400, detail="Голосование еще не началось")
@@ -3053,8 +3030,7 @@ async def submit_collection_vote(contest_id: int, request: Request):
         if not participant:
             raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
 
-        msk_tz = pytz.timezone('Europe/Moscow')
-        now_msk = datetime.now(msk_tz)
+        now_msk = datetime.now()
         submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
         if submission_end and now_msk <= submission_end:
             raise HTTPException(status_code=400, detail="Голосование еще не началось")
@@ -3215,8 +3191,7 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                     result["place"] = idx + 1
                 
                 # Сохраняем результаты в drawing_data
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
+                now_msk = datetime.now()
                 contest_entry["results_calculated"] = True
                 contest_entry["results_calculated_at"] = now_msk.isoformat()
                 contest_entry["results"] = results
@@ -3397,8 +3372,7 @@ async def calculate_collection_contest_results(contest_id: int, current_user_id:
                     result["place"] = idx + 1
                 
                 # Сохраняем результаты в collection_data
-                msk_tz = pytz.timezone('Europe/Moscow')
-                now_msk = datetime.now(msk_tz)
+                now_msk = datetime.now()
                 contest_entry["results_calculated"] = True
                 contest_entry["results_calculated_at"] = now_msk.isoformat()
                 contest_entry["results"] = results
