@@ -105,11 +105,26 @@ async def get_js():
 # ------------------- API -------------------
 
 def to_msk_naive(dt: Optional[datetime]) -> Optional[datetime]:
-    """Преобразует datetime в naive формат МСК (UTC+3) для хранения в БД."""
+    """Преобразует datetime в naive формат МСК (UTC+3) для хранения в БД.
+    ВАЖНО: Если datetime уже в МСК timezone (создан через msk_tz.localize), 
+    просто убираем timezone без преобразования, чтобы не добавлять лишние часы.
+    Если datetime в другом timezone, преобразуем в МСК."""
     if not dt:
         return None
     if dt.tzinfo is None:
+        # Если naive datetime, считаем что оно уже в МСК (так как пользователь вводит время в МСК)
         return dt
+    
+    # Проверяем, находится ли datetime уже в МСК timezone
+    # Используем str() для сравнения, так как объекты timezone могут быть разными экземплярами
+    dt_tz_str = str(dt.tzinfo)
+    msk_tz_str = str(MSK_TZ)
+    
+    # Если timezone совпадает с МСК (по строковому представлению), просто убираем timezone
+    if 'Europe/Moscow' in dt_tz_str or dt_tz_str == msk_tz_str:
+        return dt.replace(tzinfo=None)
+    
+    # Если datetime в другом timezone, преобразуем в МСК
     return dt.astimezone(MSK_TZ).replace(tzinfo=None)
 
 
@@ -1090,11 +1105,14 @@ async def create_giveaway(request: Request):
     msk_tz = pytz.timezone('Europe/Moscow')
     
     def parse_date(date_str):
-        """Парсит дату из строки в МСК время"""
+        """Парсит дату из строки в МСК время.
+        ВАЖНО: datetime-local input возвращает время в локальном часовом поясе пользователя.
+        Если пользователь в МСК, то время уже в МСК, и мы не должны добавлять timezone offset.
+        Мы просто интерпретируем naive datetime как МСК время."""
         if not date_str:
             return None
         if isinstance(date_str, str):
-            date_clean = date_str.replace('Z', '').replace('+00:00', '')
+            date_clean = date_str.replace('Z', '').replace('+00:00', '').replace('+03:00', '')
             if not date_clean:
                 return None
             if 'T' in date_clean:
@@ -1103,7 +1121,14 @@ async def create_giveaway(request: Request):
                 date_naive = datetime.fromisoformat(f"{date_clean}T00:00:00")
         else:
             date_naive = date_str
-        return msk_tz.localize(date_naive) if date_naive.tzinfo is None else date_naive.astimezone(msk_tz)
+        
+        # Если datetime уже имеет timezone, преобразуем в МСК
+        if date_naive.tzinfo is not None:
+            return date_naive.astimezone(msk_tz)
+        
+        # Если datetime naive (без timezone), интерпретируем его как МСК время
+        # Это правильно, так как пользователь вводит время в МСК через datetime-local input
+        return msk_tz.localize(date_naive)
     
     start_date_msk = parse_date(start_date_str)
     end_date_msk = parse_date(end_date_str)
