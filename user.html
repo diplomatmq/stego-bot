@@ -1868,6 +1868,13 @@
           const response = await window.fetchJSON(`/api/contests/${contestId}/voting-queue?user_id=${currentUserId}`);
           // Работы уже отфильтрованы на сервере (собственные работы исключены)
           const works = response?.works || [];
+          const canVote = response?.can_vote !== false; // По умолчанию true, если не указано
+
+          if (!canVote) {
+            alert('Оценивать работы могут только члены жюри и создатель конкурса.');
+            closeVotingModal();
+            return;
+          }
 
           if (!works.length) {
             alert('Нет работ для оценки или все работы принадлежат вам.');
@@ -2814,6 +2821,17 @@
                 const submissionEndDate = c.submission_end_date;
                 const votingEndDate = c.end_at || c.end_date || c.voting_end_date;
                 
+                // Проверяем права доступа для оценивания (для жюри)
+                const jury = c.jury;
+                let canVote = true; // По умолчанию все могут оценивать (если жюри выключено)
+                if (jury && typeof jury === 'object' && jury.enabled === true) {
+                  // Жюри включено - проверяем, является ли пользователь членом жюри или создателем
+                  const isCreator = c.created_by === currentUserId;
+                  const juryMembers = jury.members || [];
+                  const isJuryMember = juryMembers.some(member => member.user_id === currentUserId);
+                  canVote = isCreator || isJuryMember;
+                }
+                
                 const now = new Date();
                 const submissionEnd = submissionEndDate ? new Date(submissionEndDate) : null;
                 const votingEnd = votingEndDate ? new Date(votingEndDate) : null;
@@ -2883,7 +2901,7 @@
                 } else if (hasSubmitted && !isSubmissionPeriodActive && isParticipating === true) {
                   // Работа загружена, время приема работ истекло, пользователь участвует
                   const submittedText = isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена';
-                  if (isVotingPeriodActive) {
+                  if (isVotingPeriodActive && canVote) {
                     photoHtml = `
                       <div class="text-sm text-green-400 mb-2">${submittedText}</div>
                       <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
@@ -2931,8 +2949,8 @@
                 } else if (!isSubmissionPeriodActive) {
                   // Время приема работ истекло
                   if (isParticipating === true) {
-                    // Пользователь участвует - показываем кнопку "Голосовать" если период голосования активен
-                    if (isVotingPeriodActive) {
+                    // Пользователь участвует - показываем кнопку "Голосовать" если период голосования активен и есть права доступа
+                    if (isVotingPeriodActive && canVote) {
                       photoHtml = `
                         <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
                         ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
@@ -2967,8 +2985,8 @@
                   `;
                 }
                 
-                // Добавляем обработчик кнопки "Голосовать" для всех участников после окончания времени приема работ
-                if (isParticipating && isVotingPeriodActive && !isSubmissionPeriodActive) {
+                // Добавляем обработчик кнопки "Голосовать" только если есть права доступа
+                if (canVote && isVotingPeriodActive && !isSubmissionPeriodActive) {
                   setTimeout(() => {
                     const voteBtn = document.getElementById(`vote-btn-${c.id}`);
                     if (voteBtn) {
