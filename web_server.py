@@ -2240,15 +2240,32 @@ async def upload_photo_for_drawing_contest(
                     # Создаем кнопку "Аннулировать" под фото
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     callback_data = f"cancel_work:{contest_id}:{work_number}:{user_id}"
-                    logger.info(f"🔘 Создана кнопка 'Аннулировать' с callback_data: {callback_data}")
+                    callback_data_bytes = len(callback_data.encode('utf-8'))
+                    logger.info(f"🔘 Создана кнопка 'Аннулировать' с callback_data: {callback_data} (длина: {callback_data_bytes} байт)")
+                    
+                    # Telegram ограничивает callback_data до 64 байт
+                    if callback_data_bytes > 64:
+                        logger.error(f"❌ callback_data слишком длинный ({callback_data_bytes} байт), максимально 64 байта!")
+                        # Используем более короткий формат
+                        callback_data = f"cancel:{contest_id}:{work_number}:{user_id}"
+                        callback_data_bytes = len(callback_data.encode('utf-8'))
+                        logger.info(f"🔘 Используется короткий формат: {callback_data} (длина: {callback_data_bytes} байт)")
+                    
                     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text="❌ Аннулировать", callback_data=callback_data)]
                     ])
+                    
+                    # Логируем структуру клавиатуры для отладки
+                    try:
+                        keyboard_dict = cancel_keyboard.to_python()
+                        logger.info(f"🔘 Структура клавиатуры: {keyboard_dict}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Не удалось сериализовать клавиатуру: {e}")
 
                     try:
-                        logger.info(f"📤 Попытка отправить фото конкурса {contest_id} создателю {chat_id}")
+                        logger.info(f"📤 Попытка отправить фото конкурса {contest_id} создателю {chat_id} с callback_data: {callback_data}")
                         sent_message = await send_photo_with_fallback(chat_id, caption_creator, reply_markup=cancel_keyboard)
-                        logger.info(f"✅ Фото успешно отправлено создателю {chat_id}, message_id={sent_message.message_id}")
+                        logger.info(f"✅ Фото успешно отправлено создателю {chat_id}, message_id={sent_message.message_id}, reply_markup установлен")
                     except Exception as send_error:
                         logger.error(f"❌ Ошибка при отправке фото создателю {chat_id}: {send_error}", exc_info=True)
                         try:
