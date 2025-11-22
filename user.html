@@ -3181,17 +3181,26 @@
                             body: formData
                           });
                           
-                          const result = await response.json();
+                          let result;
+                          try {
+                            result = await response.json();
+                          } catch (jsonError) {
+                            console.error('Ошибка парсинга JSON:', jsonError);
+                            const text = await response.text();
+                            throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}. ${text}`);
+                          }
                           
                           if (response.ok && result.success) {
                             alert('✅ ' + result.message);
                             await window.loadContests(); // Обновляем список конкурсов
                           } else {
-                            alert('❌ ' + (result.detail || result.message || 'Ошибка при загрузке фотографии'));
+                            const errorMsg = result.detail || result.message || 'Ошибка при загрузке фотографии';
+                            console.error('Ошибка загрузки фото:', result);
+                            alert('❌ ' + errorMsg);
                           }
                         } catch (error) {
                           console.error('Ошибка загрузки фотографии:', error);
-                          alert('❌ Ошибка при загрузке фотографии');
+                          alert('❌ ' + (error.message || 'Ошибка при загрузке фотографии'));
                         } finally {
                           uploadBtn.disabled = false;
                           uploadBtn.textContent = '📤 Загрузить фотографию';
