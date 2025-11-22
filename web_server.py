@@ -2024,11 +2024,12 @@ async def upload_photo_for_drawing_contest(
             # Ресайзим изображение, если оно слишком большое (Telegram API ограничение: 10000x10000)
             try:
                 from PIL import Image
+                import io as io_module  # Используем явный импорт, чтобы избежать конфликта
                 max_dimension = 10000  # Максимальный размер для Telegram API
                 max_file_size = 10 * 1024 * 1024  # 10 МБ
                 
                 # Открываем изображение из байтов
-                img = Image.open(io.BytesIO(file_content))
+                img = Image.open(io_module.BytesIO(file_content))
                 original_size = img.size
                 original_format = img.format
                 
@@ -2059,7 +2060,7 @@ async def upload_photo_for_drawing_contest(
                     logger.info(f"📐 Новые размеры: {img.size}")
                 
                 # Сохраняем в байты и проверяем размер файла
-                output = io.BytesIO()
+                output = io_module.BytesIO()
                 # Определяем формат для сохранения
                 if original_format == 'PNG' and img.mode != 'RGBA':
                     # Если оригинал был PNG, но мы конвертировали в RGB, используем JPEG
