@@ -2924,9 +2924,9 @@
                       <div class="text-sm text-gray-300 mb-2">📸 Загрузите фотографию</div>
                       ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
                       <input type="file" id="photo-input-${c.id}" accept="image/*" class="hidden" />
-                      <button id="upload-photo-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm">
+                      <label for="photo-input-${c.id}" id="upload-photo-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm cursor-pointer inline-block text-center">
                         📤 Загрузить фотографию
-                      </button>
+                      </label>
                     `;
                   } else if (isCollectionContest) {
                     photoHtml = `
@@ -3142,20 +3142,45 @@
                 
                 // Добавляем обработчик загрузки фотографии (если пользователь уже участвует)
                 // Загрузка возможна только если время приема работ еще не истекло
+                console.log(`[DEBUG] Конкурс ${c.id}: Проверка условий для загрузки фото - isParticipating=${isParticipating}, canUpload=${canUpload}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isDrawingContest=${isDrawingContest}`);
                 if (isParticipating === true && canUpload && !hasSubmitted && isSubmissionPeriodActive && isDrawingContest) {
+                  console.log(`[DEBUG] Конкурс ${c.id}: Условия выполнены, добавляем обработчик загрузки фото`);
                   // Небольшая задержка для гарантии, что элемент добавлен в DOM
                   setTimeout(() => {
                     const photoInput = document.getElementById(`photo-input-${c.id}`);
                     const uploadBtn = document.getElementById(`upload-photo-btn-${c.id}`);
                     
+                    console.log(`[DEBUG] Конкурс ${c.id}: photoInput=${!!photoInput}, uploadBtn=${!!uploadBtn}`);
+                    
                     if (uploadBtn && photoInput) {
-                      uploadBtn.addEventListener('click', () => {
-                        photoInput.click();
-                      });
+                      // Удаляем старые обработчики, если они есть (используем клонирование элемента)
+                      const newUploadBtn = uploadBtn.cloneNode(true);
+                      uploadBtn.parentNode.replaceChild(newUploadBtn, uploadBtn);
+                      const newPhotoInput = photoInput.cloneNode(true);
+                      photoInput.parentNode.replaceChild(newPhotoInput, photoInput);
                       
-                      photoInput.addEventListener('change', async (e) => {
+                      // Получаем новые элементы
+                      const freshUploadBtn = document.getElementById(`upload-photo-btn-${c.id}`);
+                      const freshPhotoInput = document.getElementById(`photo-input-${c.id}`);
+                      
+                      // label автоматически активирует input при клике, поэтому обработчик на кнопке не нужен
+                      // Но добавим обработчик для логирования
+                      if (freshUploadBtn) {
+                        freshUploadBtn.addEventListener('click', () => {
+                          console.log(`[DEBUG] Клик по label/кнопке загрузки для конкурса ${c.id}`);
+                        });
+                      }
+                      
+                      // Добавляем обработчик на input
+                      freshPhotoInput.addEventListener('change', async (e) => {
+                        console.log(`[DEBUG] Изменение файла для конкурса ${c.id}`);
                         const file = e.target.files[0];
-                        if (!file) return;
+                        if (!file) {
+                          console.log(`[DEBUG] Файл не выбран`);
+                          return;
+                        }
+                        
+                        console.log(`[DEBUG] Выбран файл: ${file.name}, тип: ${file.type}, размер: ${file.size}`);
                         
                         if (!file.type.startsWith('image/')) {
                           alert('⚠️ Файл должен быть изображением');
@@ -3167,23 +3192,35 @@
                           return;
                         }
                         
-                        uploadBtn.disabled = true;
-                        uploadBtn.textContent = '⏳ Загрузка...';
+                        freshUploadBtn.disabled = true;
+                        freshUploadBtn.textContent = '⏳ Загрузка...';
                         
                         try {
+                          // Получаем currentUserId из глобальной переменной или Telegram WebApp
+                          const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+                          if (!userId) {
+                            alert('❌ Не удалось определить ID пользователя. Пожалуйста, перезагрузите страницу.');
+                            return;
+                          }
+                          
+                          console.log(`[DEBUG] Начинаем загрузку фото для конкурса ${c.id}, user_id=${userId}`);
                           const formData = new FormData();
                           formData.append('file', file);
-                          formData.append('user_id', currentUserId);
+                          formData.append('user_id', userId);
                           formData.append('user_username', window.Telegram?.WebApp?.initDataUnsafe?.user?.username || '');
                           
+                          console.log(`[DEBUG] Отправка запроса на /api/contests/${c.id}/upload-photo`);
                           const response = await fetch(`/api/contests/${c.id}/upload-photo`, {
                             method: 'POST',
                             body: formData
                           });
                           
+                          console.log(`[DEBUG] Получен ответ: status=${response.status}, ok=${response.ok}`);
+                          
                           let result;
                           try {
                             result = await response.json();
+                            console.log(`[DEBUG] Результат:`, result);
                           } catch (jsonError) {
                             console.error('Ошибка парсинга JSON:', jsonError);
                             const text = await response.text();
@@ -3202,13 +3239,15 @@
                           console.error('Ошибка загрузки фотографии:', error);
                           alert('❌ ' + (error.message || 'Ошибка при загрузке фотографии'));
                         } finally {
-                          uploadBtn.disabled = false;
-                          uploadBtn.textContent = '📤 Загрузить фотографию';
-                          photoInput.value = '';
+                          freshUploadBtn.disabled = false;
+                          freshUploadBtn.textContent = '📤 Загрузить фотографию';
+                          freshPhotoInput.value = '';
                         }
                       });
+                    } else {
+                      console.error(`[DEBUG] Элементы не найдены для конкурса ${c.id}: photoInput=${!!photoInput}, uploadBtn=${!!uploadBtn}`);
                     }
-                  }, 100);
+                  }, 200);
                 }
                 
                 // Добавляем обработчик кнопки отправки коллекции (если пользователь уже участвует)
