@@ -559,7 +559,7 @@ async def run_bot():
     print("🤖 Запуск Telegram-бота...")
     
     # Добавляем middleware для логирования ВСЕХ входящих обновлений
-    @dp.middleware()
+    # В aiogram 2.x middleware регистрируется через dp.middleware.setup()
     class UpdateLoggingMiddleware:
         async def __call__(self, handler, event, data):
             # Логируем все callback_query
@@ -570,6 +570,7 @@ async def run_bot():
                 logging.info(f"📥 ПОЛУЧЕНО СООБЩЕНИЕ: от пользователя {event.message.from_user.id} (username: {event.message.from_user.username})")
             return await handler(event, data)
     
+    dp.middleware.setup(UpdateLoggingMiddleware())
     logging.info("✅ Middleware для логирования обновлений зарегистрирован")
     
     # ВАЖНО: В aiogram 2.x порядок регистрации обработчиков имеет значение!
