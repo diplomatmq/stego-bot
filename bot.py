@@ -558,6 +558,20 @@ async def run_bot():
     print("✅ База данных инициализирована")
     print("🤖 Запуск Telegram-бота...")
     
+    # Добавляем middleware для логирования ВСЕХ входящих обновлений
+    @dp.middleware()
+    class UpdateLoggingMiddleware:
+        async def __call__(self, handler, event, data):
+            # Логируем все callback_query
+            if hasattr(event, 'callback_query') and event.callback_query:
+                logging.info(f"📥 ПОЛУЧЕН CALLBACK: data='{event.callback_query.data}' от пользователя {event.callback_query.from_user.id} (username: {event.callback_query.from_user.username})")
+            # Логируем все сообщения
+            elif hasattr(event, 'message') and event.message:
+                logging.info(f"📥 ПОЛУЧЕНО СООБЩЕНИЕ: от пользователя {event.message.from_user.id} (username: {event.message.from_user.username})")
+            return await handler(event, data)
+    
+    logging.info("✅ Middleware для логирования обновлений зарегистрирован")
+    
     # ВАЖНО: В aiogram 2.x порядок регистрации обработчиков имеет значение!
     # Регистрируем обработчики callback'ов в правильном порядке:
     # 1. Сначала специфичные обработчики (с точными условиями)
@@ -565,11 +579,21 @@ async def run_bot():
     
     # Регистрируем обработчик cancel_work ПЕРВЫМ (до всех остальных)
     # Это критично, чтобы он не был перехвачен другими обработчиками
+    
+    # Создаем фильтр для отладки
+    def cancel_filter(callback_query: types.CallbackQuery):
+        if not callback_query.data:
+            return False
+        matches = callback_query.data.startswith('cancel_work:') or callback_query.data.startswith('cancel:')
+        if matches:
+            logging.info(f"🎯 ФИЛЬТР СРАБОТАЛ для callback_data: '{callback_query.data}'")
+        return matches
+    
     dp.register_callback_query_handler(
         cancel_work_callback_handler,
-        lambda c: c.data and (c.data.startswith('cancel_work:') or c.data.startswith('cancel:'))
+        cancel_filter
     )
-    logging.info("✅ Обработчик аннулирования зарегистрирован ПЕРВЫМ")
+    logging.info("✅ Обработчик аннулирования зарегистрирован ПЕРВЫМ с фильтром")
     
     # Регистрируем обработчик проверки подписки
     dp.register_callback_query_handler(
@@ -603,6 +627,11 @@ async def run_bot():
     register_creator_handlers(dp)
     
     logging.info("✅ Все обработчики зарегистрированы")
+    
+    # Выводим список всех зарегистрированных callback handlers для отладки
+    logging.info("📋 Список зарегистрированных callback handlers:")
+    for handler in dp.callback_query.handlers:
+        logging.info(f"  - {handler}")
     
     # Проверяем все активные конкурсы и собираем исторические комментарии
     from giveaway import check_all_giveaways_historical_comments
