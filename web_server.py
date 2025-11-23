@@ -4,31 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://telegram.org https://fonts.googleapis.com https://fonts.gstatic.com https://cdn4.telesco.pe https://cdn*.telesco.pe https://*.telesco.pe data:; img-src 'self' data: https: http: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://telegram.org; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com;">
-  <title>⚙️ Панель Администратора</title>
+  <title>🎁 Панель Создателя</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Шрифт для темы Mario -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-  <!-- Готический шрифт для темы Attack on Titan -->
-  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Nosifer&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 
   <!-- Telegram WebApp -->
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       if (window.Telegram?.WebApp) {
-        console.log('✅ Telegram WebApp обнаружен');
         Telegram.WebApp.expand();
         Telegram.WebApp.ready();
-        console.log('✅ Telegram WebApp инициализирован');
-        console.log('📱 Платформа:', Telegram.WebApp.platform);
-        console.log('👤 Пользователь:', Telegram.WebApp.initDataUnsafe?.user);
-      } else {
-        console.warn('⚠️ Telegram WebApp недоступен');
-        console.warn('💡 Для реальной оплаты откройте приложение через бота в Telegram');
-        console.warn('💡 Если открываете файл напрямую в браузере, будет доступен только тестовый режим');
       }
     });
   </script>
@@ -88,39 +72,80 @@
 
     /* 📱 Стили для модальных окон на мобильных устройствах */
     #contest-modal,
-    #contest-type-modal,
-    #prizes-modal {
+    #edit-contest-modal,
+    #prizes-modal,
+    #admin-modal,
+    #edit-admin-modal,
+    #messages-modal,
+    #message-detail-modal {
       /* Обеспечиваем скролл даже при открытой клавиатуре */
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
       /* Запрещаем горизонтальный скролл */
       overflow-x: hidden !important;
       overflow-y: auto !important;
-      /* Запрещаем zoom */
-      touch-action: pan-y;
+      /* Разрешаем клики и жесты */
+      pointer-events: auto !important;
+      touch-action: pan-y pinch-zoom;
       /* Фиксируем ширину и предотвращаем масштабирование */
       max-width: 100vw;
       width: 100%;
+      z-index: 30 !important;
     }
     
     #contest-modal > div,
-    #contest-type-modal > div,
-    #prizes-modal > div {
+    #edit-contest-modal > div,
+    #prizes-modal > div,
+    #admin-modal > div,
+    #edit-admin-modal > div,
+    #messages-modal > div,
+    #message-detail-modal > div {
       /* Позволяем скроллить содержимое внутри модалки только вертикально */
       overscroll-behavior: contain;
       overflow-x: hidden !important;
       overflow-y: auto !important;
-      /* Запрещаем zoom */
-      touch-action: pan-y;
+      /* Разрешаем клики */
+      pointer-events: auto !important;
+      touch-action: pan-y pinch-zoom;
       /* Фиксируем максимальную ширину */
       max-width: 100%;
       width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+    
+    /* Убеждаемся, что все интерактивные элементы внутри модалок кликабельны */
+    #contest-modal button,
+    #contest-modal input,
+    #contest-modal textarea,
+    #contest-modal select,
+    #edit-contest-modal button,
+    #edit-contest-modal input,
+    #edit-contest-modal textarea,
+    #edit-contest-modal select,
+    #prizes-modal button,
+    #prizes-modal input,
+    #prizes-modal textarea,
+    #admin-modal button,
+    #admin-modal input,
+    #admin-modal textarea,
+    #edit-admin-modal button,
+    #edit-admin-modal input,
+    #edit-admin-modal textarea,
+    #messages-modal button,
+    #messages-modal input,
+    #message-detail-modal button,
+    #message-detail-modal input {
+      pointer-events: auto !important;
+      cursor: pointer;
+      position: relative;
+      z-index: 10;
     }
     
     @media (max-height: 600px) {
       /* Когда клавиатура открыта, уменьшаем максимальную высоту */
       #contest-modal > div,
-      #prizes-modal > div {
+      #edit-contest-modal > div {
         max-height: calc(100vh - 2rem);
       }
     }
@@ -360,6 +385,69 @@
         inset 0 0 0 1px rgba(167, 139, 250, 0.55);
     }
 
+    /* 🗑️ Delete button styles - Button Concept #12 style */
+    .deletable-item {
+      position: relative;
+      transition: transform 0.2s ease;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+
+    .deletable-item.deleting-mode {
+      animation: shake 0.4s ease infinite;
+    }
+
+    @keyframes shake {
+      0%, 100% { 
+        transform: translateX(0) translateY(0);
+      }
+      10%, 30%, 50%, 70%, 90% { 
+        transform: translateX(-3px) translateY(-2px);
+      }
+      20%, 40%, 60%, 80% { 
+        transform: translateX(3px) translateY(2px);
+      }
+    }
+
+    /* Стили кнопки удаления не используются - долгое нажатие сразу открывает модальное окно */
+
+    /* Backdrop blur для фона при удалении */
+    .backdrop-blur-active {
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+
+    /* Prevent text selection on buttons */
+    .neon-button,
+    .nav-button,
+    button {
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    /* Message item styles */
+    .message-item {
+      transition: all 0.3s ease;
+    }
+
+    .message-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+
+    .line-clamp-3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
     /* Испарение красным цветом - анимация удаления */
     .evaporating-item {
       position: relative;
@@ -435,521 +523,89 @@
       pointer-events: none;
     }
 
-    .deletable-item {
-      position: relative;
-      transition: transform 0.2s ease;
-      user-select: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
+    .evaporating-item.evaporating-now::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center,
+        rgba(239, 68, 68, 0) 0%,
+        rgba(239, 68, 68, 0.3) 50%,
+        rgba(239, 68, 68, 0.6) 100%);
+      opacity: 0;
+      animation: evaporate-glow-in 1.5s ease-out forwards;
+      z-index: -1;
     }
 
-    /* Prevent text selection on buttons */
-    .neon-button,
-    .nav-button,
-    button {
-      user-select: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      -webkit-touch-callout: none;
-    }
-
-    /* ✨ Shimmer animation for experience bar */
-    @keyframes shimmer {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-
-    .animate-shimmer {
-      animation: shimmer 2s infinite;
-    }
-
-    /* 🎯 Level badge glow */
-    #level-badge {
-      background: linear-gradient(135deg, 
-        #000000 0%, 
-        #4c1d95 25%, 
-        #7c3aed 50%, 
-        #ec4899 75%, 
-        #dc2626 100%
-      );
-      background-size: 200% 200%;
-      color: #ffffff;
-      border: 1px solid rgba(167, 139, 250, 0.5);
-      box-shadow: 
-        0 0 15px rgba(124, 58, 237, 0.6),
-        0 0 30px rgba(236, 72, 153, 0.4),
-        inset 0 0 10px rgba(0, 0, 0, 0.5);
-      animation: level-badge-flow 3s ease-in-out infinite, level-badge-pulse 2s ease-in-out infinite;
-      text-shadow: 0 0 10px rgba(167, 139, 250, 0.8);
-    }
-
-    @keyframes level-badge-flow {
+    @keyframes evaporate-glow-in {
       0% {
-        background-position: 0% 50%;
+        opacity: 0;
       }
       50% {
-        background-position: 100% 50%;
+        opacity: 1;
       }
       100% {
-        background-position: 0% 50%;
+        opacity: 0;
       }
-    }
-
-    @keyframes level-badge-pulse {
-      0%, 100% {
-      box-shadow: 
-        0 0 15px rgba(124, 58, 237, 0.6),
-        0 0 30px rgba(236, 72, 153, 0.4),
-        inset 0 0 10px rgba(0, 0, 0, 0.5);
-      }
-      50% {
-      box-shadow: 
-        0 0 25px rgba(124, 58, 237, 0.9),
-        0 0 50px rgba(236, 72, 153, 0.7),
-        0 0 20px rgba(220, 38, 38, 0.5),
-        inset 0 0 15px rgba(0, 0, 0, 0.7);
-      }
-    }
-
-    /* 🐱 Kitty theme - розовая тема */
-    body.theme-kitty {
-      --neon-purple-1: #ff6b9d;
-      --neon-purple-2: #ff8cc8;
-      --neon-purple-3: #ffb3d9;
-      --neon-pink: #ff1493;
-      --neon-white: #ffffff;
-      --neon-bg: #fff0f5;
-      --text-primary: #8b4a6b;
-      --card-bg: #ffe6f2;
-      --border-color: #ffb3d9;
-    }
-
-    body.theme-kitty.page-dark {
-      background-color: var(--neon-bg) !important;
-      color: var(--text-primary) !important;
-    }
-
-    body.theme-kitty .rounded-lg.border,
-    body.theme-kitty .bg-black\/30,
-    body.theme-kitty main {
-      background-color: var(--card-bg) !important;
-      border-color: var(--border-color) !important;
-      color: var(--text-primary) !important;
-    }
-
-    body.theme-kitty .text-white {
-      color: var(--text-primary) !important;
-    }
-
-    body.theme-kitty .text-gray-300,
-    body.theme-kitty .text-gray-400 {
-      color: #b87a9d !important;
-    }
-
-    body.theme-kitty .text-gray-500 {
-      color: #a06a8a !important;
-    }
-
-    body.theme-kitty .nav-button {
-      color: var(--text-primary) !important;
-      box-shadow: inset 0 0 0 1px rgba(255, 107, 157, 0.4) !important;
-    }
-
-    body.theme-kitty .nav-button.active,
-    body.theme-kitty .nav-button:hover {
-      box-shadow:
-        0 0 12px rgba(255, 107, 157, 0.6),
-        inset 0 0 0 1px rgba(255, 107, 157, 0.7) !important;
-    }
-
-    body.theme-kitty .neon-button {
-      background: #ffe6f2 !important;
-      color: var(--text-primary) !important;
-      border: 1px solid rgba(255, 107, 157, 0.5) !important;
-      box-shadow:
-        0 0 16px rgba(255, 107, 157, 0.4),
-        inset 0 0 18px rgba(255, 140, 200, 0.3) !important;
-    }
-
-    body.theme-kitty .neon-button:hover {
-      box-shadow:
-        0 0 22px rgba(255, 107, 157, 0.6),
-        inset 0 0 24px rgba(255, 140, 200, 0.4) !important;
-      border-color: rgba(255, 107, 157, 0.8) !important;
-    }
-
-    body.theme-kitty .neon-sides::before,
-    body.theme-kitty .neon-sides::after {
-      background: linear-gradient(180deg,
-        #ff6b9d 0%,
-        #ff6b9d 25%,
-        #ff1493 55%,
-        #ffffff 85%,
-        #ff8cc8 100%
-      );
-      box-shadow:
-        0 0 12px rgba(255, 140, 200, 0.7),
-        0 0 28px rgba(255, 107, 157, 0.5),
-        inset 0 0 16px rgba(255, 179, 217, 0.4);
-    }
-
-    body.theme-kitty .neon-bottom {
-      background:
-        radial-gradient(60% 140% at 50% 100%, rgba(255, 107, 157, 0.2), rgba(255, 240, 245, 0) 60%),
-        radial-gradient(25% 100% at 0% 100%, rgba(255, 20, 147, 0.22), transparent 70%),
-        radial-gradient(25% 100% at 100% 100%, rgba(255, 255, 255, 0.1), transparent 70%);
-    }
-
-    body.theme-kitty .neon-bottom::before {
-      background:
-        repeating-linear-gradient(to right,
-          rgba(255,255,255,0.9) 0 18px,
-          transparent 18px 34px
-        ),
-        repeating-linear-gradient(to right,
-          rgba(255,20,147,0.7) 0 14px,
-          transparent 14px 30px
-        ),
-        repeating-linear-gradient(to right,
-          rgba(255,107,157,0.7) 0 16px,
-          transparent 16px 32px
-        );
-      box-shadow:
-        0 0 22px rgba(255, 140, 200, 0.8),
-        0 0 44px rgba(255, 107, 157, 0.7),
-        inset 0 0 10px rgba(255, 179, 217, 0.6);
-    }
-
-    body.theme-kitty .neon-bottom::after {
-      background: linear-gradient(90deg, transparent, rgba(255,107,157,0.3), rgba(255,20,147,0.3), rgba(255,255,255,0.22), rgba(255,140,200,0.3), transparent);
-    }
-
-    body.theme-kitty .text-violet-400 {
-      color: #ff6b9d !important;
-    }
-
-    body.theme-kitty .text-pink-400 {
-      color: #ff1493 !important;
-    }
-
-    body.theme-kitty .text-blue-400 {
-      color: #ff8cc8 !important;
-    }
-
-    body.theme-kitty .text-green-400 {
-      color: #4ade80 !important;
-    }
-
-    body.theme-kitty .border-violet-400\/30,
-    body.theme-kitty .border-violet-400\/20 {
-      border-color: rgba(255, 179, 217, 0.5) !important;
-    }
-
-    body.theme-kitty .neon-nav {
-      background: rgba(255, 230, 242, 0.9) !important;
-      border-bottom: 1px solid rgba(255, 179, 217, 0.3) !important;
-      box-shadow: 0 0 24px rgba(255, 107, 157, 0.3) !important;
-    }
-
-    body.theme-kitty #theme-selector-modal,
-    body.theme-kitty #contact-owner-modal {
-      background: rgba(255, 240, 245, 0.95) !important;
-    }
-
-    body.theme-kitty #theme-selector-modal > div,
-    body.theme-kitty #contact-owner-modal > div {
-      background: var(--card-bg) !important;
-      border-color: var(--border-color) !important;
-    }
-
-    body.theme-kitty .input-field {
-      background: #ffffff !important;
-      border: 1px solid rgba(255, 179, 217, 0.3) !important;
-      color: var(--text-primary) !important;
-    }
-
-    body.theme-kitty .input-field:focus {
-      border-color: rgba(255, 107, 157, 0.7) !important;
-      box-shadow:
-        0 0 0 3px rgba(255, 107, 157, 0.3),
-        inset 0 0 0 1px rgba(255, 107, 157, 0.7) !important;
-    }
-
-    @keyframes kitty-bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-
-    @keyframes kitty-float {
-      0%, 100% { transform: translateY(0) rotate(0deg); }
-      50% { transform: translateY(-15px) rotate(5deg); }
-    }
-
-    @keyframes kitty-heart {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.2); }
-    }
-
-    /* 🍄 Mario theme - ретро стиль Super Mario Bros */
-    body.theme-mario {
-      font-family: 'Press Start 2P', cursive, monospace !important;
-      --mario-sky: #5C94FC;
-      --mario-cloud: #FFFFFF;
-      --mario-hill: #00C000;
-      --mario-brick: #B85C00;
-      --mario-orange: #FF8C00;
-      --mario-yellow: #FFD700;
-      --mario-brown: #8B4513;
-      --mario-blue: #0066FF;
-      --mario-green: #00AA00;
-      --mario-red: #FF0000;
-      --mario-text: #000000;
-      --mario-white: #FFFFFF;
-    }
-
-    body.theme-mario.page-dark {
-      position: relative;
-      background: 
-        radial-gradient(ellipse 120px 60px at 30% 25%, #FFFFFF 0%, #FFFFFF 70%, rgba(135, 206, 235, 0.2) 70%, transparent 100%),
-        radial-gradient(ellipse 120px 60px at 75% 20%, #FFFFFF 0%, #FFFFFF 70%, rgba(135, 206, 235, 0.2) 70%, transparent 100%),
-        repeating-linear-gradient(0deg, #B85C00 0px, #B85C00 16px, #8B4513 16px, #8B4513 20px),
-        repeating-linear-gradient(90deg, transparent 0px, transparent 31px, rgba(0, 0, 0, 0.4) 31px, rgba(0, 0, 0, 0.4) 32px),
-        #87CEEB;
-      background-size: 120px 60px, 120px 60px, 32px 32px, 32px 32px, 100% 100%;
-      background-position: 30% 25%, 75% 20%, 0 67%, 0 67%, 0 0;
-      background-repeat: no-repeat;
-      color: var(--mario-text) !important;
-      image-rendering: pixelated;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: crisp-edges;
-      min-height: 100vh;
-    }
-
-    body.theme-mario.page-dark::after {
-      content: '?';
-      position: fixed;
-      right: 5%;
-      bottom: 15%;
-      width: 40px;
-      height: 40px;
-      background: var(--mario-yellow);
-      border: 3px solid #000000;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      font-weight: bold;
-      color: #000000;
-      z-index: 0;
-      box-shadow: 
-        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
-        0 3px 0 rgba(0, 0, 0, 0.2);
-      font-family: 'Press Start 2P', cursive, monospace;
-      pointer-events: none;
-    }
-
-    body.theme-mario main,
-    body.theme-mario #profile-section {
-      position: relative;
-      z-index: 1;
-    }
-
-    @keyframes mario-clouds {
-      0% { 
-        background-position: 30% 25%, 75% 20%, 0 67%, 0 67%, 0 0; 
-      }
-      100% { 
-        background-position: 32% 25%, 77% 20%, 32px 67%, 32px 67%, 0 0; 
-      }
-    }
-
-    body.theme-mario.page-dark {
-      animation: mario-clouds 30s linear infinite;
-    }
-
-    body.theme-mario h2 {
-      background: rgba(255, 140, 0, 0.85) !important;
-      color: var(--mario-white) !important;
-      padding: 16px 20px !important;
-      border-radius: 12px !important;
-      border: 3px solid #CC7000 !important;
-      box-shadow: 
-        inset 0 -4px 0 rgba(0, 0, 0, 0.3),
-        0 4px 0 rgba(0, 0, 0, 0.2) !important;
-      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5) !important;
-      font-size: 0.8rem !important;
-      letter-spacing: 1px !important;
-      text-align: center !important;
-      margin-bottom: 20px !important;
-      width: 100% !important;
-      backdrop-filter: blur(2px);
-    }
-
-    body.theme-mario .rounded-lg.border,
-    body.theme-mario .bg-black\/30 {
-      background: rgba(255, 215, 0, 0.85) !important;
-      border: 3px solid #CCAA00 !important;
-      border-radius: 8px !important;
-      box-shadow: 
-        inset 0 -4px 0 rgba(0, 0, 0, 0.2),
-        0 4px 0 rgba(0, 0, 0, 0.15) !important;
-      color: var(--mario-text) !important;
-      backdrop-filter: blur(2px);
-    }
-
-    body.theme-mario main {
-      background: transparent !important;
-    }
-
-    body.theme-mario .nav-button {
-      background: var(--mario-green) !important;
-      color: var(--mario-white) !important;
-      border: 3px solid #008800 !important;
-      box-shadow: 
-        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
-        0 3px 0 rgba(0, 0, 0, 0.2) !important;
-      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
-      font-size: 0.6rem !important;
-      transition: transform 0.1s !important;
-    }
-
-    body.theme-mario .nav-button:active {
-      transform: translateY(2px) !important;
-      box-shadow: 
-        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-        0 1px 0 rgba(0, 0, 0, 0.2) !important;
-    }
-
-    body.theme-mario #change-theme-btn {
-      background: rgba(255, 140, 0, 0.85) !important;
-      color: var(--mario-white) !important;
-      border: 3px solid #CC7000 !important;
-      border-radius: 12px !important;
-      box-shadow: 
-        inset 0 -3px 0 rgba(0, 0, 0, 0.3),
-        0 3px 0 rgba(0, 0, 0, 0.2) !important;
-      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5) !important;
-      font-size: 0.65rem !important;
-      padding: 14px !important;
-      margin-bottom: 12px !important;
-      backdrop-filter: blur(2px);
-    }
-
-    body.theme-mario .text-white {
-      color: var(--mario-white) !important;
-    }
-
-    body.theme-mario .text-gray-300,
-    body.theme-mario .text-gray-400 {
-      color: #333333 !important;
-    }
-
-    body.theme-mario .text-violet-400 {
-      color: var(--mario-blue) !important;
-    }
-
-    @keyframes mario-jump {
-      0%, 100% { transform: translateY(0) scale(1); }
-      25% { transform: translateY(-5px) scale(1.05); }
-      50% { transform: translateY(-8px) scale(1.1); }
-      75% { transform: translateY(-5px) scale(1.05); }
-    }
-
-    body.theme-mario button:hover {
-      animation: mario-jump 0.3s ease-in-out;
-    }
-
-    body.theme-mario * {
-      image-rendering: pixelated;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: crisp-edges;
-    }
-
-    /* ⚔️ Attack on Titan theme */
-    body.theme-aot {
-      font-family: 'UnifrakturMaguntia', 'Creepster', serif !important;
-      --aot-parchment: #f4e4bc;
-      --aot-sepia: #8b6f47;
-      --aot-blood: #8b0000;
-      --aot-text: #3d2817;
-      --aot-border: #5c4a2f;
-    }
-
-    body.theme-aot.page-dark {
-      background: repeating-linear-gradient(0deg, rgba(139, 111, 71, 0.03) 0px, rgba(139, 111, 71, 0.03) 1px, transparent 1px, transparent 2px),
-        repeating-linear-gradient(90deg, rgba(139, 111, 71, 0.03) 0px, rgba(139, 111, 71, 0.03) 1px, transparent 1px, transparent 2px),
-        radial-gradient(ellipse at top, #e8d5b7 0%, #d4c4a4 50%, #c9b99b 100%), #f4e4bc;
-      background-size: 20px 20px, 20px 20px, 100% 60%, 100% 100%;
-      color: var(--aot-text) !important;
-    }
-
-    body.theme-aot #aot-titan-image {
-      display: block !important;
-      position: relative !important;
-      width: 100% !important;
-      margin-bottom: 20px !important;
-    }
-
-    body.theme-aot #aot-titan-image img {
-      width: 100% !important;
-      height: auto !important;
-      max-height: 300px !important;
-      object-fit: contain !important;
-    }
-
-    @media (max-width: 640px) {
-      body.theme-aot #aot-titan-image img { max-height: 200px !important; }
-    }
-
-    body.theme-aot .rounded-lg.border,
-    body.theme-aot .bg-black\/30 {
-      background: repeating-linear-gradient(0deg, rgba(139, 111, 71, 0.05) 0px, rgba(139, 111, 71, 0.05) 1px, transparent 1px, transparent 2px),
-        linear-gradient(135deg, #f4e4bc 0%, #e8d5b7 100%) !important;
-      border: 2px solid var(--aot-border) !important;
-      color: var(--aot-text) !important;
-    }
-
-    body.theme-aot h2 {
-      font-family: 'UnifrakturMaguntia', serif !important;
-      color: var(--aot-text) !important;
-      font-size: 2rem !important;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3) !important;
-    }
-
-    body.theme-aot .nav-button,
-    body.theme-aot .neon-button {
-      background: linear-gradient(135deg, #8b6f47 0%, #5c4a2f 100%) !important;
-      color: #f4e4bc !important;
-      border: 2px solid var(--aot-border) !important;
-      font-family: 'UnifrakturMaguntia', serif !important;
-    }
-
-    body.theme-aot .text-white,
-    body.theme-aot .text-gray-300,
-    body.theme-aot .text-violet-400 {
-      color: var(--aot-sepia) !important;
     }
   </style>
 </head>
 <body class="page-dark text-white min-h-screen flex flex-col neon-sides">
 
   <!-- 🔄 Загрузка -->
-  <div id="loading-spinner" class="relative w-full h-screen flex flex-col items-center justify-center" style="background: #000; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999;">
+  <div id="loading-spinner" class="relative w-full h-screen flex flex-col items-center justify-center" style="background: #000; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; pointer-events: auto;">
     <div class="flex flex-col items-center">
       <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-white mb-4"></div>
       <p class="text-white text-lg font-semibold">Загрузка панели...</p>
     </div>
   </div>
 
-  <!-- 🚀 Навигация -->
+  <!-- Критический скрипт для немедленного скрытия спиннера -->
+  <script>
+    (function() {
+      // Скрываем спиннер через 100ms после загрузки DOM в любом случае
+      function forceHideSpinner() {
+        var spinner = document.getElementById('loading-spinner');
+        var nav = document.getElementById('admin-nav');
+        var main = document.querySelector('main');
+        
+        if (spinner) {
+          spinner.style.display = 'none';
+          spinner.style.visibility = 'hidden';
+          spinner.style.opacity = '0';
+          spinner.style.pointerEvents = 'none'; // КРИТИЧНО: отключаем pointer events
+          spinner.style.zIndex = '-1'; // Убираем высокий z-index
+          spinner.classList.add('hidden');
+        }
+        if (nav) {
+          nav.style.display = 'flex';
+          nav.style.pointerEvents = 'auto'; // Включаем клики на навигацию
+          nav.style.zIndex = '10';
+          nav.classList.remove('hidden');
+        }
+        if (main) {
+          main.style.display = 'block';
+          main.style.pointerEvents = 'auto'; // Включаем клики на основной контент
+          main.classList.remove('hidden');
+        }
+      }
+      
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+          setTimeout(forceHideSpinner, 100);
+        });
+      } else {
+        setTimeout(forceHideSpinner, 100);
+      }
+    })();
+  </script>
+
+  <!-- 🚀 Навигация (перенесена вниз) -->
   <nav id="admin-nav" class="hidden neon-nav fixed left-0 right-0 z-10 flex justify-around items-center px-2 pb-2 pt-3" style="bottom: 18px;">
     <button class="nav-button active relative" data-section="contests-section">🏆 Конкурсы</button>
+    <button class="nav-button relative" data-section="admins-section">👥 Админы</button>
     <button class="nav-button relative" data-section="rating-section">⭐ Рейтинг</button>
+    <button class="nav-button relative" data-section="settings-section">⚙️ Настройки</button>
     <button class="nav-button relative" data-section="profile-section">👤 Профиль</button>
-    <button class="nav-button relative" data-section="shop-section">🛒 Магазин</button>
   </nav>
 
   <!-- 📦 Основное содержимое -->
@@ -960,6 +616,28 @@
       <h2 class="text-xl font-bold mb-4">Активные конкурсы</h2>
       <button id="create-contest-btn" class="neon-button w-full py-3 rounded-lg mb-6">➕ Создать конкурс</button>
       <div id="contest-list" class="space-y-4"></div>
+    </section>
+
+    <!-- 👥 Администраторы -->
+    <section id="admins-section" class="content-section hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">Администраторы</h2>
+        <button id="open-add-admin" class="neon-button px-4 py-2 rounded-lg">➕ Добавить администратора</button>
+      </div>
+      <div id="admins-list" class="space-y-3"></div>
+    </section>
+
+    <!-- ⚙️ Настройки -->
+    <section id="settings-section" class="content-section hidden">
+      <h2 class="text-xl font-bold mb-4">Настройки</h2>
+      <div class="flex flex-col space-y-3">
+        <button id="toggle-bot-btn" class="neon-button bg-yellow-600 hover:bg-yellow-700 py-3 rounded-lg">🛠️ Выключить бота</button>
+        <select id="theme-select" class="bg-gray-700 p-2 rounded text-white">
+          <option value="default">Стандартная тема</option>
+          <option value="newyear">Новогодняя</option>
+          <option value="halloween">Хэллоуин</option>
+        </select>
+      </div>
     </section>
 
     <!-- ⭐ Рейтинг -->
@@ -980,23 +658,21 @@
 
     <!-- 👤 Профиль -->
     <section id="profile-section" class="content-section hidden">
-      <!-- Attack Titan изображение для темы AoT -->
-      <div id="aot-titan-image" class="hidden absolute top-0 left-0 right-0 -mt-8 mb-4 z-0 pointer-events-none" style="border: 3px solid #5c4a2f; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); min-height: 200px; max-height: 300px; height: auto;">
-        <img src="AoT.jpg" 
-             alt="Attack Titan" 
-             class="w-full h-auto opacity-95"
-             style="filter: sepia(70%) contrast(1.5) brightness(0.75) saturate(0.6) hue-rotate(-10deg); object-fit: contain; display: block; max-height: 300px; width: 100%; height: auto;">
-        <div class="absolute inset-0 pointer-events-none" style="background: repeating-linear-gradient(0deg, rgba(139,111,71,0.03) 0px, transparent 1px, transparent 2px), repeating-linear-gradient(90deg, rgba(139,111,71,0.03) 0px, transparent 1px, transparent 2px); mix-blend-mode: overlay;"></div>
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold">Профиль</h2>
+        <button id="messages-btn" class="neon-button relative px-4 py-2 rounded-lg flex items-center gap-2">
+          <span>💬 Сообщения</span>
+          <span id="messages-count" class="hidden bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">0</span>
+        </button>
       </div>
-      <h2 class="text-xl font-bold mb-6">Профиль</h2>
       
-      <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4 mb-6">
+      <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4">
         <div class="flex items-center gap-3">
           <div class="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-2xl font-bold">
             <span id="profile-avatar">👤</span>
           </div>
           <div>
-            <div class="text-lg font-semibold" id="profile-username">Администратор</div>
+            <div class="text-lg font-semibold" id="profile-username">MONKEY BOSS</div>
             <div class="text-sm text-gray-400">ID: <span id="profile-id" class="text-violet-400"></span></div>
           </div>
         </div>
@@ -1012,124 +688,41 @@
           </div>
         </div>
       </div>
-
-      <!-- ⭐ Система уровней и опыта -->
-      <div class="mb-6">
-        <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-lg font-semibold flex items-center gap-2">
-              <span id="level-badge" class="px-3 py-1 rounded-full text-sm font-bold">Уровень 1</span>
-              <span class="text-violet-400">⭐</span>
-            </h3>
-            <div class="text-right">
-              <div class="text-2xl font-bold text-violet-400" id="current-experience">0</div>
-              <div class="text-xs text-gray-400">опыта</div>
-            </div>
-          </div>
-          
-          <!-- Полоска прогресса -->
-          <div class="relative">
-            <div class="w-full h-6 bg-gray-800 rounded-full overflow-hidden border border-violet-400/20">
-              <div id="experience-progress-bar" class="h-full bg-gradient-to-r from-violet-500 via-pink-500 to-violet-500 rounded-full transition-all duration-500 ease-out relative overflow-hidden" style="width: 0%; background-size: 200% 100%; animation: neonFlow 3s linear infinite;">
-                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-              </div>
-            </div>
-            <div class="flex justify-between items-center mt-2 text-xs text-gray-400">
-              <span id="current-level-exp">0</span>
-              <span id="next-level-exp">100</span>
-            </div>
-          </div>
-          
-          <!-- Статистика -->
-          <div class="pt-3 border-t border-violet-400/20">
-            <div class="text-center p-3 rounded-lg bg-black/40 border border-violet-400/20">
-              <div class="text-2xl font-bold text-violet-400" id="contests-created">0</div>
-              <div class="text-xs text-gray-400 mt-1">Создано конкурсов</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 💎 Активы -->
-      <div class="mb-6">
-        <h3 class="text-lg font-semibold mb-4">💎 Активы</h3>
-        <div id="assets-list" class="space-y-3">
-          <div id="channel-asset" class="hidden rounded-lg border border-violet-400/30 p-3 bg-black/30">
-            <div class="text-xs text-gray-500 mb-1">📢 Канал</div>
-            <a id="channel-link" href="#" target="_blank" class="text-blue-400 hover:underline text-sm break-all"></a>
-          </div>
-          <div id="chat-asset" class="hidden rounded-lg border border-violet-400/30 p-3 bg-black/30">
-            <div class="text-xs text-gray-500 mb-1">💬 Чат</div>
-            <a id="chat-link" href="#" target="_blank" class="text-blue-400 hover:underline text-sm break-all"></a>
-          </div>
-          <div id="no-assets" class="text-gray-500 text-sm">
-            Активы не назначены
-          </div>
-        </div>
-      </div>
-
-      <!-- 🎨 Смена темы -->
-      <button id="change-theme-btn" class="neon-button w-full py-3 rounded-lg mb-3 relative">
-        <span class="kitty-btn-icon">🎨</span> Сменить тему
-      </button>
-
-      <!-- 📨 Связь с владельцем -->
-      <button id="contact-owner-btn" class="neon-button w-full py-3 rounded-lg">
-        📨 Связь с владельцем
-      </button>
-    </section>
-
-    <!-- 🛒 Магазин -->
-    <section id="shop-section" class="content-section hidden">
-      <h2 class="text-xl font-bold mb-6">🛒 Магазин</h2>
-      
-      <div class="space-y-4">
-        <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30">
-          <h3 class="text-lg font-semibold mb-4">🎨 Дополнительные темы</h3>
-          <div id="themes-shop" class="grid grid-cols-1 gap-3">
-            <!-- Товары будут добавлены динамически -->
-          </div>
-        </div>
-      </div>
     </section>
     
-    <!-- 💳 Модалка: Выбор способа оплаты -->
-    <div id="payment-method-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
-        <button id="close-payment-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
-        <h3 class="text-lg font-semibold mb-4">💳 Выберите способ оплаты</h3>
-        <div id="payment-methods-list" class="space-y-3">
-          <!-- Способы оплаты будут добавлены динамически -->
+    <!-- 💬 Модалка: Сообщения -->
+    <div id="messages-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[600px] max-h-[90vh] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 flex flex-col">
+        <button id="close-messages-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">💬 Сообщения</h3>
+        <div id="messages-list" class="flex-1 overflow-y-auto space-y-3 pr-2">
+          <!-- Сообщения будут здесь -->
         </div>
       </div>
     </div>
-
-    <!-- 🎨 Модалка: Выбор темы -->
-    <div id="theme-selector-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
-        <button id="close-theme-modal" class="absolute top-4 right-4 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
-        <h3 class="text-lg font-semibold mb-4">🎨 Выберите тему</h3>
-        <div id="themes-list" class="space-y-3">
-          <!-- Темы будут добавлены динамически -->
-        </div>
-      </div>
-    </div>
-
-    <!-- 📨 Модалка: Отправить сообщение владельцу -->
-    <div id="contact-owner-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    
+    <!-- 📝 Модалка: Детали сообщения -->
+    <div id="message-detail-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
-        <button id="close-contact-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
-        <h3 class="text-lg font-semibold mb-4">📨 Связь с владельцем</h3>
+        <button id="close-message-detail-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">📨 Сообщение</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm text-gray-400 mb-2">Ваше сообщение:</label>
-            <textarea id="contact-message-text" class="input-field w-full p-3 rounded" rows="6" placeholder="Введите ваше сообщение..."></textarea>
+            <div class="text-sm text-gray-400 mb-1">ID отправителя:</div>
+            <div id="message-sender-id" class="text-violet-400 font-semibold"></div>
           </div>
-          <button id="send-contact-message" class="neon-button w-full py-3 rounded-lg">Отправить</button>
+          <div>
+            <div class="text-sm text-gray-400 mb-2">Текст сообщения:</div>
+            <div id="message-full-text" class="text-gray-200 p-3 rounded bg-black/40 border border-violet-400/20 min-h-[120px]"></div>
+          </div>
+          <div class="flex gap-3 pt-4">
+            <button id="approve-message-btn" class="flex-1 neon-button bg-green-600 hover:bg-green-700 py-3 rounded-lg font-semibold">✅ Одобрить</button>
+            <button id="reject-message-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-semibold">❌ Отклонить</button>
+          </div>
         </div>
       </div>
     </div>
-
+    
     <!-- 🔍 Модалка: Список работ конкурса -->
     <div id="contest-works-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div class="relative w-full sm:w-[600px] max-h-[90vh] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 overflow-y-auto">
@@ -1172,44 +765,30 @@
 
   </main>
 
-  <!-- 🗑️ Модалка: Подтверждение удаления -->
-  <div id="delete-confirm-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-    <div class="relative w-full sm:w-[400px] bg-[#0b0b10] rounded-2xl border border-red-500/50 shadow-2xl p-6 mx-4">
-      <h3 class="text-lg font-semibold mb-4 text-center">⚠️ Подтверждение удаления</h3>
-      <p id="delete-confirm-text" class="text-gray-300 text-center mb-6"></p>
-      <div class="flex gap-3">
-        <button id="delete-confirm-cancel" class="neon-button flex-1 py-3 rounded-lg border-gray-500">Отмена</button>
-        <button id="delete-confirm-ok" class="bg-red-600 hover:bg-red-700 text-white flex-1 py-3 rounded-lg font-semibold">Удалить</button>
-      </div>
-    </div>
+  <!-- 👥 Панель обычного пользователя -->
+  <div id="user-view" class="hidden flex flex-col items-center justify-center h-screen">
+    <h2 class="text-2xl font-semibold mb-2">Добро пожаловать!</h2>
+    <p id="user-welcome-name" class="text-gray-300"></p>
   </div>
 
+  <!-- 🟣 Bottom neon shimmer backdrop for buttons -->
+  <div class="neon-bottom"></div>
+
   <!-- 🪄 Модалка: Создать конкурс -->
-  <div id="contest-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60 p-4 overflow-y-auto" style="pointer-events: auto;">
-    <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto overflow-y-auto" style="pointer-events: auto;">
+  <div id="contest-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60 p-4" style="pointer-events: auto; overflow-x: hidden; overflow-y: auto; touch-action: pan-y;">
+    <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; width: 100%; max-width: 520px;">
       <button id="close-contest-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
       <h3 class="text-lg font-semibold mb-3 sticky top-0 bg-[#0b0b10] pb-2 z-0" style="pointer-events: auto;">Создать конкурс</h3>
-      <div id="post-link-error" class="hidden text-red-400 text-sm mb-2 p-2 bg-red-900/20 rounded border border-red-500/30">
-        ⚠️ Ссылка на пост должна быть из вашего канала!
-      </div>
       <div class="space-y-3" style="pointer-events: auto;">
         <div>
-          <label class="block text-sm text-gray-400 mb-1">Название конкурса</label>
-          <input id="contest-title" class="input-field w-full p-2 rounded" value="Рандомный комментарий" readonly />
-        </div>
-        
-        <div>
           <label class="block text-sm text-gray-400 mb-1">Ссылка на пост</label>
-          <input id="contest-post-link" type="text" class="input-field w-full p-2 rounded" placeholder="🔗 Ссылка на пост из вашего канала (например: https://t.me/monkeys_giveaways/19)" style="pointer-events: auto; position: relative; z-index: 1;" />
-          <p class="text-xs text-gray-500 mt-1">Пост должен быть из вашего канала</p>
+          <input id="contest-post-link" type="text" class="input-field w-full p-2 rounded" placeholder="https://t.me/channel/123" style="pointer-events: auto; position: relative; z-index: 1;" />
+          <p class="text-xs text-gray-500 mt-1">Пример: https://t.me/monkeys_giveaways/25</p>
         </div>
         
         <div>
           <label class="block text-sm text-gray-400 mb-1">Условия участия</label>
-          <div class="flex gap-2 items-start">
-            <textarea id="contest-conditions" class="input-field flex-1 p-2 rounded" rows="3" placeholder="📋 Условия участия в конкурсе" style="pointer-events: auto; position: relative; z-index: 1;"></textarea>
-            <button id="add-subscription-condition-btn" class="w-10 h-10 rounded-full bg-violet-600 hover:bg-violet-700 text-white font-semibold transition-colors flex items-center justify-center text-lg mt-1" title="Добавить условие подписки на активы">+</button>
-          </div>
+          <textarea id="contest-conditions" class="input-field w-full p-2 rounded" rows="3" placeholder="📋 Условия участия в конкурсе (например: подписка, репост, тег друзей)" style="pointer-events: auto; position: relative; z-index: 1;"></textarea>
         </div>
         
         <div>
@@ -1227,10 +806,111 @@
         </div>
         
         <div class="p-3 rounded-md bg-violet-900/20 border border-violet-400/30 text-sm text-gray-300">
-          ⏱ Время начала и окончания конкурса больше не требуется — вы можете подвести итоги вручную в любой момент.
+          ⏱ Время больше не требуется — итог можно подводить вручную, когда хотите.
         </div>
       </div>
       <button id="submit-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить данные</button>
+    </div>
+  </div>
+
+  <!-- 🎁 Модалка: Добавить призы -->
+  <!-- Модальное окно для итогов конкурса рисунков -->
+  <div id="drawing-results-modal" class="hidden fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/60 p-4 overflow-y-auto" style="pointer-events: auto;">
+    <div class="relative w-full max-w-2xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-2xl font-bold text-white">🏆 Итоги конкурса</h2>
+        <button onclick="document.getElementById('drawing-results-modal').classList.add('hidden'); document.body.classList.remove('modal-open');" class="bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
+      </div>
+      <div id="drawing-results-content" class="space-y-4">
+        <!-- Содержимое будет добавлено динамически -->
+      </div>
+    </div>
+  </div>
+
+  <div id="prizes-modal" class="hidden fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/60 p-4 overflow-y-auto" style="pointer-events: auto;">
+    <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto overflow-y-auto" style="pointer-events: auto;">
+      <button id="close-prizes-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть" style="pointer-events: auto;">✕</button>
+      <h3 class="text-lg font-semibold mb-3 sticky top-0 bg-[#0b0b10] pb-2 z-0" style="pointer-events: auto;">Добавить призы</h3>
+      <p class="text-sm text-gray-400 mb-4">Введите ссылки на призы в формате: t.me/nft/название-коллекции-номер</p>
+      <p class="text-xs text-gray-500 mb-4">Пример: t.me/nft/SnoopDogg-119754</p>
+      <div id="prizes-list" class="space-y-3 mb-4" style="pointer-events: auto;">
+        <!-- Призы будут добавляться динамически -->
+      </div>
+      
+      <!-- Секция жюри (если включено) -->
+      <div id="prizes-modal-jury-section" class="hidden border-t border-violet-500/30 pt-4 mt-4">
+        <h4 class="text-sm font-semibold text-gray-300 mb-3">👨‍⚖️ Данные членов жюри</h4>
+        <div id="prizes-modal-jury-members" class="space-y-3 mb-4">
+          <!-- Члены жюри будут добавляться динамически -->
+        </div>
+      </div>
+      
+      <button id="add-prize-btn" class="neon-button w-full py-2 rounded-lg mb-4" style="pointer-events: auto;">➕ Добавить приз</button>
+      <button id="submit-prizes" class="neon-button w-full py-3 rounded-lg" style="pointer-events: auto;">✅ Сохранить призы</button>
+    </div>
+  </div>
+
+  <!-- ✏️ Модалка: Редактировать конкурс -->
+  <div id="edit-contest-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60 p-4 overflow-y-auto">
+    <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto overflow-y-auto">
+      <button id="close-edit-contest-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
+      <h3 class="text-lg font-semibold mb-3">Редактировать конкурс</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Название конкурса</label>
+          <input id="edit-contest-title" class="input-field w-full p-2 rounded" placeholder="Введите название" />
+        </div>
+        
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Ссылка на пост</label>
+          <input id="edit-contest-post-link" type="url" class="input-field w-full p-2 rounded" placeholder="https://t.me/channel/123" pattern="https?://t\.me/[a-zA-Z0-9_]+/\d+" />
+          <p class="text-xs text-gray-500 mt-1">Пример: https://t.me/monkeys_giveaways/25</p>
+        </div>
+        
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Условия участия</label>
+          <textarea id="edit-contest-conditions" class="input-field w-full p-2 rounded" rows="3" placeholder="📋 Условия участия"></textarea>
+        </div>
+        
+        <div id="edit-contest-prize-container" class="hidden">
+          <label class="block text-sm text-gray-400 mb-1">🎁 Приз</label>
+          <input id="edit-contest-prize" class="input-field w-full p-2 rounded" placeholder="Что можно выиграть" />
+        </div>
+        <div class="p-3 rounded-md bg-violet-900/20 border border-violet-400/30 text-sm text-gray-300">
+          Время начала/окончания не используется. Вы можете подвести итоги в любой момент.
+        </div>
+      </div>
+      <button id="update-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Сохранить изменения</button>
+    </div>
+  </div>
+
+  <!-- ✏️ Модалка: Редактировать администратора -->
+  <div id="edit-admin-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60">
+    <div class="relative w-full sm:w-[520px] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5">
+      <button id="close-edit-admin-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+      <h3 class="text-lg font-semibold mb-3">Редактировать администратора</h3>
+      <div class="space-y-2">
+        <input id="edit-modal-admin-id" class="input-field w-full p-2 rounded" placeholder="ID" disabled />
+        <input id="edit-modal-admin-username" class="input-field w-full p-2 rounded" placeholder="Username (опционально)" />
+        <input id="edit-modal-admin-channel" class="input-field w-full p-2 rounded" placeholder="🔗 Ссылка на канал" />
+        <input id="edit-modal-admin-chat" class="input-field w-full p-2 rounded" placeholder="💬 Ссылка на чат" />
+      </div>
+      <button id="update-admin" class="neon-button w-full mt-4 py-3 rounded-lg">Сохранить изменения</button>
+    </div>
+  </div>
+
+  <!-- 🧑‍💼 Модалка: Добавить администратора -->
+  <div id="admin-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60">
+    <div class="relative w-full sm:w-[520px] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5">
+      <button id="close-admin-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+      <h3 class="text-lg font-semibold mb-3">Добавить администратора</h3>
+      <div class="space-y-2">
+        <input id="modal-admin-id" class="input-field w-full p-2 rounded" placeholder="ID" />
+        <input id="modal-admin-username" class="input-field w-full p-2 rounded" placeholder="Username" />
+        <input id="modal-admin-channel" class="input-field w-full p-2 rounded" placeholder="Ссылка на канал" />
+        <input id="modal-admin-chat" class="input-field w-full p-2 rounded" placeholder="Ссылка на чат (необязательно)" />
+      </div>
+      <button id="submit-admin" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить</button>
     </div>
   </div>
 
@@ -1265,7 +945,7 @@
     </div>
   </div>
 
-  <!-- 🎨 Модалка: Создать/Редактировать конкурс рисунков -->
+  <!-- 🎨 Модалка: Создать конкурс рисунков -->
   <div id="drawing-contest-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60 p-4" style="pointer-events: auto; overflow-x: hidden; overflow-y: auto; touch-action: pan-y;">
     <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; width: 100%; max-width: 520px;">
       <button id="close-drawing-contest-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
@@ -1346,19 +1026,6 @@
     </div>
   </div>
 
-  <!-- 🏆 Модалка: Итоги конкурса рисунков -->
-  <div id="drawing-results-modal" class="hidden fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/60 p-4 overflow-y-auto" style="pointer-events: auto;">
-    <div class="relative w-full max-w-2xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-2xl font-bold text-white">🏆 Итоги конкурса</h2>
-        <button onclick="document.getElementById('drawing-results-modal').classList.add('hidden'); document.body.classList.remove('modal-open');" class="bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
-      </div>
-      <div id="drawing-results-content" class="space-y-4">
-        <!-- Содержимое будет добавлено динамически -->
-      </div>
-    </div>
-  </div>
-
   <!-- 🖼️ Модалка: Создать/Редактировать конкурс коллекций -->
   <div id="collection-contest-modal" class="hidden fixed inset-0 z-20 flex items-end sm:items-center justify-center bg-black/60 p-4" style="pointer-events: auto; overflow-x: hidden; overflow-y: auto; touch-action: pan-y;">
     <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; width: 100%; max-width: 520px;">
@@ -1425,47 +1092,82 @@
     </div>
   </div>
 
-  <!-- 🎁 Модалка: Добавить призы -->
-  <div id="prizes-modal" class="hidden fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/60 p-4" style="pointer-events: auto; overflow-y: auto; overflow-x: hidden; touch-action: pan-y pinch-zoom;">
-    <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; width: 100%; max-width: 520px;">
-      <button id="close-prizes-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть" style="pointer-events: auto;">✕</button>
-      <h3 class="text-lg font-semibold mb-3 sticky top-0 bg-[#0b0b10] pb-2 z-0" style="pointer-events: auto;">Добавить призы</h3>
-      <p class="text-sm text-gray-400 mb-4">Введите ссылки на призы в формате: t.me/nft/название-коллекции-номер</p>
-      <p class="text-xs text-gray-500 mb-4">Пример: t.me/nft/SnoopDogg-119754</p>
-      <div id="prizes-list" class="space-y-3 mb-4" style="pointer-events: auto;">
-        <!-- Призы будут добавляться динамически -->
+  <!-- 🗑️ Модалка: Подтверждение удаления -->
+  <div id="delete-confirm-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="relative w-full sm:w-[400px] bg-[#0b0b10] rounded-2xl border border-red-500/50 shadow-2xl p-6 mx-4">
+      <h3 class="text-lg font-semibold mb-4 text-center">⚠️ Подтверждение удаления</h3>
+      <p id="delete-confirm-text" class="text-gray-300 text-center mb-6"></p>
+      <div class="flex gap-3">
+        <button id="delete-confirm-cancel" class="neon-button flex-1 py-3 rounded-lg border-gray-500">Отмена</button>
+        <button id="delete-confirm-ok" class="bg-red-600 hover:bg-red-700 text-white flex-1 py-3 rounded-lg font-semibold">Удалить</button>
       </div>
-      
-      <!-- Секция жюри (если включено) -->
-      <div id="prizes-modal-jury-section" class="hidden border-t border-violet-500/30 pt-4 mt-4">
-        <h4 class="text-sm font-semibold text-gray-300 mb-3">👨‍⚖️ Данные членов жюри</h4>
-        <div id="prizes-modal-jury-members" class="space-y-3 mb-4">
-          <!-- Члены жюри будут добавляться динамически -->
-        </div>
-      </div>
-      
-      <button id="add-prize-btn" class="neon-button w-full py-2 rounded-lg mb-4" style="pointer-events: auto;">➕ Добавить приз</button>
-      <button id="submit-prizes" class="neon-button w-full py-3 rounded-lg" style="pointer-events: auto;">✅ Сохранить призы</button>
     </div>
   </div>
-
-  <!-- 🟣 Bottom neon shimmer backdrop for buttons -->
-  <div class="neon-bottom"></div>
 
   <!-- 🧠 Встроенная логика UI/загрузка -->
   <script>
     (function() {
-      let currentUserRole = null;
-      let currentUserId = null;
-      const spinner = document.getElementById('loading-spinner');
-      const topNav = document.getElementById('admin-nav');
-      const main = document.querySelector('main');
-      const contentSections = document.querySelectorAll('.content-section');
-      const navButtons = topNav.querySelectorAll('.nav-button');
+      let currentUserId = null; // ID текущего пользователя (creator)
+      window.currentUserId = null; // Глобальная переменная для доступа из других функций
+      let spinner, topNav, main, userView, contentSections, topNavButtons;
+
+      // Loading control: hide spinner once we detect readiness or timeout fallback
+      function hideSpinnerAndShowPanel() {
+        try {
+          console.log('🔄 Скрываем спиннер и показываем панель');
+          
+          // Получаем элементы заново, на случай если они еще не были определены
+          if (!spinner) spinner = document.getElementById('loading-spinner');
+          if (!topNav) topNav = document.getElementById('admin-nav');
+          if (!main) main = document.querySelector('main');
+          
+          if (spinner) {
+            spinner.classList.add('hidden');
+            spinner.style.display = 'none';
+            spinner.style.visibility = 'hidden';
+            spinner.style.opacity = '0';
+            spinner.style.pointerEvents = 'none'; // КРИТИЧНО: отключаем pointer events
+            spinner.style.zIndex = '-1'; // Убираем высокий z-index
+            console.log('✅ Спиннер скрыт и pointer-events отключены');
+          } else {
+            console.error('❌ Элемент spinner не найден!');
+          }
+          
+          if (topNav) {
+            topNav.classList.remove('hidden');
+            topNav.style.display = 'flex';
+            topNav.style.visibility = 'visible';
+            topNav.style.pointerEvents = 'auto'; // Включаем клики
+            topNav.style.zIndex = '10';
+            console.log('✅ Навигация показана, pointer-events включены');
+          } else {
+            console.error('❌ Элемент topNav не найден!');
+          }
+          
+          if (main) {
+            main.classList.remove('hidden');
+            main.style.display = 'block';
+            main.style.visibility = 'visible';
+            main.style.pointerEvents = 'auto'; // Включаем клики
+            console.log('✅ Основной контент показан, pointer-events включены');
+          } else {
+            console.error('❌ Элемент main не найден!');
+          }
+          
+          console.log('✅ Панель полностью показана');
+        } catch (error) {
+          console.error('❌ Ошибка при скрытии спиннера:', error);
+          // Пытаемся скрыть спиннер напрямую через style, если классы не работают
+          if (spinner) {
+            spinner.style.display = 'none';
+            spinner.style.visibility = 'hidden';
+            spinner.style.opacity = '0';
+          }
+        }
+      }
 
       function showSection(id) {
-        contentSections.forEach(s => s.classList.toggle('hidden', s.id !== id));
-        navButtons.forEach(b => b.classList.toggle('active', b.dataset.section === id));
+        console.log('🔘 showSection вызвана с id:', id);
         
         // Загружаем рейтинг при показе секции
         if (id === 'rating-section') {
@@ -1475,123 +1177,111 @@
             }
           }, 100);
         }
-      }
-
-      navButtons.forEach(btn => {
-        btn.addEventListener('click', () => showSection(btn.dataset.section));
-      });
-
-      // Loading control
-      function hideSpinnerAndShowPanel() {
-        spinner.classList.add('hidden');
-        topNav.classList.remove('hidden');
-        main.classList.remove('hidden');
-      }
-
-      // Access check and initialization
-      async function checkAccess() {
-        const params = new URLSearchParams(window.location.search);
-        const tgId = params.get("tg_id");
-        const roleParam = params.get("role");
-
-        if (!tgId || !roleParam) {
-          window.location.href = "index.html";
-          return;
-        }
-
-        // Fallback: скрываем спиннер через 5 секунд, даже если запрос зависает
-        const fallbackTimeout = setTimeout(() => {
-          console.warn('Таймаут проверки доступа, скрываем спиннер по fallback');
-          hideSpinnerAndShowPanel();
-        }, 5000);
-
         try {
-          const data = await fetchJSON(`/api/auth?tg_id=${tgId}`);
-          clearTimeout(fallbackTimeout);
-
-          if (!data.authorized || (data.role !== "admin" && data.role !== "creator")) {
-            window.location.href = "index.html";
-            return;
+          if (!contentSections || contentSections.length === 0) {
+            contentSections = document.querySelectorAll('.content-section');
           }
-
-          currentUserRole = data.role;
-          currentUserId = parseInt(tgId);
-
-          // Telegram WebApp initialization
-          if (window.Telegram?.WebApp) {
-            Telegram.WebApp.ready();
-            const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
-            if (tgUser) {
-              const usernameEl = document.getElementById('profile-username');
-              if (usernameEl) {
-                // Показываем username из Telegram WebApp если есть, иначе first_name, иначе "Администратор"
-                const displayName = tgUser.username || tgUser.first_name || 'Администратор';
-                usernameEl.textContent = displayName;
-                
-                // Отправляем username на сервер для сохранения
-                if (tgUser.username) {
-                  fetch(`/api/profile/update-username?tg_id=${currentUserId}&username=${encodeURIComponent(tgUser.username)}`, {
-                    method: 'POST'
-                  }).catch(() => {});
-                }
-              }
-              const profileIdEl = document.getElementById('profile-id');
-              if (profileIdEl) {
-                profileIdEl.textContent = tgUser.id || tgId;
-              }
-            }
+          if (!topNavButtons || topNavButtons.length === 0) {
+            if (!topNav) topNav = document.getElementById('admin-nav');
+            topNavButtons = topNav ? topNav.querySelectorAll('.nav-button') : [];
           }
-
-          // Скрываем спиннер и показываем панель
-          hideSpinnerAndShowPanel();
           
-          // Загружаем данные после того, как панель показана
-          setTimeout(() => {
-            try {
-              loadContests();
-              loadProfile();
-            } catch (error) {
-              console.error('Ошибка при загрузке данных:', error);
+          console.log('🔘 Найдено секций:', contentSections.length, 'кнопок:', topNavButtons.length);
+          
+          contentSections.forEach(s => {
+            if (s.id === id) {
+              s.classList.remove('hidden');
+              s.style.display = 'block';
+            } else {
+              s.classList.add('hidden');
+              s.style.display = 'none';
             }
-          }, 100);
-        } catch (err) {
-          clearTimeout(fallbackTimeout);
-          console.error("Ошибка:", err);
-          // Даже при ошибке показываем панель, чтобы пользователь не видел бесконечную загрузку
-          hideSpinnerAndShowPanel();
-          // Показываем сообщение об ошибке
-          if (spinner) {
-            spinner.innerHTML = '<div class="text-yellow-500 text-lg font-semibold">⚠️ Ошибка проверки доступа. Попробуйте обновить страницу.</div>';
-          }
+          });
+          
+          topNavButtons.forEach(b => {
+            if (b.dataset.section === id) {
+              b.classList.add('active');
+            } else {
+              b.classList.remove('active');
+            }
+          });
+          
+          console.log('✅ Секция', id, 'показана');
+        } catch (error) {
+          console.error('❌ Ошибка в showSection:', error);
         }
       }
 
-      document.addEventListener('DOMContentLoaded', () => {
-        checkAccess();
-      });
-
-      // Utilities: format to Moscow time
+      // Utilities: форматируем дату, которую пользователь вводит уже в МСК
       function toMoscowDateTime(value) {
         if (!value) return '';
-        const d = (value instanceof Date) ? value : new Date(value);
+        if (value instanceof Date) {
+          return new Intl.DateTimeFormat('ru-RU', {
+            timeZone: 'Europe/Moscow',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          }).format(value);
+        }
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) return '';
+          if (trimmed.includes('Z') || trimmed.match(/[+-]\d{2}:\d{2}$/)) {
+            const d = new Date(trimmed);
+            if (Number.isNaN(d.getTime())) return trimmed;
+            return new Intl.DateTimeFormat('ru-RU', {
+              timeZone: 'Europe/Moscow',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            }).format(d);
+          }
+          return trimmed.length > 19 ? trimmed.slice(0, 19) : trimmed;
+        }
+        const d = new Date(value);
         if (Number.isNaN(d.getTime())) return '';
         return new Intl.DateTimeFormat('ru-RU', {
           timeZone: 'Europe/Moscow',
-          year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
         }).format(d);
       }
 
-      // Data fetching helpers
+      function toDatetimeLocalValue(value) {
+        if (!value) return '';
+        if (value instanceof Date) {
+          return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 16);
+        }
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) return '';
+          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+            return trimmed.slice(0, 16);
+          }
+          const d = new Date(trimmed);
+          return Number.isNaN(d.getTime()) ? trimmed.slice(0, 16) : d.toISOString().slice(0, 16);
+        }
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
+      }
+
+      // Data fetching helpers (adjust endpoints to your backend)
       window.fetchJSON = async function fetchJSON(url, options = {}) {
-        // Для выборки победителей через Telethon даём больше времени (до 60 секунд)
-        const defaultTimeout = url.includes('/select-winners') ? 60000 : 10000;
+        // Для запросов на выбор победителей используем больший таймаут, если он не указан
+        const defaultTimeout = url.includes('/select-winners') ? 60000 : 10000; // 60 сек для select-winners, 10 сек для остальных
         const timeout = options.timeout || defaultTimeout;
         
-        // Учитываем внешний AbortController, если он передан
-        const controller = options.signal instanceof AbortController ? options.signal : new AbortController();
+        // Если signal уже есть в options, используем его, иначе создаем новый
+        let controller = options.signal?.signal ? options.signal : new AbortController();
         const timeoutId = setTimeout(() => {
-          if (!(options.signal instanceof AbortController)) {
+          if (!options.signal) {
             controller.abort();
           }
         }, timeout);
@@ -1620,10 +1310,7 @@
             error.response = res;
             throw error;
           }
-          
-          const jsonData = await res.json();
-          console.log('📋 fetchJSON: Ответ успешно распарсен:', jsonData);
-          return jsonData;
+          return res.json();
         } catch (error) {
           clearTimeout(timeoutId);
           if (error.name === 'AbortError') {
@@ -1635,79 +1322,1353 @@
         }
       }
 
-      // Extract username from Telegram link
-      function extractUsernameFromLink(link) {
-        if (!link) return null;
-        // Formats: https://t.me/username, https://telegram.me/username, @username, t.me/username
-        const match = link.match(/(?:t\.me|telegram\.me)\/([a-zA-Z0-9_]+)|@([a-zA-Z0-9_]+)/);
-        return match ? (match[1] || match[2]) : null;
-      }
+      // Функция инициализации - выполняется сразу при загрузке
+      function init() {
+        console.log('🚀 Начало инициализации creator.html');
+        
+        // Получаем элементы
+        spinner = document.getElementById('loading-spinner');
+        topNav = document.getElementById('admin-nav');
+        main = document.querySelector('main');
+        userView = document.getElementById('user-view');
+        contentSections = document.querySelectorAll('.content-section');
+        topNavButtons = topNav ? topNav.querySelectorAll('.nav-button') : [];
+        
+        console.log('Элементы найдены:', {
+          spinner: !!spinner,
+          topNav: !!topNav,
+          main: !!main,
+          contentSections: contentSections.length,
+          topNavButtons: topNavButtons.length
+        });
+        
+        // Получаем tg_id из параметров URL
+        const params = new URLSearchParams(window.location.search);
+        const tgIdFromUrl = params.get('tg_id');
+        
+        if (!tgIdFromUrl) {
+          console.error('❌ tg_id отсутствует в URL');
+          if (spinner) {
+            spinner.innerHTML = '<div class="text-red-500 text-lg font-semibold">❌ Ошибка: отсутствует tg_id</div>';
+          }
+          return;
+        }
+        
+        // Устанавливаем currentUserId сразу из URL
+        currentUserId = parseInt(tgIdFromUrl);
+        window.currentUserId = currentUserId;
+        console.log('✅ currentUserId установлен:', currentUserId);
+        
+        // НАСТОЯЩЕЕ СКРЫТИЕ СПИННЕРА - ВЫПОЛНЯЕМ СРАЗУ
+        console.log('🔄 Скрываем спиннер НЕМЕДЛЕННО');
+        hideSpinnerAndShowPanel();
+        
+        // Инициализируем навигацию - КРИТИЧНО!
+        console.log('🔘 Инициализация навигации, найдено кнопок:', topNavButtons.length);
+        if (topNavButtons && topNavButtons.length > 0) {
+          topNavButtons.forEach((btn, index) => {
+            console.log(`🔘 Устанавливаем обработчик для кнопки ${index}:`, btn.dataset.section);
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('🔘 Клик по кнопке навигации:', btn.dataset.section);
+              showSection(btn.dataset.section);
+            });
+            // Убеждаемся, что кнопки кликабельны
+            btn.style.pointerEvents = 'auto';
+            btn.style.cursor = 'pointer';
+          });
+        } else {
+          console.error('❌ Кнопки навигации не найдены!');
+        }
+        
+        // Telegram WebApp initialization
+        if (window.Telegram?.WebApp) {
+          Telegram.WebApp.ready();
+          Telegram.WebApp.onEvent('themeChanged', () => {});
+          const tgUser = window.Telegram.WebApp.initDataUnsafe?.user;
+          if (tgUser) {
+            currentUserId = tgUser.id || parseInt(tgIdFromUrl);
+            window.currentUserId = currentUserId;
+            const usernameEl = document.getElementById('profile-username');
+            if (usernameEl) {
+              // Показываем username из Telegram WebApp если есть, иначе first_name, иначе MONKEY BOSS
+              const displayName = tgUser.username || tgUser.first_name || 'MONKEY BOSS';
+              usernameEl.textContent = displayName;
+              
+              // Отправляем username на сервер для сохранения
+              if (tgUser.username) {
+                fetch(`/api/profile/update-username?tg_id=${currentUserId}&username=${encodeURIComponent(tgUser.username)}`, {
+                  method: 'POST'
+                }).catch(() => {});
+              }
+            }
+            const profileIdEl = document.getElementById('profile-id');
+            if (profileIdEl) {
+              profileIdEl.textContent = tgUser.id || tgIdFromUrl;
+            }
+          }
+        }
+        
+        // Инициализируем элементы для конкурсов и других функций
+        contestList = document.getElementById('contest-list');
+        openContestBtn = document.getElementById('create-contest-btn');
+        contestModal = document.getElementById('contest-modal');
+        closeContestModal = document.getElementById('close-contest-modal');
+        submitContest = document.getElementById('submit-contest');
+        
+        console.log('🔘 Элементы конкурсов:', {
+          contestList: !!contestList,
+          openContestBtn: !!openContestBtn,
+          contestModal: !!contestModal,
+          submitContest: !!submitContest
+        });
+        
+        // Устанавливаем обработчики событий для конкурсов
+        if (openContestBtn) {
+          console.log('🔘 Устанавливаем обработчик для кнопки создания конкурса');
+          openContestBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🔘 Клик по кнопке создания конкурса');
+            // Показываем модалку выбора типа конкурса
+            const contestTypeSelectionModal = document.getElementById('contest-type-selection-modal');
+            if (contestTypeSelectionModal) {
+              openModal(contestTypeSelectionModal);
+            } else {
+              console.error('❌ Модальное окно выбора типа конкурса не найдено!');
+            }
+          });
+          openContestBtn.style.pointerEvents = 'auto';
+          openContestBtn.style.cursor = 'pointer';
+        } else {
+          console.error('❌ Кнопка создания конкурса не найдена!');
+        }
+        
+        // Обработчики для модалки выбора типа конкурса
+        const contestTypeSelectionModal = document.getElementById('contest-type-selection-modal');
+        const closeContestTypeSelectionModal = document.getElementById('close-contest-type-selection-modal');
+        const selectRandomCommentContest = document.getElementById('select-random-comment-contest');
+        const selectDrawingContest = document.getElementById('select-drawing-contest');
+        
+        if (closeContestTypeSelectionModal && contestTypeSelectionModal) {
+          closeContestTypeSelectionModal.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(contestTypeSelectionModal);
+          });
+        }
+        
+        if (selectRandomCommentContest) {
+          selectRandomCommentContest.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(contestTypeSelectionModal);
+            if (contestModal) {
+              openModal(contestModal);
+            }
+          });
+        }
+        
+        if (selectDrawingContest) {
+          selectDrawingContest.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(contestTypeSelectionModal);
+            const drawingContestModal = document.getElementById('drawing-contest-modal');
+            if (drawingContestModal) {
+              // Загружаем данные профиля для автоматического заполнения условий
+              try {
+                const profileResponse = await fetchJSON(`/api/profile?tg_id=${currentUserId}`);
+                const userRole = profileResponse.status || 'user';
+                const adminChannelLink = profileResponse.channel_link || '';
+                const adminChatLink = profileResponse.chat_link || '';
+                const creatorChannelLink = 't.me/monkeys_giveaways';
+                
+                // Формируем базовые условия участия в зависимости от роли
+                let baseConditionsText = 'Для участия в конкурсе необходимо:\n';
+                
+                // Если это админ, добавляем канал и чат админа
+                if (userRole === 'admin') {
+                  if (adminChannelLink) {
+                    baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
+                  }
+                  if (adminChatLink) {
+                    baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
+                  }
+                }
+                
+                // Канал креатора всегда обязателен
+                baseConditionsText += `- Подписаться на канал создателя: ${creatorChannelLink}\n`;
+                baseConditionsText += '- Отправить рисунок на заданную тему';
+                
+                // Сохраняем базовые условия в отдельное поле (readonly)
+                const baseConditionsTextarea = document.getElementById('drawing-contest-conditions-base');
+                if (baseConditionsTextarea) {
+                  baseConditionsTextarea.value = baseConditionsText;
+                  // Обновляем защищенное значение
+                  originalBaseValue = baseConditionsText;
+                }
+                
+                // Очищаем поле дополнительных условий
+                const additionalConditionsTextarea = document.getElementById('drawing-contest-conditions-additional');
+                if (additionalConditionsTextarea) {
+                  additionalConditionsTextarea.value = '';
+                }
+              } catch (error) {
+                console.error('Ошибка загрузки данных профиля:', error);
+                // Используем базовые условия
+                const baseConditionsText = 'Для участия в конкурсе необходимо:\n- Подписаться на канал создателя: t.me/monkeys_giveaways\n- Отправить рисунок на заданную тему';
+                const baseConditionsTextarea = document.getElementById('drawing-contest-conditions-base');
+                if (baseConditionsTextarea) {
+                  baseConditionsTextarea.value = baseConditionsText;
+                  // Обновляем защищенное значение
+                  originalBaseValue = baseConditionsText;
+                }
+                const additionalConditionsTextarea = document.getElementById('drawing-contest-conditions-additional');
+                if (additionalConditionsTextarea) {
+                  additionalConditionsTextarea.value = '';
+                }
+              }
+              // Сбрасываем режим редактирования при создании нового конкурса
+              currentEditContestId = null;
+              const submitBtn = document.getElementById('submit-drawing-contest');
+              const updateBtn = document.getElementById('update-drawing-contest');
+              if (submitBtn) submitBtn.classList.remove('hidden');
+              if (updateBtn) updateBtn.classList.add('hidden');
+              const modalTitle = document.getElementById('drawing-contest-modal-title');
+              if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
+              
+              // Очищаем поля перед открытием модалки
+              document.getElementById('drawing-contest-theme').value = '';
+              document.getElementById('drawing-contest-submission-end').value = '';
+              document.getElementById('drawing-contest-voting-end').value = '';
+              document.getElementById('drawing-contest-conditions-additional').value = '';
+              currentDrawingWinnersCount = 1;
+              const drawingWinnersCountValueEl = document.getElementById('drawing-winners-count-value');
+              const drawingWinnersCountInputEl = document.getElementById('drawing-contest-winners-count');
+              if (drawingWinnersCountValueEl) drawingWinnersCountValueEl.textContent = '1';
+              if (drawingWinnersCountInputEl) drawingWinnersCountInputEl.value = '1';
+              
+              openModal(drawingContestModal);
+            }
+          });
+        }
+        
+        const selectCollectionContest = document.getElementById('select-collection-contest');
+        if (selectCollectionContest) {
+          selectCollectionContest.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(contestTypeSelectionModal);
+            const collectionContestModal = document.getElementById('collection-contest-modal');
+            if (collectionContestModal) {
+              // Загружаем данные профиля для автоматического заполнения условий
+              try {
+                const profileResponse = await fetchJSON(`/api/profile?tg_id=${currentUserId}`);
+                const userRole = profileResponse.status || 'user';
+                const adminChannelLink = profileResponse.channel_link || '';
+                const adminChatLink = profileResponse.chat_link || '';
+                const creatorChannelLink = 't.me/monkeys_giveaways';
+                
+                // Формируем базовые условия участия
+                let baseConditionsText = 'Для участия в конкурсе необходимо:\n';
+                
+                if (userRole === 'admin') {
+                  if (adminChannelLink) {
+                    baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
+                  }
+                  if (adminChatLink) {
+                    baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
+                  }
+                }
+                
+                baseConditionsText += `- Подписаться на канал создателя: ${creatorChannelLink}\n`;
+                baseConditionsText += '- Отправить коллекцию из 9 NFT';
+                
+                // Сохраняем базовые условия в отдельное поле (readonly)
+                const baseConditionsTextarea = document.getElementById('collection-contest-conditions-base');
+                if (baseConditionsTextarea) {
+                  baseConditionsTextarea.value = baseConditionsText;
+                  originalBaseValue = baseConditionsText;
+                }
+                
+                // Очищаем поле дополнительных условий
+                const additionalConditionsTextarea = document.getElementById('collection-contest-conditions-additional');
+                if (additionalConditionsTextarea) {
+                  additionalConditionsTextarea.value = '';
+                }
+              } catch (error) {
+                console.error('Ошибка загрузки данных профиля:', error);
+                alert('⚠️ Ошибка загрузки данных профиля. Убедитесь, что у вас назначены канал и чат.');
+                return;
+              }
+              
+              // Сбрасываем режим редактирования
+              currentEditContestId = null;
+              const submitBtn = document.getElementById('submit-collection-contest');
+              const updateBtn = document.getElementById('update-collection-contest');
+              if (submitBtn) submitBtn.classList.remove('hidden');
+              if (updateBtn) updateBtn.classList.add('hidden');
+              const modalTitle = document.getElementById('collection-contest-modal-title');
+              if (modalTitle) modalTitle.textContent = 'Создать конкурс коллекций';
+              
+              // Очищаем поля перед открытием модалки
+              document.getElementById('collection-contest-theme').value = '';
+              document.getElementById('collection-contest-submission-end').value = '';
+              document.getElementById('collection-contest-voting-end').value = '';
+              document.getElementById('collection-contest-conditions-additional').value = '';
+              currentCollectionWinnersCount = 1;
+              const collectionWinnersCountValueEl = document.getElementById('collection-winners-count-value');
+              const collectionWinnersCountInputEl = document.getElementById('collection-contest-winners-count');
+              if (collectionWinnersCountValueEl) collectionWinnersCountValueEl.textContent = '1';
+              if (collectionWinnersCountInputEl) collectionWinnersCountInputEl.value = '1';
+              
+              openModal(collectionContestModal);
+            }
+          });
+        }
+        
+        if (closeContestModal && contestModal) {
+          closeContestModal.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal(contestModal);
+          });
+        }
+        
+        // Устанавливаем обработчик для submitContest
+        if (submitContest) {
+          console.log('🔘 Устанавливаем обработчик для submit-contest');
+          submitContest.addEventListener('click', async () => {
+            const postLink = document.getElementById('contest-post-link')?.value.trim();
+            const conditions = document.getElementById('contest-conditions')?.value.trim();
+            const winnersCount = parseInt(document.getElementById('contest-winners-count')?.value) || 1;
 
-      // Get chat/channel title from Telegram API
-      async function getChatTitle(link) {
-        try {
-          // Try to get title via backend API
-          const username = extractUsernameFromLink(link);
-          if (!username) return link; // Fallback to link if can't parse
+            // Для рандом комментариев пост и условия обязательны, время больше не требуется
+            if (!postLink || !conditions) {
+              alert('⚠️ Пожалуйста, заполните все поля');
+              return;
+            }
+            
+            // Валидация формата ссылки на пост
+            if (postLink && !/^https?:\/\/t\.me\/[a-zA-Z0-9_]+\/\d+$/.test(postLink)) {
+              alert('⚠️ Неверный формат ссылки на пост!\n\nПример правильной ссылки:\nhttps://t.me/monkeys_giveaways/25');
+              return;
+            }
+
+            // Для рандом комментариев название всегда "Рандомный комментарий"
+            const title = "Рандомный комментарий";
+
+            const payload = {
+              title: title,
+              name: title,
+              post_link: postLink,
+              conditions: conditions,
+              prize: '',
+              start_at: null,
+              end_at: null,
+              winners_count: winnersCount,
+              created_by: currentUserId,
+              contest_type: 'random_comment'
+            };
+
+            try {
+              const response = await fetchJSON('/api/contests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              closeModal(contestModal);
+              
+              // Сохраняем ID созданного конкурса для добавления призов
+              if (response.id) {
+                window.currentContestId = response.id;
+                window.currentWinnersCount = winnersCount;
+                // Показываем модалку для ввода призов
+                if (typeof openPrizesModal === 'function') {
+                  openPrizesModal();
+                } else {
+                  console.error('Функция openPrizesModal не найдена!');
+                  const prizesModal = document.getElementById('prizes-modal');
+                  if (prizesModal) {
+                    const prizesList = document.getElementById('prizes-list');
+                    if (prizesList) {
+                      prizesList.innerHTML = '';
+                      for (let i = 0; i < winnersCount; i++) {
+                        const prizeDiv = document.createElement('div');
+                        prizeDiv.className = 'flex gap-2 items-center';
+                        prizeDiv.style.pointerEvents = 'auto';
+                        prizeDiv.innerHTML = `
+                          <label class="text-sm text-gray-400 w-20">Приз ${i + 1}:</label>
+                          <input type="text" class="prize-input input-field flex-1 p-2 rounded" placeholder="t.me/nft/название-номер" data-index="${i + 1}" style="pointer-events: auto; position: relative; z-index: 1;" />
+                        `;
+                        prizesList.appendChild(prizeDiv);
+                      }
+                      openModal(prizesModal);
+                    }
+                  }
+                }
+              } else {
+                await loadContests();
+                showSection('contests-section');
+              }
+            } catch (e) {
+              console.error('Ошибка создания конкурса:', e);
+              alert('⚠️ Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        // Обработчики для модалки конкурса рисунков
+        const drawingContestModal = document.getElementById('drawing-contest-modal');
+        const closeDrawingContestModal = document.getElementById('close-drawing-contest-modal');
+        const submitDrawingContest = document.getElementById('submit-drawing-contest');
+        const drawingWinnersCountDecrease = document.getElementById('drawing-winners-count-decrease');
+        const drawingWinnersCountIncrease = document.getElementById('drawing-winners-count-increase');
+        
+        let currentDrawingWinnersCount = 1;
+        let currentCollectionWinnersCount = 1; // Количество победителей для конкурса коллекций
+        
+        if (closeDrawingContestModal && drawingContestModal) {
+          closeDrawingContestModal.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Сбрасываем режим редактирования при закрытии
+            currentEditContestId = null;
+            const submitBtn = document.getElementById('submit-drawing-contest');
+            const updateBtn = document.getElementById('update-drawing-contest');
+            if (submitBtn) submitBtn.classList.remove('hidden');
+            if (updateBtn) updateBtn.classList.add('hidden');
+            const modalTitle = document.getElementById('drawing-contest-modal-title');
+            if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
+            // Сбрасываем состояние жюри
+            if (juryEnabledCheckbox) juryEnabledCheckbox.checked = false;
+            if (jurySettingsDiv) jurySettingsDiv.classList.add('hidden');
+            currentJuryCount = 1;
+            updateJuryMembers(1);
+            
+            closeModal(drawingContestModal);
+          });
+        }
+        
+        // Обработчики для изменения количества победителей в конкурсе рисунков
+        function updateDrawingWinnersCount(newValue, direction) {
+          const minCount = 1;
+          const maxCount = 50;
+          if (newValue < minCount) newValue = minCount;
+          if (newValue > maxCount) newValue = maxCount;
           
-          const response = await fetch(`/api/chat-info?link=${encodeURIComponent(link)}`);
-          if (response.ok) {
-            const data = await response.json();
-            return data.title || data.username || link;
+          if (newValue !== currentDrawingWinnersCount) {
+            currentDrawingWinnersCount = newValue;
+            
+            const drawingWinnersCountValueEl = document.getElementById('drawing-winners-count-value');
+            const drawingWinnersCountInputEl = document.getElementById('drawing-contest-winners-count');
+            
+            if (drawingWinnersCountValueEl) {
+              drawingWinnersCountValueEl.classList.remove('number-spin-up', 'number-spin-down');
+              void drawingWinnersCountValueEl.offsetWidth;
+              
+              if (direction === 'up') {
+                drawingWinnersCountValueEl.classList.add('number-spin-up');
+              } else if (direction === 'down') {
+                drawingWinnersCountValueEl.classList.add('number-spin-down');
+              }
+              
+              drawingWinnersCountValueEl.textContent = currentDrawingWinnersCount;
+            }
+            
+            if (drawingWinnersCountInputEl) {
+              drawingWinnersCountInputEl.value = currentDrawingWinnersCount;
+            }
+          }
+        }
+        
+        if (drawingWinnersCountDecrease) {
+          drawingWinnersCountDecrease.addEventListener('click', () => {
+            updateDrawingWinnersCount(currentDrawingWinnersCount - 1, 'down');
+          });
+        }
+        
+        if (drawingWinnersCountIncrease) {
+          drawingWinnersCountIncrease.addEventListener('click', () => {
+            updateDrawingWinnersCount(currentDrawingWinnersCount + 1, 'up');
+          });
+        }
+        
+        // Обработчики для жюри
+        let currentJuryCount = 1;
+        const juryEnabledCheckbox = document.getElementById('drawing-contest-jury-enabled');
+        const jurySettingsDiv = document.getElementById('drawing-contest-jury-settings');
+        const juryCountDecrease = document.getElementById('drawing-jury-count-decrease');
+        const juryCountIncrease = document.getElementById('drawing-jury-count-increase');
+        
+        // Функция для обновления количества членов жюри (без полей ввода)
+        function updateJuryMembers(count) {
+          const minCount = 1;
+          const maxCount = 20;
+          if (count < minCount) count = minCount;
+          if (count > maxCount) count = maxCount;
+          
+          currentJuryCount = count;
+          const countInput = document.getElementById('drawing-contest-jury-count');
+          if (countInput) countInput.value = count;
+          
+          const countValueEl = document.getElementById('drawing-jury-count-value');
+          if (countValueEl) countValueEl.textContent = count;
+        }
+        
+        // Переключатель жюри
+        if (juryEnabledCheckbox && jurySettingsDiv) {
+          juryEnabledCheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+              jurySettingsDiv.classList.remove('hidden');
+              updateJuryMembers(currentJuryCount);
+            } else {
+              jurySettingsDiv.classList.add('hidden');
+            }
+          });
+        }
+        
+        // Инициализируем количество жюри при загрузке
+        updateJuryMembers(currentJuryCount);
+        
+        // Кнопки изменения количества членов жюри
+        if (juryCountDecrease) {
+          juryCountDecrease.addEventListener('click', () => {
+            updateJuryMembers(currentJuryCount - 1);
+          });
+        }
+        
+        if (juryCountIncrease) {
+          juryCountIncrease.addEventListener('click', () => {
+            updateJuryMembers(currentJuryCount + 1);
+          });
+        }
+        
+        // Защита базового поля условий от изменения
+        // Выносим функцию в глобальную область видимости, чтобы она была доступна в openEditDrawingContestModal
+        window.setupBaseConditionsProtection = function() {
+          const baseConditionsField = document.getElementById('drawing-contest-conditions-base');
+          if (!baseConditionsField) return;
+          
+          // Удаляем старые обработчики, если они есть
+          if (protectionHandlers.input) {
+            baseConditionsField.removeEventListener('input', protectionHandlers.input);
+          }
+          if (protectionHandlers.keydown) {
+            baseConditionsField.removeEventListener('keydown', protectionHandlers.keydown);
+          }
+          if (protectionHandlers.paste) {
+            baseConditionsField.removeEventListener('paste', protectionHandlers.paste);
           }
           
-          // Fallback: try to parse from link and show username
-          return `@${username}`;
-        } catch (e) {
-          // Final fallback: show the link or username
-          const username = extractUsernameFromLink(link);
-          return username ? `@${username}` : link;
+          // Обновляем оригинальное значение
+          originalBaseValue = baseConditionsField.value;
+          
+          // Создаем обработчики
+          protectionHandlers.input = function(e) {
+            if (this.value !== originalBaseValue) {
+              this.value = originalBaseValue;
+            }
+          };
+          
+          protectionHandlers.keydown = function(e) {
+            // Разрешаем только Ctrl+A, Ctrl+C для копирования
+            if (e.ctrlKey && (e.key === 'a' || e.key === 'c')) {
+              return;
+            }
+            // Блокируем все остальные клавиши редактирования
+            if (!e.ctrlKey && !e.metaKey && e.key !== 'Tab' && e.key !== 'Escape' && e.key !== 'F5') {
+              e.preventDefault();
+            }
+          };
+          
+          protectionHandlers.paste = function(e) {
+            e.preventDefault();
+          };
+          
+          // Добавляем обработчики
+          baseConditionsField.addEventListener('input', protectionHandlers.input);
+          baseConditionsField.addEventListener('keydown', protectionHandlers.keydown);
+          baseConditionsField.addEventListener('paste', protectionHandlers.paste);
+        };
+        
+        // Защита базовых условий применяется только при открытии модалки конкурса рисунков
+        // НЕ вызываем setupBaseConditionsProtection() при загрузке страницы
+        // Защита будет установлена только когда модалка открывается и поле заполнено
+        if (drawingContestModal) {
+          const modalObserver = new MutationObserver(() => {
+            if (!drawingContestModal.classList.contains('hidden')) {
+              // Даем время на установку значения через скрипт
+              setTimeout(() => {
+                const baseConditionsField = document.getElementById('drawing-contest-conditions-base');
+                if (baseConditionsField && baseConditionsField.value) {
+                  originalBaseValue = baseConditionsField.value;
+                  if (typeof window.setupBaseConditionsProtection === 'function') {
+                    window.setupBaseConditionsProtection();
+                  }
+                }
+              }, 150);
+            }
+          });
+          modalObserver.observe(drawingContestModal, { attributes: true, attributeFilter: ['class'] });
         }
+        
+        // Сброс значения при открытии модалки конкурса рисунков
+        if (drawingContestModal) {
+          drawingContestModal.addEventListener('click', (e) => {
+            if (e.target === drawingContestModal) {
+              currentDrawingWinnersCount = 1;
+              const drawingWinnersCountValueEl = document.getElementById('drawing-winners-count-value');
+              const drawingWinnersCountInputEl = document.getElementById('drawing-contest-winners-count');
+              if (drawingWinnersCountValueEl) drawingWinnersCountValueEl.textContent = '1';
+              if (drawingWinnersCountInputEl) drawingWinnersCountInputEl.value = '1';
+            }
+          });
+        }
+        
+        // Обработчик создания конкурса рисунков
+        if (submitDrawingContest) {
+          submitDrawingContest.addEventListener('click', async () => {
+            const theme = document.getElementById('drawing-contest-theme')?.value.trim();
+            const baseConditions = document.getElementById('drawing-contest-conditions-base')?.value.trim() || '';
+            const additionalConditions = document.getElementById('drawing-contest-conditions-additional')?.value.trim() || '';
+            const winnersCount = parseInt(document.getElementById('drawing-contest-winners-count')?.value) || 1;
+            const submissionEndDate = document.getElementById('drawing-contest-submission-end')?.value;
+            const votingEndDate = document.getElementById('drawing-contest-voting-end')?.value;
+            
+            // Объединяем базовые и дополнительные условия
+            let conditions = baseConditions;
+            if (additionalConditions) {
+              conditions += (conditions ? '\n\n' : '') + additionalConditions;
+            }
+            
+            if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
+              alert('⚠️ Пожалуйста, заполните все обязательные поля');
+              return;
+            }
+            
+            // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
+            const submissionEnd = new Date(submissionEndDate);
+            const votingEnd = new Date(votingEndDate);
+            const timeDiff = (votingEnd - submissionEnd) / 1000 / 60; // разница в минутах
+            
+            if (timeDiff < 10) {
+              alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
+              return;
+            }
+            
+            if (submissionEnd >= votingEnd) {
+              alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
+              return;
+            }
+            
+            // Формируем название конкурса
+            const contestTitle = `Конкурс рисунков: ${theme}`;
+            
+            // Для конкурса рисунков start_at устанавливается на текущее время (начало конкурса)
+            // submission_end_date - время окончания приема работ
+            // end_at - время окончания голосования
+            // Получаем текущее время в МСК для времени начала
+            const now = new Date();
+            const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T'); // Формат: YYYY-MM-DDTHH:mm
+            
+            // Собираем данные жюри (только включение/выключение и количество, данные введем позже)
+            let juryData = null;
+            const juryEnabled = juryEnabledCheckbox && juryEnabledCheckbox.checked;
+            const juryCount = parseInt(document.getElementById('drawing-contest-jury-count')?.value) || 1;
+            
+            if (juryEnabled) {
+              juryData = {
+                enabled: true,
+                members_count: juryCount,
+                members: [] // Данные будут введены в модалке призов
+              };
+            } else {
+              juryData = {
+                enabled: false,
+                members: []
+              };
+            }
+            
+            // Сохраняем информацию о жюри для модалки призов
+            window.currentJuryEnabled = juryEnabled;
+            window.currentJuryCount = juryCount;
+            
+            const payload = {
+              title: contestTitle,
+              name: contestTitle,
+              conditions: conditions,
+              prize: '',
+              start_at: mskTimeString, // Текущее время в МСК как начало конкурса
+              end_at: votingEndDate,
+              submission_end_date: submissionEndDate,
+              winners_count: winnersCount,
+              created_by: currentUserId,
+              contest_type: 'drawing',
+              post_link: '', // Для конкурса рисунков post_link не нужен
+              jury: juryData
+            };
+            
+            try {
+              // Используем /api/contests для совместимости (это алиас для /api/giveaways)
+              const response = await fetchJSON('/api/contests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              
+              if (response.success && response.id) {
+                closeModal(drawingContestModal);
+                window.currentContestId = response.id;
+                window.currentWinnersCount = winnersCount;
+                
+                // Показываем модалку для ввода призов (через функцию openPrizesModal)
+                if (typeof openPrizesModal === 'function') {
+                  openPrizesModal();
+                } else {
+                  // Fallback: открываем модалку напрямую
+                  const prizesModal = document.getElementById('prizes-modal');
+                  if (prizesModal) {
+                    const prizesList = document.getElementById('prizes-list');
+                    if (prizesList) {
+                      prizesList.innerHTML = '';
+                      for (let i = 0; i < winnersCount; i++) {
+                        const prizeDiv = document.createElement('div');
+                        prizeDiv.className = 'flex gap-2 items-center';
+                        prizeDiv.style.pointerEvents = 'auto';
+                        prizeDiv.innerHTML = `
+                          <label class="text-sm text-gray-400 w-20">Приз ${i + 1}:</label>
+                          <input type="text" class="prize-input input-field flex-1 p-2 rounded" placeholder="t.me/nft/название-номер" data-index="${i + 1}" style="pointer-events: auto; position: relative; z-index: 1;" />
+                        `;
+                        prizesList.appendChild(prizeDiv);
+                      }
+                      openModal(prizesModal);
+                    }
+                  }
+                }
+              } else {
+                alert('⚠️ Ошибка при создании конкурса: ' + (response.message || 'Неизвестная ошибка'));
+              }
+            } catch (e) {
+              console.error('Ошибка создания конкурса рисунков:', e);
+              alert('⚠️ Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        // Обработчик обновления конкурса рисунков
+        const updateDrawingContest = document.getElementById('update-drawing-contest');
+        if (updateDrawingContest) {
+          updateDrawingContest.addEventListener('click', async () => {
+            if (!currentEditContestId) {
+              alert('⚠️ Ошибка: не указан ID конкурса для обновления');
+              return;
+            }
+            
+            const theme = document.getElementById('drawing-contest-theme')?.value.trim();
+            const baseConditions = document.getElementById('drawing-contest-conditions-base')?.value.trim() || '';
+            const additionalConditions = document.getElementById('drawing-contest-conditions-additional')?.value.trim() || '';
+            const winnersCount = parseInt(document.getElementById('drawing-contest-winners-count')?.value) || 1;
+            const submissionEndDate = document.getElementById('drawing-contest-submission-end')?.value;
+            const votingEndDate = document.getElementById('drawing-contest-voting-end')?.value;
+            
+            // Объединяем базовые и дополнительные условия
+            let conditions = baseConditions;
+            if (additionalConditions) {
+              conditions += (conditions ? '\n\n' : '') + additionalConditions;
+            }
+            
+            if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
+              alert('⚠️ Пожалуйста, заполните все обязательные поля');
+              return;
+            }
+            
+            // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
+            const submissionEnd = new Date(submissionEndDate);
+            const votingEnd = new Date(votingEndDate);
+            const timeDiff = (votingEnd - submissionEnd) / 1000 / 60; // разница в минутах
+            
+            if (timeDiff < 10) {
+              alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
+              return;
+            }
+            
+            if (submissionEnd >= votingEnd) {
+              alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
+              return;
+            }
+            
+            // Формируем название конкурса
+            const contestTitle = `Конкурс рисунков: ${theme}`;
+            
+            try {
+              // Получаем текущее время в МСК для времени начала
+              const now = new Date();
+              const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T'); // Формат: YYYY-MM-DDTHH:mm
+              
+              const payload = {
+                title: contestTitle,
+                name: contestTitle,
+                conditions: conditions,
+                prize: '',
+                start_at: mskTimeString, // Текущее время в МСК как начало конкурса
+                end_at: votingEndDate,
+                submission_end_date: submissionEndDate,
+                winners_count: winnersCount,
+                created_by: currentUserId,
+                contest_type: 'drawing'
+              };
+              
+              const response = await fetchJSON(`/api/contests/${currentEditContestId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              
+              if (response.success) {
+                alert('✅ Конкурс успешно обновлен!');
+                closeModal(drawingContestModal);
+                
+                // Сбрасываем режим редактирования
+                currentEditContestId = null;
+                const submitBtn = document.getElementById('submit-drawing-contest');
+                const updateBtn = document.getElementById('update-drawing-contest');
+                if (submitBtn) submitBtn.classList.remove('hidden');
+                if (updateBtn) updateBtn.classList.add('hidden');
+                const modalTitle = document.getElementById('drawing-contest-modal-title');
+                if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
+                
+                if (typeof loadContests === 'function') await loadContests();
+              } else {
+                alert('⚠️ Ошибка при обновлении конкурса: ' + (response.message || 'Неизвестная ошибка'));
+              }
+            } catch (e) {
+              console.error('Ошибка обновления конкурса рисунков:', e);
+              alert('⚠️ Ошибка при обновлении конкурса: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        // Обработчики для модалки конкурса коллекций
+        const collectionContestModal = document.getElementById('collection-contest-modal');
+        const closeCollectionContestModal = document.getElementById('close-collection-contest-modal');
+        const submitCollectionContest = document.getElementById('submit-collection-contest');
+        const updateCollectionContest = document.getElementById('update-collection-contest');
+        const collectionWinnersCountDecrease = document.getElementById('collection-winners-count-decrease');
+        const collectionWinnersCountIncrease = document.getElementById('collection-winners-count-increase');
+        
+        if (closeCollectionContestModal && collectionContestModal) {
+          closeCollectionContestModal.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Сбрасываем режим редактирования при закрытии
+            currentEditContestId = null;
+            const submitBtn = document.getElementById('submit-collection-contest');
+            const updateBtn = document.getElementById('update-collection-contest');
+            if (submitBtn) submitBtn.classList.remove('hidden');
+            if (updateBtn) updateBtn.classList.add('hidden');
+            const modalTitle = document.getElementById('collection-contest-modal-title');
+            if (modalTitle) modalTitle.textContent = 'Создать конкурс коллекций';
+            
+            closeModal(collectionContestModal);
+          });
+        }
+        
+        // Обработчики для изменения количества победителей в конкурсе коллекций
+        function updateCollectionWinnersCount(newValue, direction) {
+          const minCount = 1;
+          const maxCount = 50;
+          if (newValue < minCount) newValue = minCount;
+          if (newValue > maxCount) newValue = maxCount;
+          
+          if (newValue !== currentCollectionWinnersCount) {
+            currentCollectionWinnersCount = newValue;
+            
+            const collectionWinnersCountValueEl = document.getElementById('collection-winners-count-value');
+            const collectionWinnersCountInputEl = document.getElementById('collection-contest-winners-count');
+            
+            if (collectionWinnersCountValueEl) {
+              collectionWinnersCountValueEl.classList.remove('number-spin-up', 'number-spin-down');
+              void collectionWinnersCountValueEl.offsetWidth;
+              
+              if (direction === 'up') {
+                collectionWinnersCountValueEl.classList.add('number-spin-up');
+              } else if (direction === 'down') {
+                collectionWinnersCountValueEl.classList.add('number-spin-down');
+              }
+              
+              collectionWinnersCountValueEl.textContent = currentCollectionWinnersCount;
+            }
+            
+            if (collectionWinnersCountInputEl) {
+              collectionWinnersCountInputEl.value = currentCollectionWinnersCount;
+            }
+          }
+        }
+        
+        if (collectionWinnersCountDecrease) {
+          collectionWinnersCountDecrease.addEventListener('click', () => {
+            updateCollectionWinnersCount(currentCollectionWinnersCount - 1, 'down');
+          });
+        }
+        
+        if (collectionWinnersCountIncrease) {
+          collectionWinnersCountIncrease.addEventListener('click', () => {
+            updateCollectionWinnersCount(currentCollectionWinnersCount + 1, 'up');
+          });
+        }
+        
+        // Обработчик создания конкурса коллекций
+        if (submitCollectionContest) {
+          submitCollectionContest.addEventListener('click', async () => {
+            const theme = document.getElementById('collection-contest-theme')?.value.trim();
+            const baseConditions = document.getElementById('collection-contest-conditions-base')?.value.trim() || '';
+            const additionalConditions = document.getElementById('collection-contest-conditions-additional')?.value.trim() || '';
+            const winnersCount = parseInt(document.getElementById('collection-contest-winners-count')?.value) || 1;
+            const submissionEndDate = document.getElementById('collection-contest-submission-end')?.value;
+            const votingEndDate = document.getElementById('collection-contest-voting-end')?.value;
+            
+            // Объединяем базовые и дополнительные условия
+            let conditions = baseConditions;
+            if (additionalConditions) {
+              conditions += (conditions ? '\n\n' : '') + additionalConditions;
+            }
+            
+            if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
+              alert('⚠️ Пожалуйста, заполните все обязательные поля');
+              return;
+            }
+            
+            // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
+            const submissionEnd = new Date(submissionEndDate);
+            const votingEnd = new Date(votingEndDate);
+            const timeDiff = (votingEnd - submissionEnd) / 1000 / 60;
+            
+            if (timeDiff < 10) {
+              alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
+              return;
+            }
+            
+            if (submissionEnd >= votingEnd) {
+              alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
+              return;
+            }
+            
+            // Формируем название конкурса
+            const contestTitle = `Конкурс коллекций: ${theme}`;
+            
+            // Получаем текущее время в МСК для времени начала
+            const now = new Date();
+            const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
+            
+            const payload = {
+              title: contestTitle,
+              name: contestTitle,
+              conditions: conditions,
+              prize: '',
+              start_at: mskTimeString,
+              end_at: votingEndDate,
+              submission_end_date: submissionEndDate,
+              winners_count: winnersCount,
+              created_by: currentUserId,
+              contest_type: 'collection',
+              post_link: ''
+            };
+            
+            try {
+              const response = await fetchJSON('/api/contests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              
+              if (response.success && response.id) {
+                closeModal(collectionContestModal);
+                window.currentContestId = response.id;
+                window.currentWinnersCount = winnersCount;
+                
+                // Показываем модалку для ввода призов
+                const prizesModal = document.getElementById('prizes-modal');
+                if (prizesModal) {
+                  const prizesList = document.getElementById('prizes-list');
+                  if (prizesList) {
+                    prizesList.innerHTML = '';
+                    for (let i = 0; i < winnersCount; i++) {
+                      const prizeDiv = document.createElement('div');
+                      prizeDiv.className = 'flex gap-2 items-center';
+                      prizeDiv.style.pointerEvents = 'auto';
+                      prizeDiv.innerHTML = `
+                        <label class="text-sm text-gray-400 w-20">Приз ${i + 1}:</label>
+                        <input type="text" class="prize-input input-field flex-1 p-2 rounded" placeholder="t.me/nft/название-номер" data-index="${i + 1}" style="pointer-events: auto; position: relative; z-index: 1;" />
+                      `;
+                      prizesList.appendChild(prizeDiv);
+                    }
+                    openModal(prizesModal);
+                  }
+                }
+              } else {
+                alert('⚠️ Ошибка при создании конкурса: ' + (response.message || 'Неизвестная ошибка'));
+              }
+            } catch (e) {
+              console.error('Ошибка создания конкурса коллекций:', e);
+              alert('⚠️ Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        // Обработчик обновления конкурса коллекций
+        if (updateCollectionContest) {
+          updateCollectionContest.addEventListener('click', async () => {
+            if (!currentEditContestId) {
+              alert('⚠️ Ошибка: не указан ID конкурса для обновления');
+              return;
+            }
+            
+            const theme = document.getElementById('collection-contest-theme')?.value.trim();
+            const baseConditions = document.getElementById('collection-contest-conditions-base')?.value.trim() || '';
+            const additionalConditions = document.getElementById('collection-contest-conditions-additional')?.value.trim() || '';
+            const winnersCount = parseInt(document.getElementById('collection-contest-winners-count')?.value) || 1;
+            const submissionEndDate = document.getElementById('collection-contest-submission-end')?.value;
+            const votingEndDate = document.getElementById('collection-contest-voting-end')?.value;
+            
+            // Объединяем базовые и дополнительные условия
+            let conditions = baseConditions;
+            if (additionalConditions) {
+              conditions += (conditions ? '\n\n' : '') + additionalConditions;
+            }
+            
+            if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
+              alert('⚠️ Пожалуйста, заполните все обязательные поля');
+              return;
+            }
+            
+            // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
+            const submissionEnd = new Date(submissionEndDate);
+            const votingEnd = new Date(votingEndDate);
+            const timeDiff = (votingEnd - submissionEnd) / 1000 / 60;
+            
+            if (timeDiff < 10) {
+              alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
+              return;
+            }
+            
+            if (submissionEnd >= votingEnd) {
+              alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
+              return;
+            }
+            
+            // Формируем название конкурса
+            const contestTitle = `Конкурс коллекций: ${theme}`;
+            
+            try {
+              const now = new Date();
+              const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
+              
+              const payload = {
+                title: contestTitle,
+                name: contestTitle,
+                conditions: conditions,
+                prize: '',
+                start_at: mskTimeString,
+                end_at: votingEndDate,
+                submission_end_date: submissionEndDate,
+                winners_count: winnersCount,
+                created_by: currentUserId,
+                contest_type: 'collection'
+              };
+              
+              const response = await fetchJSON(`/api/contests/${currentEditContestId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              
+              if (response.success) {
+                alert('✅ Конкурс успешно обновлен!');
+                closeModal(collectionContestModal);
+                
+                // Сбрасываем режим редактирования
+                currentEditContestId = null;
+                const submitBtn = document.getElementById('submit-collection-contest');
+                const updateBtn = document.getElementById('update-collection-contest');
+                if (submitBtn) submitBtn.classList.remove('hidden');
+                if (updateBtn) updateBtn.classList.add('hidden');
+                const modalTitle = document.getElementById('collection-contest-modal-title');
+                if (modalTitle) modalTitle.textContent = 'Создать конкурс коллекций';
+                
+                if (typeof loadContests === 'function') await loadContests();
+              } else {
+                alert('⚠️ Ошибка при обновлении конкурса: ' + (response.message || 'Неизвестная ошибка'));
+              }
+            } catch (e) {
+              console.error('Ошибка обновления конкурса коллекций:', e);
+              alert('⚠️ Ошибка при обновлении конкурса: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        // Инициализируем обработчики для админов
+        adminsList = document.getElementById('admins-list');
+        const openAddAdmin = document.getElementById('open-add-admin');
+        const adminModal = document.getElementById('admin-modal');
+        const closeAdminModal = document.getElementById('close-admin-modal');
+        const submitAdmin = document.getElementById('submit-admin');
+        
+        if (openAddAdmin && adminModal) {
+          openAddAdmin.addEventListener('click', () => openModal(adminModal));
+          openAddAdmin.style.pointerEvents = 'auto';
+          openAddAdmin.style.cursor = 'pointer';
+        }
+        if (closeAdminModal && adminModal) {
+          closeAdminModal.addEventListener('click', () => closeModal(adminModal));
+        }
+        if (submitAdmin) {
+          submitAdmin.addEventListener('click', async () => {
+            const adminIdStr = document.getElementById('modal-admin-id')?.value.trim();
+            
+            // Проверяем, что ID заполнен
+            if (!adminIdStr) {
+              alert('⚠️ Пожалуйста, введите ID пользователя');
+              return;
+            }
+            
+            // Преобразуем ID в число
+            let adminId;
+            try {
+              adminId = parseInt(adminIdStr);
+              if (isNaN(adminId) || adminId <= 0) {
+                throw new Error('Неверный формат ID');
+              }
+            } catch (e) {
+              alert('⚠️ ID должен быть положительным числом');
+              return;
+            }
+            
+            const payload = {
+              id: adminId,
+              username: document.getElementById('modal-admin-username')?.value.trim() || '',
+              channel_link: document.getElementById('modal-admin-channel')?.value.trim() || '',
+              chat_link: document.getElementById('modal-admin-chat')?.value.trim() || ''
+            };
+            
+            try {
+              await fetchJSON('/api/admins', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              closeModal(adminModal);
+              // Очищаем форму
+              document.getElementById('modal-admin-id').value = '';
+              document.getElementById('modal-admin-username').value = '';
+              document.getElementById('modal-admin-channel').value = '';
+              document.getElementById('modal-admin-chat').value = '';
+              if (typeof loadAdmins === 'function') await loadAdmins();
+              showSection('admins-section');
+            } catch (e) {
+              let errorMessage = 'Ошибка при добавлении администратора';
+              try {
+                const errorResponse = await e.response?.json();
+                if (errorResponse?.detail) {
+                  errorMessage = errorResponse.detail;
+                }
+              } catch (parseError) {
+                // Если не удалось распарсить ошибку, используем стандартное сообщение
+              }
+              alert(`⚠️ ${errorMessage}`);
+              closeModal(adminModal);
+              if (typeof loadAdmins === 'function') await loadAdmins();
+            }
+          });
+        }
+        
+        // Инициализируем обработчики для редактирования
+        editContestModal = document.getElementById('edit-contest-modal');
+        const closeEditContestModal = document.getElementById('close-edit-contest-modal');
+        updateContest = document.getElementById('update-contest');
+        editAdminModal = document.getElementById('edit-admin-modal');
+        const closeEditAdminModal = document.getElementById('close-edit-admin-modal');
+        updateAdmin = document.getElementById('update-admin');
+        
+        if (closeEditContestModal && editContestModal) {
+          closeEditContestModal.addEventListener('click', () => closeModal(editContestModal));
+        }
+        if (closeEditAdminModal && editAdminModal) {
+          closeEditAdminModal.addEventListener('click', () => closeModal(editAdminModal));
+        }
+        
+        // Устанавливаем обработчики для кнопок обновления
+        if (updateContest) {
+          updateContest.addEventListener('click', async () => {
+            if (!currentEditContestId) return;
+            
+            const postLink = document.getElementById('edit-contest-post-link')?.value.trim();
+            
+            // Валидация ссылки на пост Telegram (только для рандом комментариев)
+            // Для конкурсов рисунков post_link не требуется
+            if (postLink && !/^https?:\/\/t\.me\/[a-zA-Z0-9_]+\/\d+$/.test(postLink)) {
+              alert('⚠️ Неверный формат ссылки на пост!\n\nПример правильной ссылки:\nhttps://t.me/monkeys_giveaways/25');
+              return;
+            }
+            
+            // Для рандом комментариев не отправляем поле prize (призы добавляются через модалку призов)
+            const payload = {
+              title: document.getElementById('edit-contest-title')?.value.trim() || '',
+              post_link: postLink || '',
+              conditions: document.getElementById('edit-contest-conditions')?.value.trim() || '',
+              // prize не отправляем для рандом комментариев
+              start_at: document.getElementById('edit-contest-start')?.value || '',
+              end_at: document.getElementById('edit-contest-end')?.value || '',
+              current_user_id: currentUserId
+            };
+            try {
+              await fetchJSON(`/api/contests/${currentEditContestId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              closeModal(editContestModal);
+              if (typeof loadContests === 'function') await loadContests();
+            } catch (e) {
+              console.error('Ошибка обновления конкурса:', e);
+              alert('⚠️ Ошибка при обновлении конкурса: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        if (updateAdmin) {
+          updateAdmin.addEventListener('click', async () => {
+            if (!currentEditAdminId) return;
+            const payload = {
+              channel_link: document.getElementById('edit-modal-admin-channel')?.value.trim() || '',
+              chat_link: document.getElementById('edit-modal-admin-chat')?.value.trim() || ''
+            };
+            try {
+              await fetchJSON(`/api/admins/${currentEditAdminId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              closeModal(editAdminModal);
+              if (typeof loadAdmins === 'function') await loadAdmins();
+            } catch (e) {
+              console.error('Ошибка обновления админа:', e);
+              alert('⚠️ Ошибка при обновлении администратора: ' + (e.message || 'Неизвестная ошибка'));
+            }
+          });
+        }
+        
+        // Инициализируем обработчики для модалок призов
+        const prizesModal = document.getElementById('prizes-modal');
+        const closePrizesModal = document.getElementById('close-prizes-modal');
+        const addPrizeBtn = document.getElementById('add-prize-btn');
+        const submitPrizesBtn = document.getElementById('submit-prizes');
+        const prizesList = document.getElementById('prizes-list');
+        
+        if (closePrizesModal && prizesModal) {
+          closePrizesModal.addEventListener('click', () => closeModal(prizesModal));
+        }
+        
+        if (addPrizeBtn && prizesList) {
+          addPrizeBtn.addEventListener('click', () => {
+            const currentCount = prizesList.querySelectorAll('.prize-input').length;
+            addPrizeInput(currentCount + 1);
+          });
+        }
+        
+        // Инициализируем обработчики для сообщений
+        const messagesBtn = document.getElementById('messages-btn');
+        const messagesModal = document.getElementById('messages-modal');
+        const closeMessagesModal = document.getElementById('close-messages-modal');
+        
+        if (messagesBtn && messagesModal) {
+          messagesBtn.addEventListener('click', () => {
+            openModal(messagesModal);
+            if (typeof loadMessages === 'function') loadMessages();
+          });
+          messagesBtn.style.pointerEvents = 'auto';
+          messagesBtn.style.cursor = 'pointer';
+        }
+        
+        if (closeMessagesModal && messagesModal) {
+          closeMessagesModal.addEventListener('click', () => closeModal(messagesModal));
+        }
+        
+        // Устанавливаем обработчики для кнопок количества победителей
+        setupWinnersCountHandlers();
+        
+        // Загружаем данные асинхронно
+        setTimeout(() => {
+          try {
+            console.log('📥 Начинаем загрузку данных...');
+            if (typeof loadContests === 'function') loadContests();
+            if (typeof loadAdmins === 'function') loadAdmins();
+            if (typeof loadProfile === 'function') loadProfile();
+          } catch (error) {
+            console.error('❌ Ошибка при загрузке данных:', error);
+          }
+        }, 200);
+        
+        // Автоматическое обновление убрано - обновление происходит только при конкретных действиях
       }
+      
+      // Запускаем инициализацию
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        // DOM уже загружен, запускаем сразу
+        init();
+      }
+      
+      // Дополнительный fallback - скрываем спиннер через 500ms в любом случае
+      setTimeout(() => {
+        if (spinner && spinner.style.display !== 'none') {
+          console.warn('⚠️ Fallback: принудительно скрываем спиннер');
+          hideSpinnerAndShowPanel();
+        }
+      }, 500);
 
-      // Contests - фильтрация по роли
-      const contestList = document.getElementById('contest-list');
-      const openContestBtn = document.getElementById('create-contest-btn');
-      const contestModal = document.getElementById('contest-modal');
-      const closeContestModal = document.getElementById('close-contest-modal');
-      const submitContest = document.getElementById('submit-contest');
-      const postLinkError = document.getElementById('post-link-error');
-
-      let adminChannelLink = null; // Сохраняем ссылку на канал админа
-      let adminChatLink = null; // Ссылка на чат админа
-      let currentContestType = "Рандомный комментарий"; // Тип текущего конкурса
-      let currentDrawingWinnersCount = 1; // Количество победителей для конкурса рисунков
-      let currentCollectionWinnersCount = 1; // Количество победителей для конкурса коллекций
+      // Contests - переменные будут инициализированы в init()
+      let contestList, openContestBtn, contestModal, closeContestModal, submitContest;
+      
+      // Глобальные переменные для защиты базовых условий конкурса рисунков
       let originalBaseValue = ''; // Защищенное значение базовых условий
-      let currentEditContestId = null; // ID редактируемого конкурса
-      const telethonInProgress = new Set(); // Конкурсы, для которых уже запущен сбор комментариев
+      let protectionHandlers = {}; // Обработчики защиты
+      let adminsList; // Объявляем adminsList на верхнем уровне для использования в loadAdmins
+      let editContestModal, editAdminModal; // Модалки редактирования должны быть доступны глобально
 
-      function openModal(el) { el.classList.remove('hidden'); }
-      function closeModal(el) { el.classList.add('hidden'); }
+      function openModal(el) { 
+        if (!el) return;
+        el.classList.remove('hidden');
+        // Убеждаемся, что модалка кликабельна
+        el.style.pointerEvents = 'auto';
+        el.style.zIndex = '30';
+        // Убеждаемся, что все элементы внутри модалки кликабельны
+        const clickableElements = el.querySelectorAll('button, input, textarea, a, select');
+        clickableElements.forEach(elem => {
+          elem.style.pointerEvents = 'auto';
+          elem.style.zIndex = '1';
+        });
+        // Блокируем скролл body
+        document.body.classList.add('modal-open');
+      }
+      function closeModal(el) { 
+        if (!el) return;
+        el.classList.add('hidden');
+        // Разблокируем скролл body
+        document.body.classList.remove('modal-open');
+      }
+      // Делаем функцию глобальной для использования в onclick
+      window.closeModal = closeModal;
       
       // Объявляем функцию openPrizesModal заранее, чтобы она была доступна
       let openPrizesModal = null; // Будет определена позже
 
-      if (openContestBtn) {
-        openContestBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          // Показываем модалку выбора типа конкурса
-          const contestTypeSelectionModal = document.getElementById('contest-type-selection-modal');
-          if (contestTypeSelectionModal) {
-            openModal(contestTypeSelectionModal);
-          } else {
-            console.error('❌ Модальное окно выбора типа конкурса не найдено!');
-          }
-        });
-      }
-      if (closeContestModal) {
-        closeContestModal.addEventListener('click', () => {
-          closeModal(contestModal);
-        });
-      }
-
-      // Крутилка количества победителей (admin)
+      // Крутилка количества победителей
       const winnersCountValue = document.getElementById('winners-count-value');
       const winnersCountInput = document.getElementById('contest-winners-count');
       const winnersCountDecrease = document.getElementById('winners-count-decrease');
@@ -1718,9 +2679,14 @@
       const maxCount = 50;
       
       function updateWinnersCount(newValue, direction) {
+        // Ограничиваем значение диапазоном от 1 до 50
         if (newValue < minCount) newValue = minCount;
         if (newValue > maxCount) newValue = maxCount;
         
+        // ВАЖНО: Разрешаем любые числа (и четные, и нечетные) от 1 до 50
+        // НЕТ ограничений на четные числа - можно выбирать 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 и т.д.
+        
+        // Обновляем значение только если оно изменилось
         if (newValue !== currentWinnersCount) {
           currentWinnersCount = newValue;
           
@@ -1730,7 +2696,7 @@
           
           if (winnersCountValueEl) {
             winnersCountValueEl.classList.remove('number-spin-up', 'number-spin-down');
-            void winnersCountValueEl.offsetWidth;
+            void winnersCountValueEl.offsetWidth; // Trigger reflow
             
             if (direction === 'up') {
               winnersCountValueEl.classList.add('number-spin-up');
@@ -1749,322 +2715,265 @@
       
       // Используем делегирование событий для кнопок изменения количества победителей
       // Это работает даже если элементы перемещены в DOM
-      // contestModal уже объявлен выше (строка 830)
-      if (contestModal) {
-        contestModal.addEventListener('click', (e) => {
-          // Проверяем, была ли нажата кнопка уменьшения
-          if (e.target && (e.target.id === 'winners-count-decrease' || e.target.closest('#winners-count-decrease'))) {
-            e.preventDefault();
-            e.stopPropagation();
-            updateWinnersCount(currentWinnersCount - 1, 'down');
-          }
-          // Проверяем, была ли нажата кнопка увеличения
-          if (e.target && (e.target.id === 'winners-count-increase' || e.target.closest('#winners-count-increase'))) {
-            e.preventDefault();
-            e.stopPropagation();
-            updateWinnersCount(currentWinnersCount + 1, 'up');
-          }
-        });
+      // contestModal уже объявлен в функции init() (строка 1045)
+      // Устанавливаем обработчик после инициализации contestModal
+      function setupWinnersCountHandlers() {
+        const modal = document.getElementById('contest-modal');
+        if (modal) {
+          // Удаляем старые обработчики, если они есть
+          modal.removeEventListener('click', handleWinnersCountClick);
+          // Добавляем новый обработчик
+          modal.addEventListener('click', handleWinnersCountClick);
+        }
       }
       
-      // Также оставляем прямые обработчики для обратной совместимости
-      if (winnersCountDecrease) {
-        winnersCountDecrease.addEventListener('click', () => {
+      // Обработчик клика для изменения количества победителей
+      function handleWinnersCountClick(e) {
+        // Проверяем, была ли нажата кнопка уменьшения
+        if (e.target && (e.target.id === 'winners-count-decrease' || e.target.closest('#winners-count-decrease'))) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Уменьшаем на 1 - разрешаем любые числа (четные и нечетные)
           updateWinnersCount(currentWinnersCount - 1, 'down');
-        });
-      }
-      
-      if (winnersCountIncrease) {
-        winnersCountIncrease.addEventListener('click', () => {
+        }
+        // Проверяем, была ли нажата кнопка увеличения
+        if (e.target && (e.target.id === 'winners-count-increase' || e.target.closest('#winners-count-increase'))) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Увеличиваем на 1 - разрешаем любые числа (четные и нечетные)
           updateWinnersCount(currentWinnersCount + 1, 'up');
-        });
-      }
-
-      const contestTitleInput = document.getElementById('contest-title');
-
-      // Обработчики для модалки выбора типа конкурса
-      const contestTypeSelectionModal = document.getElementById('contest-type-selection-modal');
-      const closeContestTypeSelectionModal = document.getElementById('close-contest-type-selection-modal');
-      const selectRandomCommentContest = document.getElementById('select-random-comment-contest');
-      const selectDrawingContest = document.getElementById('select-drawing-contest');
-      
-      if (closeContestTypeSelectionModal && contestTypeSelectionModal) {
-        closeContestTypeSelectionModal.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          closeModal(contestTypeSelectionModal);
-        });
+        }
       }
       
-      if (selectRandomCommentContest) {
-        selectRandomCommentContest.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          closeModal(contestTypeSelectionModal);
-          // Сбрасываем тип конкурса
-          currentContestType = "Рандомный комментарий";
-          if (contestTitleInput) {
-            contestTitleInput.value = "Рандомный комментарий";
-          }
-          // Сбрасываем значение по умолчанию
-          document.getElementById('contest-conditions').value = '';
+      // НЕ добавляем прямые обработчики, чтобы избежать двойного вызова
+      // Используем только делегирование событий через setupWinnersCountHandlers
+      
+      // Сброс значения при открытии модалки
+      if (openContestBtn) {
+        const originalHandler = openContestBtn.onclick;
+        openContestBtn.addEventListener('click', () => {
           updateWinnersCount(1, 'up');
-          if (contestModal) {
-            openModal(contestModal);
-          }
-        });
-      }
-      
-      if (selectDrawingContest) {
-        selectDrawingContest.addEventListener('click', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          closeModal(contestTypeSelectionModal);
-          const drawingContestModal = document.getElementById('drawing-contest-modal');
-          if (drawingContestModal) {
-            // Загружаем данные профиля для автоматического заполнения условий
-            try {
-              const profileResponse = await fetchJSON(`/api/profile?tg_id=${currentUserId}`);
-              const adminChannelLink = profileResponse.channel_link || '';
-              const adminChatLink = profileResponse.chat_link || '';
-              const creatorChannelLink = 't.me/monkeys_giveaways';
-              
-              // Проверяем, что у админа есть канал и чат
-              if (!adminChannelLink || !adminChatLink) {
-                alert('⚠️ У вас не назначены канал и/или чат! Обратитесь к создателю для назначения активов.');
-                return;
-              }
-              
-              // Формируем базовые условия участия
-              let baseConditionsText = 'Для участия в конкурсе необходимо:\n';
-              baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
-              baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
-              baseConditionsText += `- Подписаться на канал создателя: ${creatorChannelLink}\n`;
-              baseConditionsText += '- Отправить рисунок на заданную тему';
-              
-              // Сохраняем базовые условия в отдельное поле (readonly)
-              const baseConditionsTextarea = document.getElementById('drawing-contest-conditions-base');
-              if (baseConditionsTextarea) {
-                baseConditionsTextarea.value = baseConditionsText;
-                originalBaseValue = baseConditionsText;
-              }
-              
-              // Очищаем поле дополнительных условий
-              const additionalConditionsTextarea = document.getElementById('drawing-contest-conditions-additional');
-              if (additionalConditionsTextarea) {
-                additionalConditionsTextarea.value = '';
-              }
-            } catch (error) {
-              console.error('Ошибка загрузки данных профиля:', error);
-              alert('⚠️ Ошибка загрузки данных профиля. Убедитесь, что у вас назначены канал и чат.');
-              return;
-            }
-            
-            // Сбрасываем режим редактирования при создании нового конкурса
-            currentEditContestId = null;
-            const submitBtn = document.getElementById('submit-drawing-contest');
-            const updateBtn = document.getElementById('update-drawing-contest');
-            if (submitBtn) submitBtn.classList.remove('hidden');
-            if (updateBtn) updateBtn.classList.add('hidden');
-            const modalTitle = document.getElementById('drawing-contest-modal-title');
-            if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
-            
-            // Очищаем поля перед открытием модалки
-            document.getElementById('drawing-contest-theme').value = '';
-            document.getElementById('drawing-contest-submission-end').value = '';
-            document.getElementById('drawing-contest-voting-end').value = '';
-            document.getElementById('drawing-contest-conditions-additional').value = '';
-            currentDrawingWinnersCount = 1;
-            const drawingWinnersCountValueEl = document.getElementById('drawing-winners-count-value');
-            const drawingWinnersCountInputEl = document.getElementById('drawing-contest-winners-count');
-            if (drawingWinnersCountValueEl) drawingWinnersCountValueEl.textContent = '1';
-            if (drawingWinnersCountInputEl) drawingWinnersCountInputEl.value = '1';
-            
-            // Настраиваем защиту базовых условий
-            setTimeout(() => {
-              if (typeof window.setupBaseConditionsProtection === 'function') {
-                window.setupBaseConditionsProtection();
-              }
-            }, 150);
-            
-            openModal(drawingContestModal);
-          }
-        });
-      }
-      
-      const selectCollectionContest = document.getElementById('select-collection-contest');
-      if (selectCollectionContest) {
-        selectCollectionContest.addEventListener('click', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          closeModal(contestTypeSelectionModal);
-          const collectionContestModal = document.getElementById('collection-contest-modal');
-          if (collectionContestModal) {
-            // Загружаем данные профиля для автоматического заполнения условий
-            try {
-              const profileResponse = await fetchJSON(`/api/profile?tg_id=${currentUserId}`);
-              const adminChannelLink = profileResponse.channel_link || '';
-              const adminChatLink = profileResponse.chat_link || '';
-              const creatorChannelLink = 't.me/monkeys_giveaways';
-              
-              // Проверяем, что у админа есть канал и чат
-              if (!adminChannelLink || !adminChatLink) {
-                alert('⚠️ У вас не назначены канал и/или чат! Обратитесь к создателю для назначения активов.');
-                return;
-              }
-              
-              // Формируем базовые условия участия
-              let baseConditionsText = 'Для участия в конкурсе необходимо:\n';
-              baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
-              baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
-              baseConditionsText += `- Подписаться на канал создателя: ${creatorChannelLink}\n`;
-              baseConditionsText += '- Отправить коллекцию из 9 NFT';
-              
-              // Сохраняем базовые условия в отдельное поле (readonly)
-              const baseConditionsTextarea = document.getElementById('collection-contest-conditions-base');
-              if (baseConditionsTextarea) {
-                baseConditionsTextarea.value = baseConditionsText;
-                originalBaseValue = baseConditionsText;
-              }
-              
-              // Очищаем поле дополнительных условий
-              const additionalConditionsTextarea = document.getElementById('collection-contest-conditions-additional');
-              if (additionalConditionsTextarea) {
-                additionalConditionsTextarea.value = '';
-              }
-            } catch (error) {
-              console.error('Ошибка загрузки данных профиля:', error);
-              alert('⚠️ Ошибка загрузки данных профиля. Убедитесь, что у вас назначены канал и чат.');
-              return;
-            }
-            
-            // Сбрасываем режим редактирования
-            currentEditContestId = null;
-            const submitBtn = document.getElementById('submit-collection-contest');
-            const updateBtn = document.getElementById('update-collection-contest');
-            if (submitBtn) submitBtn.classList.remove('hidden');
-            if (updateBtn) updateBtn.classList.add('hidden');
-            const modalTitle = document.getElementById('collection-contest-modal-title');
-            if (modalTitle) modalTitle.textContent = 'Создать конкурс коллекций';
-            
-            // Очищаем поля перед открытием модалки
-            document.getElementById('collection-contest-theme').value = '';
-            document.getElementById('collection-contest-submission-end').value = '';
-            document.getElementById('collection-contest-voting-end').value = '';
-            document.getElementById('collection-contest-conditions-additional').value = '';
-            currentCollectionWinnersCount = 1;
-            const collectionWinnersCountValueEl = document.getElementById('collection-winners-count-value');
-            const collectionWinnersCountInputEl = document.getElementById('collection-contest-winners-count');
-            if (collectionWinnersCountValueEl) collectionWinnersCountValueEl.textContent = '1';
-            if (collectionWinnersCountInputEl) collectionWinnersCountInputEl.value = '1';
-            
-            openModal(collectionContestModal);
-          }
-        });
+        }, { once: false });
       }
 
-      // Кнопка добавления условия подписки (только для админов)
-      const addSubscriptionConditionBtn = document.getElementById('add-subscription-condition-btn');
-      const contestConditionsTextarea = document.getElementById('contest-conditions');
+      // Long press handlers
+      let longPressTimer = null;
+      let currentDeleteTarget = null;
+      let deleteType = null; // 'contest' or 'admin'
 
-      if (addSubscriptionConditionBtn) {
-        addSubscriptionConditionBtn.addEventListener('click', () => {
-          if (!contestConditionsTextarea) return;
+      function setupLongPress(element, itemId, type, itemName) {
+        let longPressTimer = null;
+
+        const startLongPress = (e) => {
+          // Запускаем таймер на долгое нажатие (1 секунда)
+          longPressTimer = setTimeout(() => {
+            // Показываем модальное окно подтверждения сразу
+            showDeleteConfirm(itemId, type, itemName);
+            longPressTimer = null;
+          }, 1000); // 1 секунда для long press
+        };
+
+        const cancelLongPress = () => {
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        };
+
+        const handleRelease = (e) => {
+          cancelLongPress();
+        };
+
+        // Двойной клик для редактирования - используем нативное событие
+        const handleDoubleClick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          cancelLongPress(); // Отменяем long press если он активен
+          console.log('🔘 Двойной клик по элементу, тип:', type, 'ID:', itemId);
+          if (type === 'contest') {
+            if (window.openEditContestModal) {
+              window.openEditContestModal(itemId);
+            } else {
+              console.error('❌ Функция openEditContestModal не найдена!');
+              alert('⚠️ Функция редактирования конкурса не инициализирована');
+            }
+          } else if (type === 'admin') {
+            if (window.openEditAdminModal) {
+              window.openEditAdminModal(itemId);
+            } else {
+              console.error('❌ Функция openEditAdminModal не найдена!');
+              alert('⚠️ Функция редактирования админа не инициализирована');
+            }
+          }
+        };
+
+        // Для touch устройств - обрабатываем двойное нажатие
+        let lastTapTime = 0;
+        const handleTouchEnd = (e) => {
+          const currentTime = Date.now();
+          const tapLength = currentTime - lastTapTime;
+          if (tapLength < 300 && tapLength > 0) {
+            // Это двойное нажатие
+            e.preventDefault();
+            cancelLongPress();
+            console.log('🔘 Двойное нажатие на touch устройстве, тип:', type, 'ID:', itemId);
+            if (type === 'contest') {
+              if (window.openEditContestModal) {
+                window.openEditContestModal(itemId);
+              } else {
+                console.error('❌ Функция openEditContestModal не найдена!');
+                alert('⚠️ Функция редактирования конкурса не инициализирована');
+              }
+            } else if (type === 'admin') {
+              if (window.openEditAdminModal) {
+                window.openEditAdminModal(itemId);
+              } else {
+                console.error('❌ Функция openEditAdminModal не найдена!');
+                alert('⚠️ Функция редактирования админа не инициализирована');
+              }
+            }
+          }
+          lastTapTime = currentTime;
+        };
+
+        // Touch events
+        element.addEventListener('touchstart', startLongPress, { passive: true });
+        element.addEventListener('touchend', (e) => {
+          handleRelease(e);
+          handleTouchEnd(e);
+        });
+        element.addEventListener('touchcancel', handleRelease);
+
+        // Mouse events
+        element.addEventListener('mousedown', startLongPress);
+        element.addEventListener('mouseup', handleRelease);
+        element.addEventListener('mouseleave', handleRelease);
+        // Нативный двойной клик - работает лучше чем кастомная логика
+        element.addEventListener('dblclick', handleDoubleClick);
+      }
+
+      function resetDeleteState(element) {
+        if (element) {
+          element.classList.remove('deleting-mode', 'show-delete');
+        }
+        main.classList.remove('backdrop-blur-active');
+        currentDeleteTarget = null;
+        deleteType = null;
+      }
+
+      function triggerEvaporation(element) {
+        if (!element) return;
+        
+        // Добавляем класс для испарения красным цветом
+        element.classList.add('evaporating-item', 'evaporating-now');
+      }
+
+      function showDeleteConfirm(itemId, type, itemName) {
+        const modal = document.getElementById('delete-confirm-modal');
+        const text = document.getElementById('delete-confirm-text');
+        const cancelBtn = document.getElementById('delete-confirm-cancel');
+        const okBtn = document.getElementById('delete-confirm-ok');
+
+        const itemType = type === 'contest' ? 'конкурс' : 'администратора';
+        text.textContent = `Вы уверены, что хотите удалить ${itemType} "${itemName}"?`;
+
+        const cleanup = () => {
+          modal.classList.add('hidden');
+          cancelBtn.onclick = null;
+          okBtn.onclick = null;
+        };
+
+        cancelBtn.onclick = cleanup; // При отмене просто закрываем окно
+        okBtn.onclick = async () => {
+          // Закрываем модальное окно сразу
+          cleanup();
           
-          let subscriptionText = '';
-          const conditions = [];
+          // Находим элемент для удаления
+          const targetElement = type === 'contest' 
+            ? document.querySelector(`[data-contest-id="${itemId}"]`)
+            : document.querySelector(`[data-admin-id="${itemId}"]`);
           
-          if (adminChannelLink) {
-            const channelUsername = extractChannelUsername(adminChannelLink);
-            if (channelUsername) {
-              conditions.push(`📢 Подписка на канал: @${channelUsername}`);
+          // Сначала проверяем права доступа - пытаемся удалить
+          try {
+            if (type === 'contest') {
+              // Пробуем удалить конкурс (проверка прав происходит на сервере)
+              await fetchJSON(`/api/contests/${itemId}?current_user_id=${currentUserId}`, { method: 'DELETE' });
+            } else {
+              // Удаляем администратора
+              await fetchJSON(`/api/admins/${itemId}`, { method: 'DELETE' });
+            }
+            
+            // Если удаление успешно - запускаем анимацию
+            if (targetElement) {
+              // Запускаем анимацию испарения красным цветом
+              triggerEvaporation(targetElement);
+              
+              // Обновляем список после анимации
+              setTimeout(async () => {
+                if (type === 'contest') {
+                  await loadContests();
+                } else {
+                  await loadAdmins();
+                }
+              }, 1500); // Время анимации испарения
+            } else {
+              // Если элемент не найден, просто обновляем список
+              if (type === 'contest') {
+                await loadContests();
+              } else {
+                await loadAdmins();
+              }
+            }
+          } catch (e) {
+            // Если ошибка - показываем сообщение без анимации
+            let errorMessage = 'Ошибка при удалении';
+            if (e.message) {
+              errorMessage = e.message;
+            } else if (e.response) {
+              try {
+                const errorData = await e.response.clone().json();
+                errorMessage = errorData.detail || errorData.message || errorMessage;
+              } catch {
+                errorMessage = e.message || errorMessage;
+              }
+            }
+            alert('❌ ' + errorMessage);
+          }
+        };
+
+        modal.classList.remove('hidden');
+      }
+
+      async function loadContests(showLoading = true) {
+        try {
+          // Показываем индикатор загрузки только если явно запрошено
+          if (contestList && showLoading) {
+            // Сохраняем текущее содержимое, чтобы не было мерцания
+            const currentContent = contestList.innerHTML;
+            // Показываем индикатор только если список пуст или это первая загрузка
+            if (!currentContent || currentContent.trim() === '') {
+              contestList.innerHTML = '<div class="text-gray-400 text-center py-4">⏳ Загрузка конкурсов...</div>';
             }
           }
           
-          if (adminChatLink) {
-            const chatUsername = extractChannelUsername(adminChatLink);
-            if (chatUsername) {
-              conditions.push(`💬 Подписка на чат: @${chatUsername}`);
-            }
-          }
+          const items = await fetchJSON('/api/contests');
           
-          if (conditions.length === 0) {
-            alert('⚠️ У вас не назначены активы (канал или чат)!');
+          if (!contestList) {
+            console.error('contestList не найден');
             return;
           }
           
-          subscriptionText = conditions.join('\n');
-          
-          // Добавляем к существующим условиям или заменяем
-          const currentConditions = contestConditionsTextarea.value.trim();
-          if (currentConditions) {
-            contestConditionsTextarea.value = currentConditions + '\n\n' + subscriptionText;
-          } else {
-            contestConditionsTextarea.value = subscriptionText;
-          }
-        });
-      }
-
-      // Функция для извлечения username канала из ссылки
-      function extractChannelUsername(link) {
-        if (!link) return null;
-        // Форматы: https://t.me/channel, t.me/channel, @channel, https://telegram.me/channel
-        const match = link.match(/(?:t\.me|telegram\.me)\/([a-zA-Z0-9_]+)|@([a-zA-Z0-9_]+)/);
-        return match ? (match[1] || match[2]) : null;
-      }
-
-      // Функция проверки, что пост принадлежит каналу админа
-      function validatePostLink(postLink, channelLink) {
-        if (!postLink || !channelLink) return false;
-        
-        // Извлекаем username канала
-        const channelUsername = extractChannelUsername(channelLink);
-        if (!channelUsername) return false;
-
-        // Проверяем формат ссылки на пост: https://t.me/channel_username/post_id
-        // Пример: https://t.me/monkeys_giveaways/19
-        const postPattern = new RegExp(`(?:t\\.me|telegram\\.me)/${channelUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(\\d+)`, 'i');
-        return postPattern.test(postLink);
-      }
-
-      // Проверка ссылки на пост при вводе
-      const postLinkInput = document.getElementById('contest-post-link');
-      if (postLinkInput) {
-        postLinkInput.addEventListener('blur', () => {
-          const postLink = postLinkInput.value.trim();
-          if (postLink && adminChannelLink) {
-            if (!validatePostLink(postLink, adminChannelLink)) {
-              postLinkError.classList.remove('hidden');
-            } else {
-              postLinkError.classList.add('hidden');
-            }
-          } else {
-            postLinkError.classList.add('hidden');
-          }
-        });
-      }
-
-      async function loadContests() {
-        try {
-          // Показываем индикатор загрузки
-          contestList.innerHTML = '<div class="text-gray-400 text-center py-4">⏳ Загрузка конкурсов...</div>';
-          
-          // Для админа добавляем параметр admin_id для фильтрации, для создателя - все конкурсы
-          const url = currentUserRole === 'admin' 
-            ? `/api/contests?admin_id=${currentUserId}`
-            : '/api/contests';
-          
-          const items = await fetchJSON(url);
+          // Очищаем список только если есть новые данные
           contestList.innerHTML = '';
+          
           if (items.length === 0) {
             contestList.innerHTML = '<div class="text-gray-500 text-center py-4">Нет активных конкурсов</div>';
             return;
           }
           
-          // Загружаем победителей для всех конкурсов параллельно.
-          // Для админа передаём current_user_id, чтобы он видел своих победителей до подтверждения.
+          // Загружаем победителей для всех конкурсов параллельно
           const winnersPromises = items.map(c => 
-            fetchJSON(`/api/contests/${c.id}/winners?current_user_id=${currentUserId}`).catch(e => {
+            fetchJSON(`/api/contests/${c.id}/winners`).catch(e => {
               console.error(`Ошибка загрузки победителей для конкурса ${c.id}:`, e);
               return { winners: [], is_confirmed: false };
             })
@@ -2072,6 +2981,11 @@
           const winnersResults = await Promise.all(winnersPromises);
           
           // Создаем карточки конкурсов
+          if (!contestList) {
+            console.error('contestList не найден');
+            return;
+          }
+          
           for (let i = 0; i < items.length; i++) {
             const c = items[i];
             const winnersData = winnersResults[i];
@@ -2080,8 +2994,10 @@
             card.className = 'deletable-item rounded-lg border border-violet-400/30 p-3 bg-black/30';
             card.dataset.contestId = c.id;
             
-            const period = (c.start_at || c.end_at)
-              ? `<div class="text-xs text-gray-400 mt-1">${c.start_at ? 'Старт: ' + toMoscowDateTime(c.start_at) : ''} ${c.end_at ? ' · Конец: ' + toMoscowDateTime(c.end_at) : ''}</div>`
+            const startSource = c.start_at_local || c.start_at;
+            const endSource = c.end_at_local || c.end_at;
+            const period = (startSource || endSource)
+              ? `<div class="text-xs text-gray-400 mt-1">${startSource ? 'Старт: ' + toMoscowDateTime(startSource) : ''} ${endSource ? ' · Конец: ' + toMoscowDateTime(endSource) : ''}</div>`
               : '';
             
             const postLink = c.post_link 
@@ -2167,6 +3083,7 @@
             }
             
             // Проверяем, завершен ли конкурс
+            // Правильно парсим дату окончания с учетом timezone
             let isEnded = false;
             if (c.end_at) {
               try {
@@ -2178,8 +3095,6 @@
                 console.error(`Ошибка парсинга даты окончания для конкурса ${c.id}:`, e);
               }
             } else {
-              // Если даты окончания нет (для рандом комментариев время не задаём),
-              // считаем, что конкурс можно завершать в любой момент
               isEnded = true;
             }
             
@@ -2199,26 +3114,30 @@
             let collectionResultsCalculated = false;
             let collectionIsCreator = false;
             
+            // Инициализируем переменные для всех конкурсов
             if (isDrawingContest) {
               try {
+                console.log(`🔍 Проверка статуса итогов для конкурса рисунков ${c.id}...`);
                 const resultsResponse = await fetchJSON(`/api/contests/${c.id}/results`).catch((err) => {
                   console.log(`⚠️ Ошибка при получении результатов для конкурса ${c.id}:`, err);
                   return { results_calculated: false };
                 });
                 drawingResultsCalculated = resultsResponse?.results_calculated || false;
+                const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+                // Приводим оба ID к числу для корректного сравнения
                 const currentUserIdNum = Number(currentUserId);
                 const createdByIdNum = c.created_by ? Number(c.created_by) : null;
                 drawingIsCreator = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
+                
+                console.log(`📊 Конкурс ${c.id}: isEnded=${isEnded}, resultsCalculated=${drawingResultsCalculated}, isCreator=${drawingIsCreator}, currentUserId=${currentUserIdNum}, created_by=${createdByIdNum} (raw: ${c.created_by}, type: ${typeof c.created_by})`);
+                console.log(`📋 Полные данные конкурса ${c.id}:`, JSON.stringify(c, null, 2));
                 
                 // Проверяем, идет ли время приема работ
                 const submissionEndDate = c.submission_end_date ? new Date(c.submission_end_date) : null;
                 const now = new Date();
                 const isSubmissionPeriodActive = submissionEndDate && now <= submissionEndDate;
                 
-                // Проверяем, является ли пользователь админом
-                const isAdmin = window.currentUserRole === 'admin' || window.currentUserRole === 'creator';
-                
-                if (isSubmissionPeriodActive && (drawingIsCreator || isAdmin)) {
+                if (isSubmissionPeriodActive && drawingIsCreator) {
                   // Показываем кнопку "Проверить работы" во время приема работ
                   drawingResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                     <button 
@@ -2230,8 +3149,9 @@
                     </button>
                   </div>`;
                 } else if (isEnded && !drawingResultsCalculated) {
-                  // Показываем кнопку "Подсчет итогов" только для создателя конкурса
+                  // Показываем кнопку "Подсчет итогов" только для создателя
                   if (drawingIsCreator) {
+                    console.log(`✅ Создаем кнопку "Подсчет итогов" для конкурса ${c.id} (isEnded=${isEnded}, isCreator=${drawingIsCreator})`);
                     drawingResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                       <button 
                         class="neon-button w-full py-2 rounded-lg text-sm"
@@ -2241,8 +3161,11 @@
                         📊 Подсчет итогов
                       </button>
                     </div>`;
+                  } else {
+                    console.log(`❌ Кнопка не показывается: пользователь не является создателем (currentUserId=${currentUserIdNum}, created_by=${createdByIdNum})`);
                   }
                 } else if (drawingResultsCalculated) {
+                  console.log(`✅ Итоги уже подсчитаны, показываем кнопку "Посмотреть итоги"`);
                   // Показываем кнопку "Посмотреть итоги" для всех после подсчета
                   drawingResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                     <button 
@@ -2253,6 +3176,17 @@
                       🏆 Посмотреть итоги
                     </button>
                   </div>`;
+                } else {
+                  console.log(`ℹ️ Конкурс ${c.id}: isEnded=${isEnded}, resultsCalculated=${drawingResultsCalculated}, isCreator=${drawingIsCreator}, кнопка не показывается`);
+                  if (!isEnded) {
+                    console.log(`   ⏰ Конкурс еще не завершен (end_at=${c.end_at})`);
+                  }
+                  if (drawingResultsCalculated) {
+                    console.log(`   ✅ Итоги уже подсчитаны`);
+                  }
+                  if (!drawingIsCreator) {
+                    console.log(`   👤 Пользователь не является создателем`);
+                  }
                 }
               } catch (e) {
                 console.error('❌ Ошибка проверки статуса итогов:', e);
@@ -2262,17 +3196,22 @@
             // Для конкурсов коллекций проверяем статус итогов
             if (isCollectionContest) {
               try {
+                console.log(`🔍 Проверка статуса итогов для конкурса коллекций ${c.id}...`);
                 const resultsResponse = await fetchJSON(`/api/contests/${c.id}/collection-results`).catch((err) => {
-                  console.log(`⚠️ Ошибка при получении результатов для конкурса коллекций ${c.id}:`, err);
+                  console.log(`⚠️ Ошибка при получении результатов для конкурса ${c.id}:`, err);
                   return { results_calculated: false };
                 });
                 collectionResultsCalculated = resultsResponse?.results_calculated || false;
+                const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
                 const currentUserIdNum = Number(currentUserId);
                 const createdByIdNum = c.created_by ? Number(c.created_by) : null;
                 collectionIsCreator = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
                 
+                console.log(`📊 Конкурс коллекций ${c.id}: isEnded=${isEnded}, resultsCalculated=${collectionResultsCalculated}, isCreator=${collectionIsCreator}`);
+                
                 if (isEnded && !collectionResultsCalculated) {
                   if (collectionIsCreator) {
+                    console.log(`✅ Создаем кнопку "Подсчет итогов" для конкурса коллекций ${c.id}`);
                     collectionResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                       <button 
                         class="neon-button w-full py-2 rounded-lg text-sm"
@@ -2284,6 +3223,7 @@
                     </div>`;
                   }
                 } else if (collectionResultsCalculated) {
+                  console.log(`✅ Итоги уже подсчитаны, показываем кнопку "Посмотреть итоги"`);
                   collectionResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                     <button 
                       onclick="showCollectionResults(${c.id})" 
@@ -2299,18 +3239,18 @@
               }
             }
             
-            // Получаем победителей из уже загруженных данных (как в creator.html)
+            // Получаем победителей из уже загруженных данных
             let winnersHtml = '';
             let isConfirmed = false;
             try {
               const winners = winnersData?.winners || winnersData || [];
               isConfirmed = winnersData?.is_confirmed || false;
               
-              // Только владелец конкурса может подводить итоги / рероллить / подтверждать
+              // Владелец конкурса (только он может рероллить и подтверждать)
               const currentUserIdNum = Number(currentUserId);
               const createdByIdNum = c.created_by ? Number(c.created_by) : null;
               const isOwner = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
-              
+
               if (winners && winners.length > 0) {
                 winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
                   <div class="text-xs text-gray-500 mb-2">🏆 Победители (${winners.length}):</div>
@@ -2325,7 +3265,7 @@
                       }
                       const prizeDisplay = prizeLink ? `<a href="${prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз ${place} места</a>` : '<span class="text-gray-500">Нет приза</span>';
                       const winnerLink = w.comment_link || w.photo_link;
-                      // Для админа реролл доступен только владельцу конкурса до подтверждения
+                      // Определяем тип конкурса - для конкурсов рисунков реролл не нужен
                       const contestType = c.contest_type || 'random_comment';
                       const showReroll = contestType !== 'drawing' && !isConfirmed && isOwner;
                       return `
@@ -2384,15 +3324,20 @@
             } catch (e) {
               console.error('Ошибка загрузки победителей:', e);
               if (isEnded && !isConfirmed && isRandomCommentContest) {
-                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                  <button 
-                    onclick="selectWinnersViaTelethon(${c.id})" 
-                    class="neon-button w-full py-2 rounded-lg text см"
-                    id="select-winners-btn-${c.id}"
-                  >
-                    🎲 Подвести итоги
-                  </button>
-                </div>`;
+                const currentUserIdNum = Number(currentUserId);
+                const createdByIdNum = c.created_by ? Number(c.created_by) : null;
+                const isOwner = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
+                if (isOwner) {
+                  winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="selectWinnersViaTelethon(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="select-winners-btn-${c.id}"
+                    >
+                      🎲 Подвести итоги
+                    </button>
+                  </div>`;
+                }
               }
             }
             
@@ -2416,34 +3361,51 @@
               ${winnersHtml}
             `;
             
-            // Добавляем обработчик для кнопки "Подсчет итогов" конкурса рисунков после добавления в DOM
+            // Добавляем обработчик для кнопки "Подсчет итогов" после добавления в DOM
             if (drawingResultsHtml && isDrawingContest) {
               setTimeout(() => {
                 const calculateBtn = document.getElementById(`calculate-results-btn-${c.id}`);
                 if (calculateBtn) {
+                  console.log(`✅ Найдена кнопка "Подсчет итогов" для конкурса ${c.id}, добавляем обработчик`);
+                  // Убираем disabled если он был установлен
+                  calculateBtn.disabled = false;
+                  calculateBtn.style.pointerEvents = 'auto';
+                  calculateBtn.style.cursor = 'pointer';
+                  // Удаляем старый обработчик если есть
                   const newBtn = calculateBtn.cloneNode(true);
                   calculateBtn.parentNode.replaceChild(newBtn, calculateBtn);
+                  // Добавляем обработчик через addEventListener для надежности
                   newBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    console.log('Кнопка "Подсчет итогов" нажата для конкурса', c.id);
                     await window.calculateDrawingResults(c.id);
                   });
+                } else {
+                  console.log(`❌ Кнопка "Подсчет итогов" не найдена в DOM для конкурса ${c.id}, drawingResultsHtml=${drawingResultsHtml ? 'есть' : 'пусто'}`);
                 }
               }, 100);
             }
             
-            // Добавляем обработчик для кнопки "Подсчет итогов" конкурса коллекций после добавления в DOM
+            // Добавляем обработчик для кнопки "Подсчет итогов" конкурса коллекций
             if (collectionResultsHtml && isCollectionContest) {
               setTimeout(() => {
                 const calculateBtn = document.getElementById(`calculate-collection-results-btn-${c.id}`);
                 if (calculateBtn) {
+                  console.log(`✅ Найдена кнопка "Подсчет итогов" для конкурса коллекций ${c.id}, добавляем обработчик`);
+                  calculateBtn.disabled = false;
+                  calculateBtn.style.pointerEvents = 'auto';
+                  calculateBtn.style.cursor = 'pointer';
                   const newBtn = calculateBtn.cloneNode(true);
                   calculateBtn.parentNode.replaceChild(newBtn, calculateBtn);
                   newBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    console.log('Кнопка "Подсчет итогов" нажата для конкурса коллекций', c.id);
                     await window.calculateCollectionResults(c.id);
                   });
+                } else {
+                  console.log(`❌ Кнопка "Подсчет итогов" не найдена в DOM для конкурса коллекций ${c.id}`);
                 }
               }, 100);
             }
@@ -2491,12 +3453,6 @@
         }
       }
       
-      // Функция для выбора победителей (legacy - теперь выбираются автоматически)
-      // Оставлена для обратной совместимости, но не используется в UI
-      window.selectWinners = async function(contestId, winnersCount) {
-        alert('Победители выбираются автоматически после окончания конкурса. Пожалуйста, подождите.');
-      };
-      
       // Функция для выбора победителей через Telethon
       window.selectWinnersViaTelethon = async function(contestId) {
         const btn = document.getElementById(`select-winners-btn-${contestId}`);
@@ -2509,74 +3465,126 @@
         
         try {
           // Вызываем API endpoint для выбора победителей через Telethon
-          const response = await fetchJSON(`/api/contests/${contestId}/select-winners?current_user_id=${currentUserId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          
-          // Если API вернул, что победители уже выбраны
-          if (response.success) {
-            btn.innerHTML = '✅ Победители выбраны!';
-            btn.classList.add('bg-green-600');
-            
-            setTimeout(async () => {
-              await loadContests();
-            }, 1000);
-            return;
+          // Не используем таймаут для этого запроса - Telethon может работать долго
+          let response;
+          try {
+            response = await fetchJSON(`/api/contests/${contestId}/select-winners`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 120000 // 2 минуты таймаут, но ошибку не показываем
+            });
+          } catch (fetchError) {
+            // ЛЮБАЯ ошибка fetch (таймаут, сеть, HTTP ошибка) - НЕ показываем alert
+            // Просто запускаем проверку в фоне
+            console.log('Запрос завершен (возможно таймаут или ошибка сети), проверяем статус в фоне:', fetchError.name, fetchError.message);
+            btn.innerHTML = '⏳ Обработка...';
+            btn.disabled = true;
+            startAutoRefresh(contestId, true);
+            return; // Выходим из функции, не показывая ошибку
           }
-
-          // Если API говорит, что сейчас идет сбор комментариев (Telethon работает в фоне)
-          if (response.collecting) {
-            btn.innerHTML = '⏳ Комментарии собираются...';
             
-            // Периодически опрашиваем сервер, появились ли победители
-            const waitForWinners = async (attempt = 0) => {
-              const maxAttempts = 150; // до ~5 минут (150 * 2с)
-              if (attempt >= maxAttempts) {
-                // Перестаём дергать сервер, но оставляем кнопку в состоянии ожидания,
-                // чтобы админ понял, что процесс ещё идёт
-                btn.disabled = true;
-                btn.innerHTML = '⏳ Комментарии продолжают собираться...';
-                return;
-              }
-              
-              try {
-                const winnersData = await fetchJSON(`/api/contests/${contestId}/winners?current_user_id=${currentUserId}`);
-                const winners = winnersData?.winners || winnersData || [];
-                if (Array.isArray(winners) && winners.length > 0) {
-                  btn.innerHTML = '✅ Победители выбраны!';
-                  btn.classList.add('bg-green-600');
-                  
-                  setTimeout(async () => {
-                    await loadContests();
-                  }, 1000);
-                  return;
-                }
-              } catch (pollError) {
-                console.error('Ошибка при опросе победителей:', pollError);
-              }
-              
-              // Ждём 2 секунды и пробуем снова
-              setTimeout(() => {
-                waitForWinners(attempt + 1);
-              }, 2000);
-            };
+          if (response && response.success) {
+            // Победители выбраны успешно - СРАЗУ обновляем UI
+            // Запускаем автоматическое обновление для немедленной проверки
+            startAutoRefresh(contestId);
             
-            await waitForWinners(0);
-            return;
+            // Также сразу обновляем список конкурсов
+            await loadContests(false);
+            
+            // Удаляем кнопку из DOM, если она еще есть
+            const checkBtn = document.getElementById(`select-winners-btn-${contestId}`);
+            if (checkBtn) {
+              checkBtn.remove();
+            }
+          } else if (response && response.collecting) {
+            // Комментарии еще собираются, запускаем автоматическое обновление
+            btn.innerHTML = '⏳ Сбор комментариев...';
+            btn.disabled = true;
+            startAutoRefresh(contestId, true);
+          } else {
+            // Другая ошибка - но не показываем alert, просто запускаем проверку
+            btn.innerHTML = '⏳ Обработка...';
+            btn.disabled = true;
+            startAutoRefresh(contestId, true);
           }
-
-          // Любая другая ошибка
-          btn.innerHTML = originalText;
-          btn.disabled = false;
-          alert('Ошибка при выборе победителей: ' + (response.message || 'Неизвестная ошибка'));
         } catch (e) {
-          btn.innerHTML = originalText;
-          btn.disabled = false;
-          console.error('Ошибка при выборе победителей:', e);
-          alert('Ошибка при выборе победителей: ' + e.message);
+          // ЛЮБАЯ ошибка (включая таймаут) - НЕ показываем alert, просто запускаем проверку в фоне
+          console.log('Запрос завершен (возможно таймаут), проверяем статус в фоне:', e.name, e.message);
+          btn.innerHTML = '⏳ Обработка...';
+          btn.disabled = true;
+          startAutoRefresh(contestId, true);
         }
       };
+      
+      // Функция для автоматического обновления данных конкурса
+      let autoRefreshIntervals = {}; // Храним интервалы для каждого конкурса
+      
+      function startAutoRefresh(contestId, isCollecting = false) {
+        // Останавливаем предыдущий интервал для этого конкурса, если он есть
+        if (autoRefreshIntervals[contestId]) {
+          clearInterval(autoRefreshIntervals[contestId]);
+        }
+        
+        let attempts = 0;
+        const maxAttempts = 300; // Максимум 300 попыток (5 минут при проверке каждую секунду)
+        
+        autoRefreshIntervals[contestId] = setInterval(async () => {
+          attempts++;
+          
+          try {
+            // Проверяем, выбраны ли победители - проверяем часто для быстрого обновления UI
+            const winnersResponse = await fetchJSON(`/api/contests/${contestId}/winners`).catch(() => null);
+            
+            if (winnersResponse && winnersResponse.winners && winnersResponse.winners.length > 0) {
+              // Победители выбраны, останавливаем обновление
+              clearInterval(autoRefreshIntervals[contestId]);
+              delete autoRefreshIntervals[contestId];
+              
+              // СРАЗУ обновляем список конкурсов - это покажет победителей и скроет кнопку
+              await loadContests(false);
+              
+              // Удаляем кнопку из DOM, если она еще есть
+              const btn = document.getElementById(`select-winners-btn-${contestId}`);
+              if (btn) {
+                btn.remove();
+              }
+            } else if (attempts >= maxAttempts) {
+              // Превышен лимит попыток - продолжаем проверку с увеличенным интервалом
+              clearInterval(autoRefreshIntervals[contestId]);
+              delete autoRefreshIntervals[contestId];
+              
+              const btn = document.getElementById(`select-winners-btn-${contestId}`);
+              if (btn) {
+                btn.innerHTML = '⏳ Ожидание завершения...';
+              }
+              
+              // Продолжаем проверку каждые 5 секунд в фоне
+              const checkInterval = setInterval(async () => {
+                const winnersCheck = await fetchJSON(`/api/contests/${contestId}/winners`).catch(() => null);
+                if (winnersCheck && winnersCheck.winners && winnersCheck.winners.length > 0) {
+                  clearInterval(checkInterval);
+                  await loadContests(false);
+                  const btn = document.getElementById(`select-winners-btn-${contestId}`);
+                  if (btn) {
+                    btn.remove();
+                  }
+                }
+              }, 5000);
+            }
+            // Если победители еще не выбраны, просто продолжаем проверку
+          } catch (error) {
+            console.error('Ошибка при автоматическом обновлении:', error);
+            // Продолжаем попытки
+          }
+        }, 1000); // Проверяем каждую секунду для быстрого обновления UI
+      }
+      
+      // Останавливаем все автоматические обновления при уходе со страницы
+      window.addEventListener('beforeunload', () => {
+        Object.values(autoRefreshIntervals).forEach(interval => clearInterval(interval));
+      });
+      
+      // Функция для выбора победителей (legacy - теперь выбираются автоматически)
       
       // Функция для реролла одного победителя
       window.rerollWinner = async function(contestId, oldWinnerLink) {
@@ -2594,10 +3602,7 @@
           const response = await fetchJSON(`/api/contests/${contestId}/reroll-winner`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              old_winner_link: oldWinnerLink,
-              current_user_id: currentUserId 
-            })
+            body: JSON.stringify({ old_winner_link: oldWinnerLink })
           });
           
           if (response.success) {
@@ -2605,18 +3610,19 @@
             icon.classList.remove('animate-spin');
             btn.disabled = false;
             
-            // Обновляем список конкурсов
-            await loadContests();
+            // СРАЗУ обновляем список конкурсов - это обновит комментарий победителя в реальном времени
+            await loadContests(false);
           } else {
             icon.classList.remove('animate-spin');
             btn.disabled = false;
-            alert('⚠️ Ошибка при рерандомизации победителя');
+            // Не показываем alert, просто логируем
+            console.error('Ошибка при рерандомизации победителя:', response);
           }
         } catch (e) {
           console.error('Ошибка рерандомизации победителя:', e);
           icon.classList.remove('animate-spin');
           btn.disabled = false;
-          alert('⚠️ Ошибка при рерандомизации победителя: ' + (e.message || 'Неизвестная ошибка'));
+          // Не показываем alert, просто логируем
         }
       };
       
@@ -2627,19 +3633,20 @@
         }
         
         try {
-          const response = await fetchJSON(`/api/contests/${contestId}/confirm-winners?current_user_id=${currentUserId}`, {
+          const response = await fetchJSON(`/api/contests/${contestId}/confirm-winners`, {
             method: 'POST'
           });
           
           if (response.success) {
-            alert(`✅ Победители подтверждены! Удалено комментариев: ${response.winners_count || 0}`);
-            await loadContests();
+            // СРАЗУ обновляем UI - это скроет кнопку подтверждения и обновит статус
+            await loadContests(false);
+            // Не показываем alert, просто обновляем UI
           } else {
-            alert('⚠️ Ошибка при подтверждении победителей');
+            console.error('Ошибка при подтверждении победителей:', response);
           }
         } catch (e) {
           console.error('Ошибка подтверждения победителей:', e);
-          alert('⚠️ Ошибка при подтверждении победителей: ' + (e.message || 'Неизвестная ошибка'));
+          // Не показываем alert, просто логируем
         }
       };
       
@@ -2652,13 +3659,14 @@
         }
         
         try {
+          const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
           const response = await fetchJSON(`/api/contests/${contestId}/calculate-results?current_user_id=${currentUserId}`, {
             method: 'POST'
           });
           
           if (response.success) {
             alert('✅ Итоги успешно подсчитаны!');
-            await loadContests();
+            await loadContests(false);
           } else {
             alert('❌ Ошибка при подсчете итогов: ' + (response.message || 'Неизвестная ошибка'));
             if (btn) {
@@ -2748,13 +3756,14 @@
         }
         
         try {
+          const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
           const response = await fetchJSON(`/api/contests/${contestId}/calculate-collection-results?current_user_id=${currentUserId}`, {
             method: 'POST'
           });
           
           if (response.success) {
             alert('✅ Итоги успешно подсчитаны!');
-            await loadContests();
+            await loadContests(false);
           } else {
             alert('❌ Ошибка при подсчете итогов: ' + (response.message || 'Неизвестная ошибка'));
             if (btn) {
@@ -2853,16 +3862,107 @@
           
           resultsHtml += '</div>';
           resultsContent.innerHTML = resultsHtml;
-          resultsModal.classList.remove('hidden');
-          document.body.classList.add('modal-open');
+          openModal(resultsModal);
         } catch (e) {
           console.error('Ошибка загрузки итогов конкурса коллекций:', e);
           alert('❌ Ошибка при загрузке итогов: ' + (e.message || 'Неизвестная ошибка'));
         }
       };
+
+      // Обработчики для submitContest, админов и других элементов теперь инициализируются в функции init()
+
+      // Редактирование конкурсов и админов
+      // Переменные editContestModal, editAdminModal, updateContest и updateAdmin объявлены на верхнем уровне
+      let updateContest, updateAdmin;
+
+      let currentEditContestId = null;
+      let currentEditAdminId = null;
+
+      // Делаем функции доступными глобально для обработчиков событий
+      window.openEditContestModal = async function(contestId) {
+        console.log('🔧 Открываем модалку редактирования конкурса, ID:', contestId);
+        currentEditContestId = contestId;
+        
+        try {
+          // Преобразуем ID в число, если это строка
+          const id = typeof contestId === 'string' ? parseInt(contestId) : contestId;
+          console.log('📥 Загружаем данные конкурса, ID:', id);
+          
+          const contests = await fetchJSON('/api/contests');
+          console.log('📋 Загружено конкурсов:', contests.length);
+          
+          const contest = contests.find(c => {
+            // Сравниваем как числа, так как ID могут быть разных типов
+            return parseInt(c.id) === parseInt(id) || c.id === id;
+          });
+          
+          if (!contest) {
+            console.error('❌ Конкурс не найден, ID:', id);
+            alert(`⚠️ Конкурс с ID ${id} не найден`);
+            return;
+          }
+          
+          console.log('✅ Найден конкурс:', contest);
+          console.log('📋 Все поля конкурса:', Object.keys(contest));
+          console.log('📌 contest_type из данных:', contest.contest_type);
+          console.log('📌 submission_end_date:', contest.submission_end_date);
+          console.log('📌 название конкурса:', contest.title || contest.name);
+          
+          // Определяем тип конкурса несколькими способами:
+          // 1. По полю contest_type
+          // 2. По наличию submission_end_date (для конкурсов рисунков)
+          // 3. По названию конкурса (если содержит "Конкурс рисунков")
+          let contestType = contest.contest_type || contest.contestType;
+          
+          // Если contest_type не определен, пытаемся определить по другим признакам
+          if (!contestType || contestType === 'random_comment') {
+            if (contest.title && contest.title.includes('Конкурс коллекций')) {
+              contestType = 'collection';
+              console.log('📌 Тип конкурса определен по названию: collection');
+            } else if (contest.name && contest.name.includes('Конкурс коллекций')) {
+              contestType = 'collection';
+              console.log('📌 Тип конкурса определен по названию (name): collection');
+            } else if (contest.submission_end_date) {
+              // Если есть submission_end_date, но название не содержит "коллекций", то это конкурс рисунков
+              if (contest.title && contest.title.includes('Конкурс рисунков')) {
+                contestType = 'drawing';
+                console.log('📌 Тип конкурса определен по наличию submission_end_date и названию: drawing');
+              } else {
+                contestType = 'drawing';
+                console.log('📌 Тип конкурса определен по наличию submission_end_date: drawing');
+              }
+            } else if (contest.title && contest.title.includes('Конкурс рисунков')) {
+              contestType = 'drawing';
+              console.log('📌 Тип конкурса определен по названию: drawing');
+            } else if (contest.name && contest.name.includes('Конкурс рисунков')) {
+              contestType = 'drawing';
+              console.log('📌 Тип конкурса определен по названию (name): drawing');
+            } else {
+              contestType = 'random_comment';
+              console.log('📌 Тип конкурса по умолчанию: random_comment');
+            }
+          }
+          
+          console.log('📌 Финальный тип конкурса:', contestType);
+          
+          if (contestType === 'drawing') {
+            console.log('✅ Открываем модалку редактирования конкурса рисунков');
+            await openEditDrawingContestModal(contest);
+          } else if (contestType === 'collection') {
+            console.log('✅ Открываем модалку редактирования конкурса коллекций');
+            await openEditCollectionContestModal(contest);
+          } else {
+            console.log('✅ Открываем модалку редактирования рандом комментариев');
+            await openEditRandomCommentContestModal(contest);
+          }
+        } catch (e) {
+          console.error('❌ Ошибка загрузки данных конкурса:', e);
+          alert('⚠️ Ошибка загрузки данных конкурса: ' + (e.message || 'Неизвестная ошибка'));
+        }
+      };
       
       // Функция для открытия модалки редактирования конкурса рисунков
-      window.openEditDrawingContestModal = async function(contest) {
+      async function openEditDrawingContestModal(contest) {
         const drawingContestModal = document.getElementById('drawing-contest-modal');
         if (!drawingContestModal) {
           console.error('❌ Модалка конкурса рисунков не найдена!');
@@ -2894,13 +3994,18 @@
         // Получаем текущие условия конкурса
         const conditions = contest.conditions || '';
         
-        // Пытаемся найти дополнительные условия
+        // Пытаемся найти дополнительные условия (всё, что идет после базовых условий)
+        // Базовые условия обычно заканчиваются на "Отправить рисунок на заданную тему"
+        // Дополнительные условия идут после этого, возможно с разделителями
         let additionalConditions = '';
         const baseConditionsEndPattern = /Отправить рисунок на заданную тему[\s\n]*/i;
         const match = conditions.search(baseConditionsEndPattern);
         if (match !== -1) {
+          // Находим конец базовых условий
           const baseEndPos = match + conditions.substring(match).match(baseConditionsEndPattern)[0].length;
+          // Всё после базовых условий - дополнительные условия
           additionalConditions = conditions.substring(baseEndPos).trim();
+          // Убираем возможные разделители (двойные переносы строк, точки и т.д.)
           additionalConditions = additionalConditions.replace(/^[\n\r\s\-\.]+/, '').trim();
         }
         
@@ -2910,14 +4015,23 @@
           // Загружаем данные профиля для получения актуальных условий подписки
           try {
             const profileResponse = await fetchJSON(`/api/profile?tg_id=${currentUserId}`);
+            const userRole = profileResponse.status || 'user';
             const adminChannelLink = profileResponse.channel_link || '';
             const adminChatLink = profileResponse.chat_link || '';
             const creatorChannelLink = 't.me/monkeys_giveaways';
             
             // Формируем базовые условия участия
             let baseConditionsText = 'Для участия в конкурсе необходимо:\n';
-            baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
-            baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
+            
+            if (userRole === 'admin') {
+              if (adminChannelLink) {
+                baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
+              }
+              if (adminChatLink) {
+                baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
+              }
+            }
+            
             baseConditionsText += `- Подписаться на канал создателя: ${creatorChannelLink}\n`;
             baseConditionsText += '- Отправить рисунок на заданную тему';
             
@@ -2930,10 +4044,12 @@
             }
           } catch (error) {
             console.error('Ошибка загрузки данных профиля:', error);
+            // Используем базовые условия по умолчанию
             const fallbackConditions = 'Для участия в конкурсе необходимо:\n- Подписаться на канал создателя: t.me/monkeys_giveaways\n- Отправить рисунок на заданную тему';
             baseConditionsInput.value = fallbackConditions;
             originalBaseValue = fallbackConditions;
             
+            // Настраиваем защиту базовых условий
             if (typeof window.setupBaseConditionsProtection === 'function') {
               window.setupBaseConditionsProtection();
             }
@@ -2955,139 +4071,415 @@
         currentDrawingWinnersCount = winnersCount;
         
         // Заполняем даты
-        if (contest.submission_end_date) {
+        if (contest.submission_end_date || contest.submission_end_date_local) {
           const submissionEndInput = document.getElementById('drawing-contest-submission-end');
           if (submissionEndInput) {
-            try {
-              const submissionEndDate = new Date(contest.submission_end_date);
-              if (!isNaN(submissionEndDate.getTime())) {
-                const submissionEndLocal = new Date(submissionEndDate.getTime() - submissionEndDate.getTimezoneOffset() * 60000);
-                submissionEndInput.value = submissionEndLocal.toISOString().slice(0, 16);
-              }
-            } catch (e) {
-              console.error('Ошибка форматирования даты окончания приема работ:', e);
-            }
+            const submissionRaw = contest.submission_end_date_local || contest.submission_end_date;
+            submissionEndInput.value = toDatetimeLocalValue(submissionRaw);
           }
         }
         
-        if (contest.end_date || contest.end_at) {
+        if (contest.end_date || contest.end_at || contest.end_at_local) {
           const votingEndInput = document.getElementById('drawing-contest-voting-end');
           if (votingEndInput) {
-            try {
-              const votingEndDate = new Date(contest.end_date || contest.end_at);
-              if (!isNaN(votingEndDate.getTime())) {
-                const votingEndLocal = new Date(votingEndDate.getTime() - votingEndDate.getTimezoneOffset() * 60000);
-                votingEndInput.value = votingEndLocal.toISOString().slice(0, 16);
-              }
-            } catch (e) {
-              console.error('Ошибка форматирования даты окончания голосования:', e);
-            }
+            const votingRaw = contest.end_at_local || contest.end_date || contest.end_at;
+            votingEndInput.value = toDatetimeLocalValue(votingRaw);
           }
         }
         
         // Открываем модалку
         openModal(drawingContestModal);
-      };
+      }
       
-      // Функция для открытия модалки редактирования конкурса (определяет тип и вызывает соответствующую функцию)
-      window.openEditContestModal = async function(contestId) {
-        console.log('🔧 Открываем модалку редактирования конкурса, ID:', contestId);
-        currentEditContestId = contestId;
+      // Функция для открытия модалки редактирования конкурса коллекций
+      async function openEditCollectionContestModal(contest) {
+        const collectionContestModal = document.getElementById('collection-contest-modal');
+        if (!collectionContestModal) {
+          console.error('❌ Модалка конкурса коллекций не найдена!');
+          alert('⚠️ Ошибка: модалка конкурса коллекций не найдена');
+          return;
+        }
         
-        try {
-          const id = typeof contestId === 'string' ? parseInt(contestId) : contestId;
-          const contests = await fetchJSON('/api/contests');
-          const contest = contests.find(c => parseInt(c.id) === parseInt(id) || c.id === id);
-          
-          if (!contest) {
-            alert(`⚠️ Конкурс с ID ${id} не найден`);
+        // Изменяем заголовок модалки
+        const modalTitle = document.getElementById('collection-contest-modal-title');
+        if (modalTitle) {
+          modalTitle.textContent = 'Редактировать конкурс коллекций';
+        }
+        
+        // Скрываем кнопку создания, показываем кнопку обновления
+        const submitBtn = document.getElementById('submit-collection-contest');
+        const updateBtn = document.getElementById('update-collection-contest');
+        if (submitBtn) submitBtn.classList.add('hidden');
+        if (updateBtn) updateBtn.classList.remove('hidden');
+        
+        // Извлекаем тему из названия конкурса (формат: "Конкурс коллекций: Тема")
+        const contestName = contest.title || contest.name || '';
+        const themeMatch = contestName.match(/Конкурс коллекций:\s*(.+)/i);
+        const theme = themeMatch ? themeMatch[1].trim() : contestName.replace(/Конкурс коллекций:\s*/i, '').trim();
+        
+        // Заполняем поля формы
+        const themeInput = document.getElementById('collection-contest-theme');
+        if (themeInput) themeInput.value = theme;
+        
+        // Получаем текущие условия конкурса
+        const conditions = contest.conditions || '';
+        
+        // Пытаемся найти дополнительные условия
+        let additionalConditions = '';
+        const baseConditionsEndPattern = /Отправить коллекцию из 9 NFT[\s\n]*/i;
+        const match = conditions.search(baseConditionsEndPattern);
+        if (match !== -1) {
+          const baseEndPos = match + conditions.substring(match).match(baseConditionsEndPattern)[0].length;
+          additionalConditions = conditions.substring(baseEndPos).trim();
+          additionalConditions = additionalConditions.replace(/^[\n\r\s\-\.]+/, '').trim();
+        }
+        
+        // Заполняем базовые условия (readonly)
+        const baseConditionsInput = document.getElementById('collection-contest-conditions-base');
+        if (baseConditionsInput) {
+          // Загружаем данные профиля для получения актуальных условий подписки
+          try {
+            const profileResponse = await fetchJSON(`/api/profile?tg_id=${currentUserId}`);
+            const userRole = profileResponse.status || 'user';
+            const adminChannelLink = profileResponse.channel_link || '';
+            const adminChatLink = profileResponse.chat_link || '';
+            const creatorChannelLink = 't.me/monkeys_giveaways';
+            
+            // Формируем базовые условия участия
+            let baseConditionsText = 'Для участия в конкурсе необходимо:\n';
+            
+            if (userRole === 'admin') {
+              if (adminChannelLink) {
+                baseConditionsText += `- Подписаться на канал админа: ${adminChannelLink}\n`;
+              }
+              if (adminChatLink) {
+                baseConditionsText += `- Подписаться на чат админа: ${adminChatLink}\n`;
+              }
+            }
+            
+            baseConditionsText += `- Подписаться на канал создателя: ${creatorChannelLink}\n`;
+            baseConditionsText += '- Отправить коллекцию из 9 NFT';
+            
+            baseConditionsInput.value = baseConditionsText;
+            originalBaseValue = baseConditionsText;
+          } catch (error) {
+            console.error('Ошибка загрузки данных профиля:', error);
+            // Используем условия из конкурса, если не удалось загрузить профиль
+            baseConditionsInput.value = conditions;
+          }
+        }
+        
+        // Заполняем дополнительные условия
+        const additionalConditionsInput = document.getElementById('collection-contest-conditions-additional');
+        if (additionalConditionsInput) {
+          additionalConditionsInput.value = additionalConditions;
+        }
+        
+        // Заполняем количество победителей
+        const winnersCount = contest.winners_count || 1;
+        currentCollectionWinnersCount = winnersCount;
+        const winnersCountValueEl = document.getElementById('collection-winners-count-value');
+        const winnersCountInputEl = document.getElementById('collection-contest-winners-count');
+        if (winnersCountValueEl) winnersCountValueEl.textContent = winnersCount;
+        if (winnersCountInputEl) winnersCountInputEl.value = winnersCount;
+        
+        // Заполняем дату окончания приема работ
+        if (contest.submission_end_date || contest.submission_end_date_local) {
+          const submissionEndInput = document.getElementById('collection-contest-submission-end');
+          if (submissionEndInput) {
+            const submissionRaw = contest.submission_end_date_local || contest.submission_end_date;
+            submissionEndInput.value = toDatetimeLocalValue(submissionRaw);
+          }
+        }
+        
+        // Заполняем дату окончания голосования
+        if (contest.end_date || contest.end_at || contest.end_at_local) {
+          const votingEndInput = document.getElementById('collection-contest-voting-end');
+          if (votingEndInput) {
+            const votingRaw = contest.end_at_local || contest.end_date || contest.end_at;
+            votingEndInput.value = toDatetimeLocalValue(votingRaw);
+          }
+        }
+        
+        // Открываем модалку
+        openModal(collectionContestModal);
+      }
+      
+      // Функция для открытия модалки редактирования рандом комментариев
+      async function openEditRandomCommentContestModal(contest) {
+        // Проверяем, что модалка инициализирована
+        if (!editContestModal) {
+          editContestModal = document.getElementById('edit-contest-modal');
+          if (!editContestModal) {
+            console.error('❌ Модалка редактирования конкурса не найдена!');
+            alert('⚠️ Ошибка: модалка редактирования не найдена');
             return;
           }
-          
-          // Определяем тип конкурса
-          let contestType = contest.contest_type || 'random_comment';
-          if (!contestType || contestType === 'random_comment') {
-            if (contest.submission_end_date) {
-              contestType = 'drawing';
-            } else if (contest.title && contest.title.includes('Конкурс рисунков')) {
-              contestType = 'drawing';
-            }
+        }
+        
+        // Скрываем поле приза для рандом комментариев
+        const prizeContainer = document.getElementById('edit-contest-prize-container');
+        if (prizeContainer) {
+          prizeContainer.style.display = 'none';
+        }
+        
+        // Заполняем поля формы
+        const titleInput = document.getElementById('edit-contest-title');
+        const postLinkInput = document.getElementById('edit-contest-post-link');
+        const conditionsInput = document.getElementById('edit-contest-conditions');
+        const startInput = document.getElementById('edit-contest-start');
+        const endInput = document.getElementById('edit-contest-end');
+        
+        // Заполняем поля - название конкурса не редактируется для рандом комментариев
+        if (titleInput) {
+          titleInput.value = contest.title || contest.name || 'Рандомный комментарий';
+          titleInput.readOnly = true;
+          titleInput.disabled = true;
+          titleInput.style.cursor = 'not-allowed';
+          titleInput.style.backgroundColor = '#1a1a2e';
+        }
+        if (postLinkInput) {
+          postLinkInput.value = contest.post_link || '';
+          postLinkInput.readOnly = false;
+          postLinkInput.disabled = false;
+        }
+        if (conditionsInput) {
+          conditionsInput.value = contest.conditions || '';
+          conditionsInput.readOnly = false;
+          conditionsInput.disabled = false;
+        }
+        if (startInput) {
+          startInput.readOnly = false;
+          startInput.disabled = false;
+        }
+        if (endInput) {
+          endInput.readOnly = false;
+          endInput.disabled = false;
+        }
+        
+        // Форматируем даты для datetime-local
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
+        
+        console.log('✅ Открываем модалку редактирования рандом комментариев');
+        openModal(editContestModal);
+      }
+
+      window.openEditAdminModal = async function(adminId) {
+        console.log('🔧 Открываем модалку редактирования админа, ID:', adminId);
+        currentEditAdminId = adminId;
+        
+        // Проверяем, что модалка инициализирована
+        if (!editAdminModal) {
+          editAdminModal = document.getElementById('edit-admin-modal');
+          if (!editAdminModal) {
+            console.error('❌ Модалка редактирования админа не найдена!');
+            alert('⚠️ Ошибка: модалка редактирования не найдена');
+            return;
           }
+        }
+        
+        try {
+          // Преобразуем ID в число, если это строка
+          const id = typeof adminId === 'string' ? parseInt(adminId) : adminId;
+          console.log('📥 Загружаем данные админа, ID:', id);
           
-          if (contestType === 'drawing') {
-            await window.openEditDrawingContestModal(contest);
-          } else {
-            alert('⚠️ Редактирование этого типа конкурса пока не поддерживается');
-          }
+          // Получаем данные админа из профиля
+          const profile = await fetchJSON(`/api/profile?tg_id=${id}`);
+          console.log('✅ Получен профиль админа:', profile);
+          
+          const idInput = document.getElementById('edit-modal-admin-id');
+          const usernameInput = document.getElementById('edit-modal-admin-username');
+          const channelInput = document.getElementById('edit-modal-admin-channel');
+          const chatInput = document.getElementById('edit-modal-admin-chat');
+          
+          if (idInput) idInput.value = id;
+          if (usernameInput) usernameInput.value = profile.username || '';
+          if (channelInput) channelInput.value = profile.channel_link || '';
+          if (chatInput) chatInput.value = profile.chat_link || '';
+          
+          console.log('✅ Открываем модалку редактирования админа');
+          openModal(editAdminModal);
         } catch (e) {
-          console.error('❌ Ошибка загрузки данных конкурса:', e);
-          alert('⚠️ Ошибка загрузки данных конкурса: ' + (e.message || 'Неизвестная ошибка'));
+          console.error('❌ Ошибка загрузки данных администратора:', e);
+          alert('⚠️ Ошибка загрузки данных администратора: ' + (e.message || 'Неизвестная ошибка'));
         }
       };
 
-      // Profile and Assets
+      // Обработчики для updateContest и updateAdmin уже установлены в функции init()
+
+      async function loadAdmins() {
+        try {
+          if (!adminsList) {
+            console.error('adminsList не инициализирован');
+            return;
+          }
+          const admins = await fetchJSON('/api/admins');
+          adminsList.innerHTML = '';
+          admins.forEach(a => {
+            const item = document.createElement('div');
+            item.className = 'deletable-item rounded-lg border border-violet-400/30 p-3 bg-black/30 flex items-center justify-between';
+            item.dataset.adminId = a.id;
+            const adminName = a.username || ('ID ' + a.id);
+            item.innerHTML = `<div>
+                                <div class="font-medium">${adminName}</div>
+                                <div class="text-xs text-gray-400">ID: ${a.id}</div>
+                              </div>`;
+            adminsList.appendChild(item);
+            // Настраиваем long press после добавления в DOM
+            setupLongPress(item, a.id, 'admin', adminName);
+          });
+        } catch (e) {
+          console.error('Ошибка загрузки админов:', e);
+        }
+      }
+
+      // Обработчик для submitAdmin уже установлен в функции init()
+
+      // First-login marker: record on first open (client hint + let backend persist)
+      try {
+        if (!localStorage.getItem('first_login_ts')) {
+          const ts = new Date().toISOString();
+          localStorage.setItem('first_login_ts', ts);
+          // optional notify backend
+          fetch('/api/profile/first_login', { method: 'POST' }).catch(() => {});
+        }
+        const stored = localStorage.getItem('first_login_ts');
+        if (stored) document.getElementById('profile-first-login').textContent = toMoscowDateTime(stored);
+      } catch (e) {}
+
+      // Messages functionality for creator
+      // Обработчики для messagesBtn и closeMessagesModal уже установлены в функции init()
+      const messagesList = document.getElementById('messages-list');
+      const messagesCount = document.getElementById('messages-count');
+      const messageDetailModal = document.getElementById('message-detail-modal');
+      const closeMessageDetailModal = document.getElementById('close-message-detail-modal');
+      const approveMessageBtn = document.getElementById('approve-message-btn');
+      const rejectMessageBtn = document.getElementById('reject-message-btn');
+      let currentMessageId = null;
+
+      if (closeMessageDetailModal && messageDetailModal) {
+        closeMessageDetailModal.addEventListener('click', () => closeModal(messageDetailModal));
+      }
+
+      async function loadMessages() {
+        try {
+          const messages = await fetchJSON('/api/messages?status=pending');
+          messagesList.innerHTML = '';
+          
+          if (messages.length === 0) {
+            messagesList.innerHTML = '<div class="text-gray-500 text-center py-8">Нет новых сообщений</div>';
+            return;
+          }
+
+          messages.forEach(msg => {
+            const messageItem = document.createElement('div');
+            messageItem.className = 'message-item rounded-lg border border-violet-400/30 p-4 bg-black/30 cursor-pointer hover:border-violet-400/50 transition-colors';
+            messageItem.style.minHeight = '100px';
+            messageItem.dataset.messageId = msg.id;
+            
+            // Предпросмотр текста (первые 100 символов)
+            const previewText = msg.message_text.length > 100 
+              ? msg.message_text.substring(0, 100) + '...' 
+              : msg.message_text;
+            
+            messageItem.innerHTML = `
+              <div class="flex justify-between items-start mb-2">
+                <div class="text-sm text-violet-400 font-semibold">ID: ${msg.from_user_id}</div>
+                <div class="text-xs text-gray-500">${toMoscowDateTime(msg.created_at)}</div>
+              </div>
+              <div class="text-sm text-gray-300 line-clamp-3">${previewText}</div>
+            `;
+            
+            messageItem.addEventListener('click', () => {
+              currentMessageId = msg.id;
+              document.getElementById('message-sender-id').textContent = msg.from_user_id;
+              document.getElementById('message-full-text').textContent = msg.message_text;
+              openModal(messageDetailModal);
+            });
+            
+            messagesList.appendChild(messageItem);
+          });
+        } catch (e) {
+          messagesList.innerHTML = '<div class="text-red-400 text-center py-8">Ошибка загрузки сообщений</div>';
+        }
+      }
+
+      async function updateMessagesCount() {
+        try {
+          const data = await fetchJSON('/api/messages/unread-count');
+          const count = data.count || 0;
+          if (count > 0) {
+            messagesCount.textContent = count;
+            messagesCount.classList.remove('hidden');
+          } else {
+            messagesCount.classList.add('hidden');
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (approveMessageBtn) {
+        approveMessageBtn.addEventListener('click', async () => {
+          if (!currentMessageId) return;
+          try {
+            await fetchJSON(`/api/messages/${currentMessageId}/respond`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'approve' })
+            });
+            closeModal(messageDetailModal);
+            await loadMessages();
+            await updateMessagesCount();
+          } catch (e) {
+            alert('Ошибка при одобрении сообщения');
+          }
+        });
+      }
+
+      if (rejectMessageBtn) {
+        rejectMessageBtn.addEventListener('click', async () => {
+          if (!currentMessageId) return;
+          try {
+            await fetchJSON(`/api/messages/${currentMessageId}/respond`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'reject' })
+            });
+            closeModal(messageDetailModal);
+            await loadMessages();
+            await updateMessagesCount();
+          } catch (e) {
+            alert('Ошибка при отклонении сообщения');
+          }
+        });
+      }
+
+      // Обновляем счетчик сообщений периодически и при загрузке профиля
+      setInterval(updateMessagesCount, 30000); // Каждые 30 секунд
+
+      // Profile
       async function loadProfile() {
         try {
           const params = new URLSearchParams(window.location.search);
           const tgId = params.get('tg_id');
           const p = await fetchJSON(`/api/profile?tg_id=${tgId || ''}`);
-          
           const usernameEl = document.getElementById('profile-username');
           if (usernameEl) {
-            // Показываем username если есть, иначе роль
+            // Показываем username если есть, иначе MONKEY BOSS
             if (p.username) {
               usernameEl.textContent = p.username;
             } else {
-              const role = p.status || p.role || 'admin';
-              usernameEl.textContent = role === 'admin' ? 'Администратор' : role;
+              usernameEl.textContent = 'MONKEY BOSS';
             }
           }
           const profileIdEl = document.getElementById('profile-id');
           if (profileIdEl && p.id) profileIdEl.textContent = p.id;
           if (p.first_login) document.getElementById('profile-first-login').textContent = toMoscowDateTime(p.first_login);
           if (p.status) document.getElementById('profile-status').textContent = p.status;
-
-          // Load assets (channel and chat links)
-          await loadAssets(p.channel_link, p.chat_link);
-          
-          // Сохраняем ссылки на канал и чат для проверки постов и условий
-          adminChannelLink = p.channel_link;
-          adminChatLink = p.chat_link;
-          
-          // Загружаем опыт и уровни для админа
-          await loadAdminExperience(currentUserId);
-          
-          // Загружаем и синхронизируем покупки из базы данных
-          if (p.purchased_items) {
-            try {
-              localStorage.setItem('purchasedItems', JSON.stringify(p.purchased_items));
-              console.log('✅ Покупки загружены из профиля:', p.purchased_items);
-            } catch (e) {
-              console.warn('Не удалось сохранить покупки в localStorage:', e);
-            }
-          }
         } catch (e) {
-          // Fallback: read params
-          const params = new URLSearchParams(window.location.search);
-          const pid = params.get('tg_id');
-          const puser = params.get('username');
-          const prole = params.get('role');
-          
-          if (pid && !document.getElementById('profile-id').textContent) {
-            document.getElementById('profile-id').textContent = pid;
-          }
-          const usernameEl = document.getElementById('profile-username');
-          if (usernameEl && !usernameEl.textContent) {
-            if (puser) {
-              usernameEl.textContent = puser;
-            } else {
-              const role = prole || 'admin';
-              usernameEl.textContent = role === 'admin' ? 'Администратор' : role;
-            }
-          }
-          if (prole) {
-            document.getElementById('profile-status').textContent = prole;
-          }
+          // ignore
         }
       }
 
@@ -3169,794 +4561,47 @@
         }
       }, 1000);
 
-      async function loadAssets(channelLink, chatLink) {
-        const channelAsset = document.getElementById('channel-asset');
-        const chatAsset = document.getElementById('chat-asset');
-        const channelLinkEl = document.getElementById('channel-link');
-        const chatLinkEl = document.getElementById('chat-link');
-        const noAssets = document.getElementById('no-assets');
-
-        let hasAssets = false;
-
-        if (channelLink) {
-          channelAsset.classList.remove('hidden');
-          channelLinkEl.href = channelLink;
-          // Получаем название канала вместо ссылки
-          const channelTitle = await getChatTitle(channelLink);
-          channelLinkEl.textContent = channelTitle;
-          hasAssets = true;
-        } else {
-          channelAsset.classList.add('hidden');
+      // Fallback: read params for id/username/role if provided by initial login redirect
+      (function readParamsFallback(){
+        const params = new URLSearchParams(window.location.search);
+        const pid = params.get('tg_id');
+        const puser = params.get('username');
+        const prole = params.get('role');
+        if (pid && !document.getElementById('profile-id').textContent) {
+          document.getElementById('profile-id').textContent = pid;
         }
-
-        if (chatLink) {
-          chatAsset.classList.remove('hidden');
-          chatLinkEl.href = chatLink;
-          // Получаем название чата вместо ссылки
-          const chatTitle = await getChatTitle(chatLink);
-          chatLinkEl.textContent = chatTitle;
-          hasAssets = true;
-        } else {
-          chatAsset.classList.add('hidden');
-        }
-
-        if (hasAssets) {
-          noAssets.classList.add('hidden');
-        } else {
-          noAssets.classList.remove('hidden');
-        }
-      }
-
-      // ⭐ Система опыта и уровней
-      // Уровни: 1 (0-100), 2 (100-300), 3 (300-600), 4 (600-1000), 5 (1000+)
-      function getLevelInfo(experience) {
-        const levels = [
-          { level: 1, minExp: 0, maxExp: 100 },
-          { level: 2, minExp: 100, maxExp: 300 },
-          { level: 3, minExp: 300, maxExp: 600 },
-          { level: 4, minExp: 600, maxExp: 1000 },
-          { level: 5, minExp: 1000, maxExp: Infinity }
-        ];
-        
-        for (const levelInfo of levels) {
-          if (experience >= levelInfo.minExp && experience < levelInfo.maxExp) {
-            return {
-              level: levelInfo.level,
-              currentExp: experience - levelInfo.minExp,
-              maxExp: levelInfo.maxExp === Infinity ? experience : levelInfo.maxExp - levelInfo.minExp,
-              nextLevelExp: levelInfo.maxExp
-            };
-          }
-        }
-        
-        // Если опыт больше максимального для уровня 5
-        return {
-          level: 5,
-          currentExp: experience - 1000,
-          maxExp: experience - 1000,
-          nextLevelExp: experience
-        };
-      }
-
-      function updateExperienceUI(experience, contestsCreated) {
-        const levelInfo = getLevelInfo(experience);
-        const progressPercent = levelInfo.maxExp > 0 
-          ? Math.min(100, (levelInfo.currentExp / levelInfo.maxExp) * 100)
-          : 0;
-        
-        // Обновляем бейдж уровня
-        const levelBadge = document.getElementById('level-badge');
-        if (levelBadge) {
-          levelBadge.textContent = `Уровень ${levelInfo.level}`;
-        }
-        
-        // Обновляем текущий опыт
-        const currentExpEl = document.getElementById('current-experience');
-        if (currentExpEl) {
-          currentExpEl.textContent = experience;
-        }
-        
-        // Обновляем полоску прогресса
-        const progressBar = document.getElementById('experience-progress-bar');
-        if (progressBar) {
-          progressBar.style.width = `${progressPercent}%`;
-        }
-        
-        // Обновляем границы уровня
-        const currentLevelExp = document.getElementById('current-level-exp');
-        const nextLevelExp = document.getElementById('next-level-exp');
-        if (currentLevelExp) {
-          currentLevelExp.textContent = levelInfo.currentExp;
-        }
-        if (nextLevelExp) {
-          nextLevelExp.textContent = levelInfo.nextLevelExp === Infinity ? '∞' : levelInfo.nextLevelExp;
-        }
-        
-        // Обновляем статистику
-        const contestsCreatedEl = document.getElementById('contests-created');
-        if (contestsCreatedEl) {
-          contestsCreatedEl.textContent = contestsCreated;
-        }
-      }
-
-      // Загрузка опыта для админа (за создание конкурсов)
-      async function loadAdminExperience(userId) {
-        try {
-          // Получаем все конкурсы, созданные этим админом
-          const url = userId 
-            ? `/api/contests?admin_id=${userId}`
-            : '/api/contests';
-          const contests = await fetchJSON(url);
-          
-          // Фильтруем только конкурсы, созданные этим админом
-          const userContests = contests.filter(c => {
-            const createdBy = c.created_by || c.createdBy;
-            return createdBy && parseInt(createdBy) === parseInt(userId);
-          });
-          
-          // Админы получают 30 опыта за каждый созданный конкурс
-          const experience = userContests.length * 30;
-          const contestsCreated = userContests.length;
-          
-          updateExperienceUI(experience, contestsCreated);
-        } catch (e) {
-          console.error('Ошибка загрузки опыта админа:', e);
-          updateExperienceUI(0, 0);
-        }
-      }
-
-      // First-login marker
-      try {
-        if (!localStorage.getItem('first_login_ts')) {
-          const ts = new Date().toISOString();
-          localStorage.setItem('first_login_ts', ts);
-          fetch('/api/profile/first_login', { method: 'POST' }).catch(() => {});
-        }
-        const stored = localStorage.getItem('first_login_ts');
-        if (stored) document.getElementById('profile-first-login').textContent = toMoscowDateTime(stored);
-      } catch (e) {}
-
-      // Long press handlers для удаления конкурсов
-      let longPressTimer = null;
-
-      function setupLongPress(element, itemId, type, itemName) {
-        let longPressTimer = null;
-
-        const startLongPress = (e) => {
-          // Запускаем таймер на долгое нажатие (1 секунда)
-          longPressTimer = setTimeout(() => {
-            // Показываем модальное окно подтверждения сразу
-            showDeleteConfirm(itemId, type, itemName);
-            longPressTimer = null;
-          }, 1000); // 1 секунда для long press
-        };
-
-        const cancelLongPress = () => {
-          if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-          }
-        };
-
-        const handleRelease = (e) => {
-          cancelLongPress();
-        };
-        
-        // Двойной клик для редактирования
-        const handleDoubleClick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          cancelLongPress();
-          if (type === 'contest') {
-            if (window.openEditContestModal) {
-              window.openEditContestModal(itemId);
-            } else {
-              alert('⚠️ Функция редактирования конкурса не инициализирована');
-            }
-          }
-        };
-        
-        // Для touch устройств - обрабатываем двойное нажатие
-        let lastTapTime = 0;
-        const handleTouchEnd = (e) => {
-          const currentTime = Date.now();
-          const tapLength = currentTime - lastTapTime;
-          if (tapLength < 300 && tapLength > 0) {
-            e.preventDefault();
-            cancelLongPress();
-            if (type === 'contest') {
-              if (window.openEditContestModal) {
-                window.openEditContestModal(itemId);
-              } else {
-                alert('⚠️ Функция редактирования конкурса не инициализирована');
-              }
-            }
-          }
-          lastTapTime = currentTime;
-        };
-
-        // Touch events
-        element.addEventListener('touchstart', startLongPress, { passive: true });
-        element.addEventListener('touchend', (e) => {
-          handleRelease(e);
-          handleTouchEnd(e);
-        });
-        element.addEventListener('touchcancel', handleRelease);
-
-        // Mouse events
-        element.addEventListener('mousedown', startLongPress);
-        element.addEventListener('mouseup', handleRelease);
-        element.addEventListener('mouseleave', handleRelease);
-        // Нативный двойной клик
-        element.addEventListener('dblclick', handleDoubleClick);
-      }
-
-      function triggerEvaporation(element) {
-        if (!element) return;
-        
-        // Добавляем класс для испарения красным цветом
-        element.classList.add('evaporating-item', 'evaporating-now');
-      }
-
-      function showDeleteConfirm(itemId, type, itemName) {
-        const modal = document.getElementById('delete-confirm-modal');
-        const text = document.getElementById('delete-confirm-text');
-        const cancelBtn = document.getElementById('delete-confirm-cancel');
-        const okBtn = document.getElementById('delete-confirm-ok');
-
-        const itemType = type === 'contest' ? 'конкурс' : 'администратора';
-        text.textContent = `Вы уверены, что хотите удалить ${itemType} "${itemName}"?`;
-
-        const cleanup = () => {
-          modal.classList.add('hidden');
-          cancelBtn.onclick = null;
-          okBtn.onclick = null;
-        };
-
-        cancelBtn.onclick = cleanup; // При отмене просто закрываем окно
-        okBtn.onclick = async () => {
-          // Закрываем модальное окно сразу
-          cleanup();
-          
-          // Находим элемент для удаления
-          const targetElement = document.querySelector(`[data-contest-id="${itemId}"]`);
-          
-          // Сначала проверяем права доступа - пытаемся удалить
-          try {
-            // Пробуем удалить (проверка прав происходит на сервере)
-            await fetchJSON(`/api/contests/${itemId}?current_user_id=${currentUserId}`, { method: 'DELETE' });
-            
-            // Если удаление успешно - запускаем анимацию
-            if (targetElement) {
-              // Запускаем анимацию испарения красным цветом
-              triggerEvaporation(targetElement);
-              
-              // Обновляем список после анимации
-              setTimeout(async () => {
-                await loadContests();
-              }, 1500); // Время анимации испарения
-            } else {
-              // Если элемент не найден, просто обновляем список
-              await loadContests();
-            }
-          } catch (e) {
-            // Если ошибка - показываем сообщение без анимации
-            let errorMessage = 'Ошибка при удалении';
-            if (e.message) {
-              errorMessage = e.message;
-            } else if (e.response) {
-              try {
-                const errorData = await e.response.clone().json();
-                errorMessage = errorData.detail || errorData.message || errorMessage;
-              } catch {
-                errorMessage = e.message || errorMessage;
-              }
-            }
-            alert('❌ ' + errorMessage);
-          }
-        };
-
-        modal.classList.remove('hidden');
-      }
-
-      // Создание конкурса
-      if (submitContest) {
-        submitContest.addEventListener('click', async () => {
-          const contestType = currentContestType || "Рандомный комментарий";
-          // Внутренний тип для API
-          const apiContestType = contestType === "Рандомный комментарий" ? "random_comment" : contestType;
-          
-          // Для обычных конкурсов
-          const postLink = document.getElementById('contest-post-link').value.trim();
-          
-          // Проверяем, что пост принадлежит каналу админа
-          if (!adminChannelLink) {
-            alert('⚠️ У вас не назначен канал! Обратитесь к создателю для назначения канала.');
-            return;
-          }
-          
-          if (postLink && !validatePostLink(postLink, adminChannelLink)) {
-            postLinkError.classList.remove('hidden');
-            alert('⚠️ Ссылка на пост должна быть из вашего канала!\nПример формата: https://t.me/ваш_канал/19');
-            return;
-          }
-          
-          const winnersCount = parseInt(document.getElementById('contest-winners-count').value) || 1;
-          const payload = {
-            title: document.getElementById('contest-title').value.trim(),
-            contest_type: apiContestType,
-            post_link: postLink,
-            conditions: document.getElementById('contest-conditions').value.trim(),
-            prize: '', // Пустое значение, так как призы будут добавлены отдельно
-            start_at: null,
-            end_at: null,
-            winners_count: winnersCount,
-            created_by: currentUserId  // ID админа, создавшего конкурс
-          };
-          
-          try {
-            const response = await fetchJSON('/api/contests', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-
-            if (!response || response.success === false || !response.id) {
-              const msg = (response && (response.message || response.detail)) || 'Не удалось создать конкурс';
-              alert('⚠️ ' + msg);
-              return;
-            }
-
-            closeModal(contestModal);
-            
-            // Сохраняем ID созданного конкурса для добавления призов
-            window.currentContestId = response.id;
-            window.currentWinnersCount = winnersCount;
-            // Показываем модалку для ввода призов
-            openPrizesModal();
-          } catch (e) {
-            console.error('Ошибка при создании конкурса:', e);
-            alert('Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
-          }
-        });
-      }
-
-      // Обработчики для модалки конкурса рисунков
-      const drawingContestModal = document.getElementById('drawing-contest-modal');
-      const closeDrawingContestModal = document.getElementById('close-drawing-contest-modal');
-      const submitDrawingContest = document.getElementById('submit-drawing-contest');
-      const updateDrawingContest = document.getElementById('update-drawing-contest');
-      const drawingWinnersCountDecrease = document.getElementById('drawing-winners-count-decrease');
-      const drawingWinnersCountIncrease = document.getElementById('drawing-winners-count-increase');
-      
-      // Функция для изменения количества победителей в конкурсе рисунков
-      function updateDrawingWinnersCount(newValue, direction) {
-        const minCount = 1;
-        const maxCount = 50;
-        if (newValue < minCount) newValue = minCount;
-        if (newValue > maxCount) newValue = maxCount;
-        
-        if (newValue !== currentDrawingWinnersCount) {
-          currentDrawingWinnersCount = newValue;
-          
-          const drawingWinnersCountValueEl = document.getElementById('drawing-winners-count-value');
-          const drawingWinnersCountInputEl = document.getElementById('drawing-contest-winners-count');
-          
-          if (drawingWinnersCountValueEl) {
-            drawingWinnersCountValueEl.classList.remove('number-spin-up', 'number-spin-down');
-            void drawingWinnersCountValueEl.offsetWidth;
-            
-            if (direction === 'up') {
-              drawingWinnersCountValueEl.classList.add('number-spin-up');
-            } else if (direction === 'down') {
-              drawingWinnersCountValueEl.classList.add('number-spin-down');
-            }
-            
-            drawingWinnersCountValueEl.textContent = currentDrawingWinnersCount;
-          }
-          
-          if (drawingWinnersCountInputEl) {
-            drawingWinnersCountInputEl.value = currentDrawingWinnersCount;
-          }
-        }
-      }
-      
-      if (drawingWinnersCountDecrease) {
-        drawingWinnersCountDecrease.addEventListener('click', () => {
-          updateDrawingWinnersCount(currentDrawingWinnersCount - 1, 'down');
-        });
-      }
-      
-      if (drawingWinnersCountIncrease) {
-        drawingWinnersCountIncrease.addEventListener('click', () => {
-          updateDrawingWinnersCount(currentDrawingWinnersCount + 1, 'up');
-        });
-      }
-      
-      // Обработчики для жюри
-      let currentJuryCount = 1;
-      const juryEnabledCheckbox = document.getElementById('drawing-contest-jury-enabled');
-      const jurySettingsDiv = document.getElementById('drawing-contest-jury-settings');
-      const juryCountDecrease = document.getElementById('drawing-jury-count-decrease');
-      const juryCountIncrease = document.getElementById('drawing-jury-count-increase');
-      
-      // Функция для обновления количества членов жюри (без полей ввода)
-      function updateJuryMembers(count) {
-        const minCount = 1;
-        const maxCount = 20;
-        if (count < minCount) count = minCount;
-        if (count > maxCount) count = maxCount;
-        
-        currentJuryCount = count;
-        const countInput = document.getElementById('drawing-contest-jury-count');
-        if (countInput) countInput.value = count;
-        
-        const countValueEl = document.getElementById('drawing-jury-count-value');
-        if (countValueEl) countValueEl.textContent = count;
-      }
-      
-      // Переключатель жюри
-      if (juryEnabledCheckbox && jurySettingsDiv) {
-        juryEnabledCheckbox.addEventListener('change', (e) => {
-          if (e.target.checked) {
-            jurySettingsDiv.classList.remove('hidden');
-            updateJuryMembers(currentJuryCount);
+        const usernameEl = document.getElementById('profile-username');
+        if (usernameEl && !usernameEl.textContent) {
+          if (puser) {
+            usernameEl.textContent = puser;
           } else {
-            jurySettingsDiv.classList.add('hidden');
+            usernameEl.textContent = 'MONKEY BOSS';
           }
-        });
-      }
-      
-      // Инициализируем количество жюри при загрузке
-      updateJuryMembers(currentJuryCount);
-      
-      // Кнопки изменения количества членов жюри
-      if (juryCountDecrease) {
-        juryCountDecrease.addEventListener('click', () => {
-          updateJuryMembers(currentJuryCount - 1);
-        });
-      }
-      
-      if (juryCountIncrease) {
-        juryCountIncrease.addEventListener('click', () => {
-          updateJuryMembers(currentJuryCount + 1);
-        });
-      }
-      
-      if (closeDrawingContestModal && drawingContestModal) {
-        closeDrawingContestModal.addEventListener('click', () => {
-          currentEditContestId = null;
-          const submitBtn = document.getElementById('submit-drawing-contest');
-          const updateBtn = document.getElementById('update-drawing-contest');
-          if (submitBtn) submitBtn.classList.remove('hidden');
-          if (updateBtn) updateBtn.classList.add('hidden');
-          const modalTitle = document.getElementById('drawing-contest-modal-title');
-          if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
-          // Сбрасываем состояние жюри
-          if (juryEnabledCheckbox) juryEnabledCheckbox.checked = false;
-          if (jurySettingsDiv) jurySettingsDiv.classList.add('hidden');
-          currentJuryCount = 1;
-          updateJuryMembers(1);
-          closeModal(drawingContestModal);
-        });
-      }
-      
-      // Обработчик создания конкурса рисунков
-      if (submitDrawingContest) {
-        submitDrawingContest.addEventListener('click', async () => {
-          const theme = document.getElementById('drawing-contest-theme')?.value.trim();
-          const baseConditions = document.getElementById('drawing-contest-conditions-base')?.value.trim() || '';
-          const additionalConditions = document.getElementById('drawing-contest-conditions-additional')?.value.trim() || '';
-          const winnersCount = parseInt(document.getElementById('drawing-contest-winners-count')?.value) || 1;
-          const submissionEndDate = document.getElementById('drawing-contest-submission-end')?.value;
-          const votingEndDate = document.getElementById('drawing-contest-voting-end')?.value;
-          
-          // Объединяем базовые и дополнительные условия
-          let conditions = baseConditions;
-          if (additionalConditions) {
-            conditions += (conditions ? '\n\n' : '') + additionalConditions;
-          }
-          
-          if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
-            alert('⚠️ Пожалуйста, заполните все обязательные поля');
-            return;
-          }
-          
-          // Проверяем, что у админа есть канал и чат
-          if (!adminChannelLink || !adminChatLink) {
-            alert('⚠️ У вас не назначены канал и/или чат! Обратитесь к создателю для назначения активов.');
-            return;
-          }
-          
-          // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
-          const submissionEnd = new Date(submissionEndDate);
-          const votingEnd = new Date(votingEndDate);
-          const timeDiff = (votingEnd - submissionEnd) / 1000 / 60; // разница в минутах
-          
-          if (timeDiff < 10) {
-            alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
-            return;
-          }
-          
-          if (submissionEnd >= votingEnd) {
-            alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
-            return;
-          }
-          
-          // Формируем название конкурса
-          const contestTitle = `Конкурс рисунков: ${theme}`;
-          
-          // Получаем текущее время в МСК для времени начала
-          const now = new Date();
-          const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
-          
-          // Собираем данные жюри (только включение/выключение и количество, данные введем позже)
-          let juryData = null;
-          const juryEnabled = juryEnabledCheckbox && juryEnabledCheckbox.checked;
-          const juryCount = parseInt(document.getElementById('drawing-contest-jury-count')?.value) || 1;
-          
-          if (juryEnabled) {
-            juryData = {
-              enabled: true,
-              members_count: juryCount,
-              members: [] // Данные будут введены в модалке призов
-            };
-          } else {
-            juryData = {
-              enabled: false,
-              members: []
-            };
-          }
-          
-          // Сохраняем информацию о жюри для модалки призов
-          window.currentJuryEnabled = juryEnabled;
-          window.currentJuryCount = juryCount;
-          
-          const payload = {
-            title: contestTitle,
-            name: contestTitle,
-            conditions: conditions,
-            prize: '',
-            start_at: mskTimeString,
-            end_at: votingEndDate,
-            submission_end_date: submissionEndDate,
-            winners_count: winnersCount,
-            created_by: currentUserId,
-            contest_type: 'drawing',
-            post_link: '',
-            channel_link: adminChannelLink,
-            discussion_group_link: adminChatLink,
-            jury: juryData
-          };
-          
-          try {
-            const response = await fetchJSON('/api/contests', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            
-            if (response.success && response.id) {
-              closeModal(drawingContestModal);
-              window.currentContestId = response.id;
-              window.currentWinnersCount = winnersCount;
-              
-              // Показываем модалку для ввода призов (через функцию openPrizesModal)
-              if (typeof openPrizesModal === 'function') {
-                openPrizesModal();
-              } else {
-                // Fallback: открываем модалку напрямую
-                const prizesModal = document.getElementById('prizes-modal');
-                if (prizesModal) {
-                  const prizesList = document.getElementById('prizes-list');
-                  if (prizesList) {
-                    prizesList.innerHTML = '';
-                    for (let i = 0; i < winnersCount; i++) {
-                      const prizeDiv = document.createElement('div');
-                      prizeDiv.className = 'flex gap-2 items-center';
-                      prizeDiv.style.pointerEvents = 'auto';
-                      prizeDiv.innerHTML = `
-                        <label class="text-sm text-gray-400 w-20">Приз ${i + 1}:</label>
-                        <input type="text" class="prize-input input-field flex-1 p-2 rounded" placeholder="t.me/nft/название-номер" data-index="${i + 1}" style="pointer-events: auto; position: relative; z-index: 1;" />
-                      `;
-                      prizesList.appendChild(prizeDiv);
-                    }
-                    openModal(prizesModal);
-                  }
-                }
-              }
-            } else {
-              alert('⚠️ Ошибка при создании конкурса: ' + (response.message || 'Неизвестная ошибка'));
-            }
-          } catch (e) {
-            console.error('Ошибка создания конкурса рисунков:', e);
-            alert('⚠️ Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
-          }
-        });
-      }
-      
-      // Обработчик обновления конкурса рисунков
-      if (updateDrawingContest) {
-        updateDrawingContest.addEventListener('click', async () => {
-          if (!currentEditContestId) {
-            alert('⚠️ Ошибка: не указан ID конкурса для обновления');
-            return;
-          }
-          
-          const theme = document.getElementById('drawing-contest-theme')?.value.trim();
-          const baseConditions = document.getElementById('drawing-contest-conditions-base')?.value.trim() || '';
-          const additionalConditions = document.getElementById('drawing-contest-conditions-additional')?.value.trim() || '';
-          const winnersCount = parseInt(document.getElementById('drawing-contest-winners-count')?.value) || 1;
-          const submissionEndDate = document.getElementById('drawing-contest-submission-end')?.value;
-          const votingEndDate = document.getElementById('drawing-contest-voting-end')?.value;
-          
-          // Объединяем базовые и дополнительные условия
-          let conditions = baseConditions;
-          if (additionalConditions) {
-            conditions += (conditions ? '\n\n' : '') + additionalConditions;
-          }
-          
-          if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
-            alert('⚠️ Пожалуйста, заполните все обязательные поля');
-            return;
-          }
-          
-          // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
-          const submissionEnd = new Date(submissionEndDate);
-          const votingEnd = new Date(votingEndDate);
-          const timeDiff = (votingEnd - submissionEnd) / 1000 / 60;
-          
-          if (timeDiff < 10) {
-            alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
-            return;
-          }
-          
-          if (submissionEnd >= votingEnd) {
-            alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
-            return;
-          }
-          
-          // Формируем название конкурса
-          const contestTitle = `Конкурс рисунков: ${theme}`;
-          
-          try {
-            const now = new Date();
-            const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
-            
-            const payload = {
-              title: contestTitle,
-              name: contestTitle,
-              conditions: conditions,
-              prize: '',
-              start_at: mskTimeString,
-              end_at: votingEndDate,
-              submission_end_date: submissionEndDate,
-              winners_count: winnersCount,
-              created_by: currentUserId,
-              contest_type: 'drawing',
-              current_user_id: currentUserId
-            };
-            
-            const response = await fetchJSON(`/api/contests/${currentEditContestId}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            
-            if (response.success) {
-              alert('✅ Конкурс успешно обновлен!');
-              closeModal(drawingContestModal);
-              
-              // Сбрасываем режим редактирования
-              currentEditContestId = null;
-              const submitBtn = document.getElementById('submit-drawing-contest');
-              const updateBtn = document.getElementById('update-drawing-contest');
-              if (submitBtn) submitBtn.classList.remove('hidden');
-              if (updateBtn) updateBtn.classList.add('hidden');
-              const modalTitle = document.getElementById('drawing-contest-modal-title');
-              if (modalTitle) modalTitle.textContent = 'Создать конкурс рисунков';
-              
-              await loadContests();
-            } else {
-              alert('⚠️ Ошибка при обновлении конкурса: ' + (response.message || 'Неизвестная ошибка'));
-            }
-          } catch (e) {
-            console.error('Ошибка обновления конкурса рисунков:', e);
-            alert('⚠️ Ошибка при обновлении конкурса: ' + (e.message || 'Неизвестная ошибка'));
-          }
-        });
-      }
-      
-      // Защита базового поля условий от изменения
-      window.setupBaseConditionsProtection = function() {
-        const baseConditionsField = document.getElementById('drawing-contest-conditions-base');
-        if (!baseConditionsField) return;
-        
-        originalBaseValue = baseConditionsField.value;
-        
-        const protectionHandlers = {
-          input: function(e) {
-            if (this.value !== originalBaseValue) {
-              this.value = originalBaseValue;
-            }
-          },
-          keydown: function(e) {
-            if (e.ctrlKey && (e.key === 'a' || e.key === 'c')) {
-              return;
-            }
-            if (!e.ctrlKey && !e.metaKey && e.key !== 'Tab' && e.key !== 'Escape' && e.key !== 'F5') {
-              e.preventDefault();
-            }
-          },
-          paste: function(e) {
-            e.preventDefault();
-          }
-        };
-        
-        baseConditionsField.addEventListener('input', protectionHandlers.input);
-        baseConditionsField.addEventListener('keydown', protectionHandlers.keydown);
-        baseConditionsField.addEventListener('paste', protectionHandlers.paste);
-      };
-      
-      // Contact owner functionality
-      const contactOwnerBtn = document.getElementById('contact-owner-btn');
-      const contactOwnerModal = document.getElementById('contact-owner-modal');
-      const closeContactModal = document.getElementById('close-contact-modal');
-      const sendContactMessage = document.getElementById('send-contact-message');
+        }
+        if (prole) {
+          document.getElementById('profile-status').textContent = prole;
+        }
+      })();
 
-      if (contactOwnerBtn) {
-        contactOwnerBtn.addEventListener('click', () => {
-          openModal(contactOwnerModal);
-        });
-      }
-
-      if (closeContactModal) {
-        closeContactModal.addEventListener('click', () => {
-          closeModal(contactOwnerModal);
-          document.getElementById('contact-message-text').value = '';
-        });
-      }
-
-      if (sendContactMessage) {
-        sendContactMessage.addEventListener('click', async () => {
-          const messageText = document.getElementById('contact-message-text').value.trim();
-          if (!messageText) {
-            alert('⚠️ Пожалуйста, введите сообщение');
-            return;
-          }
-
-          try {
-            await fetchJSON('/api/messages', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                from_user_id: currentUserId,
-                message_text: messageText
-              })
-            });
-            alert('✅ Сообщение отправлено владельцу!');
-            closeModal(contactOwnerModal);
-            document.getElementById('contact-message-text').value = '';
-          } catch (e) {
-            alert('Ошибка при отправке сообщения');
-          }
-        });
-      }
+      // Обработка закрытия модального окна удаления по клику на фон
+      document.getElementById('delete-confirm-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'delete-confirm-modal') {
+          document.getElementById('delete-confirm-modal').classList.add('hidden');
+        }
+      });
       
       // Модалка для добавления призов
-      const prizesModal = document.getElementById('prizes-modal');
-      const closePrizesModal = document.getElementById('close-prizes-modal');
-      const addPrizeBtn = document.getElementById('add-prize-btn');
+      // Обработчики для closePrizesModal и addPrizeBtn уже установлены в функции init()
       const submitPrizesBtn = document.getElementById('submit-prizes');
-      const prizesList = document.getElementById('prizes-list');
       
       // Определяем функцию openPrizesModal
       openPrizesModal = function() {
-        if (!prizesList) {
+        const prizesListEl = document.getElementById('prizes-list');
+        if (!prizesListEl) {
           console.error('prizesList не найден!');
           return;
         }
-        prizesList.innerHTML = '';
+        prizesListEl.innerHTML = '';
         const winnersCount = window.currentWinnersCount || 1;
         console.log('Открываем модалку призов для', winnersCount, 'победителей');
         for (let i = 0; i < winnersCount; i++) {
@@ -3988,14 +4633,17 @@
           }
         }
         
-        if (prizesModal) {
-          openModal(prizesModal);
+        const prizesModalEl = document.getElementById('prizes-modal');
+        if (prizesModalEl) {
+          openModal(prizesModalEl);
         } else {
           console.error('prizesModal не найден!');
         }
       }
       
       function addPrizeInput(index) {
+        const prizesListEl = document.getElementById('prizes-list');
+        if (!prizesListEl) return;
         const prizeDiv = document.createElement('div');
         prizeDiv.className = 'flex gap-2 items-center';
         prizeDiv.style.pointerEvents = 'auto';
@@ -4003,23 +4651,14 @@
           <label class="text-sm text-gray-400 w-20">Приз ${index}:</label>
           <input type="text" class="prize-input input-field flex-1 p-2 rounded" placeholder="t.me/nft/название-номер" data-index="${index}" style="pointer-events: auto; position: relative; z-index: 1;" />
         `;
-        prizesList.appendChild(prizeDiv);
-      }
-      
-      if (closePrizesModal) {
-        closePrizesModal.addEventListener('click', () => closeModal(prizesModal));
-      }
-      
-      if (addPrizeBtn) {
-        addPrizeBtn.addEventListener('click', () => {
-          const currentCount = prizesList.querySelectorAll('.prize-input').length;
-          addPrizeInput(currentCount + 1);
-        });
+        prizesListEl.appendChild(prizeDiv);
       }
       
       if (submitPrizesBtn) {
         submitPrizesBtn.addEventListener('click', async () => {
-          const prizeInputs = prizesList.querySelectorAll('.prize-input');
+          const prizesListEl = document.getElementById('prizes-list');
+          if (!prizesListEl) return;
+          const prizeInputs = prizesListEl.querySelectorAll('.prize-input');
           const prizeLinks = [];
           
           for (const input of prizeInputs) {
@@ -4102,10 +4741,7 @@
           }
           
           try {
-            const updateData = { 
-              prize_links: prizeLinks,
-              current_user_id: currentUserId
-            };
+            const updateData = { prize_links: prizeLinks };
             if (juryData) {
               updateData.jury = juryData;
             }
@@ -4115,13 +4751,9 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(updateData)
             });
-            closeModal(prizesModal);
-            // Очищаем форму
-            document.getElementById('contest-title').value = '';
-            document.getElementById('contest-post-link').value = '';
-            document.getElementById('contest-conditions').value = '';
-            postLinkError.classList.add('hidden');
-            await loadContests();
+            const prizesModalEl = document.getElementById('prizes-modal');
+            if (prizesModalEl) closeModal(prizesModalEl);
+            if (typeof loadContests === 'function') await loadContests();
             showSection('contests-section');
             window.currentContestId = null;
             window.currentWinnersCount = null;
@@ -4142,986 +4774,6 @@
         });
       }
     })();
-  </script>
-
-  <!-- 🎨 Система тем -->
-  <script>
-    (function() {
-      const themes = {
-        default: {
-          name: 'По умолчанию',
-          id: 'default',
-          icon: '🟣',
-          description: 'Классическая фиолетово-розовая тема'
-        },
-        kitty: {
-          name: 'Kitty',
-          id: 'kitty',
-          icon: '🐱',
-          description: 'Милые розовые оттенки'
-        },
-        mario: {
-          name: 'Mario',
-          id: 'mario',
-          icon: '🍄',
-          description: 'Ретро стиль Super Mario Bros'
-        },
-        aot: {
-          name: 'Attack on Titan',
-          id: 'aot',
-          icon: '⚔️',
-          description: 'Сепия, пергамент, готический стиль'
-        }
-      };
-
-      function loadTheme() {
-        const savedTheme = localStorage.getItem('selectedTheme') || 'default';
-        applyTheme(savedTheme);
-        setTimeout(() => {
-          updateIconsForTheme(savedTheme);
-        }, 300);
-      }
-
-      function applyTheme(themeId) {
-        const body = document.body;
-        body.classList.remove('theme-kitty', 'theme-mario', 'theme-aot');
-        
-        if (themeId !== 'default') {
-          body.classList.add(`theme-${themeId}`);
-        }
-        
-        updateIconsForTheme(themeId);
-        localStorage.setItem('selectedTheme', themeId);
-        console.log('✅ Тема применена:', themeId);
-      }
-
-      function clearAllThemeIcons() {
-        // Скрываем изображение титана
-        const titanImage = document.getElementById('aot-titan-image');
-        if (titanImage) {
-          titanImage.classList.add('hidden');
-        }
-
-        const profileBtn = document.querySelector('[data-section="profile-section"]');
-        if (profileBtn) {
-          const text = profileBtn.textContent.replace(/[🍄🐱👤👨👩]/g, '').trim();
-          profileBtn.innerHTML = text || 'Профиль';
-        }
-
-        const contestsBtn = document.querySelector('[data-section="contests-section"]');
-        if (contestsBtn) {
-          const text = contestsBtn.textContent.replace(/[⭐🎁🏆🎯]/g, '').trim();
-          contestsBtn.innerHTML = text || 'Конкурсы';
-        }
-
-        const ratingBtn = document.querySelector('[data-section="rating-section"]');
-        if (ratingBtn) {
-          const text = ratingBtn.textContent.replace(/[🪙💖⭐🌟]/g, '').trim();
-          ratingBtn.innerHTML = text || 'Рейтинг';
-        }
-
-        const changeThemeBtn = document.getElementById('change-theme-btn');
-        if (changeThemeBtn) {
-          const text = changeThemeBtn.textContent.replace(/[🎮💝🎨]/g, '').trim();
-          changeThemeBtn.innerHTML = text || 'Сменить тему';
-        }
-
-        const contactBtn = document.getElementById('contact-owner-btn');
-        if (contactBtn) {
-          const text = contactBtn.textContent.replace(/[📮💌📨]/g, '').trim();
-          contactBtn.innerHTML = text || 'Связь с владельцем';
-        }
-
-        const profileSection = document.querySelector('#profile-section h2');
-        if (profileSection) {
-          const text = profileSection.textContent.replace(/[🍄🐱👤👨👩]/g, '').trim();
-          profileSection.innerHTML = text || 'Профиль';
-        }
-
-        const contestsSection = document.querySelector('#contests-section h2');
-        if (contestsSection) {
-          const text = contestsSection.textContent.replace(/[⭐🎁🏆🎯]/g, '').trim();
-          contestsSection.innerHTML = text || 'Конкурсы';
-        }
-
-        const ratingSection = document.querySelector('#rating-section h2');
-        if (ratingSection) {
-          const text = ratingSection.textContent.replace(/[🪙💖⭐🌟]/g, '').trim();
-          ratingSection.innerHTML = text || 'Рейтинг';
-        }
-      }
-
-      function updateIconsForTheme(themeId) {
-        clearAllThemeIcons();
-
-        if (themeId === 'mario') {
-          const profileBtn = document.querySelector('[data-section="profile-section"]');
-          if (profileBtn) profileBtn.innerHTML = '🍄 Профиль';
-
-          const contestsBtn = document.querySelector('[data-section="contests-section"]');
-          if (contestsBtn) contestsBtn.innerHTML = '⭐ Конкурсы';
-
-          const ratingBtn = document.querySelector('[data-section="rating-section"]');
-          if (ratingBtn) ratingBtn.innerHTML = '🪙 Рейтинг';
-
-          const changeThemeBtn = document.getElementById('change-theme-btn');
-          if (changeThemeBtn) changeThemeBtn.innerHTML = '🎮 Сменить тему';
-
-          const contactBtn = document.getElementById('contact-owner-btn');
-          if (contactBtn) contactBtn.innerHTML = '📮 Связь с владельцем';
-
-          const profileSection = document.querySelector('#profile-section h2');
-          if (profileSection) profileSection.innerHTML = '🍄 Профиль';
-
-          const contestsSection = document.querySelector('#contests-section h2');
-          if (contestsSection) contestsSection.innerHTML = '⭐ Конкурсы';
-
-          const ratingSection = document.querySelector('#rating-section h2');
-          if (ratingSection) ratingSection.innerHTML = '🪙 Рейтинг';
-
-        } else if (themeId === 'kitty') {
-          const profileBtn = document.querySelector('[data-section="profile-section"]');
-          if (profileBtn) profileBtn.innerHTML = '🐱 Профиль';
-
-          const contestsBtn = document.querySelector('[data-section="contests-section"]');
-          if (contestsBtn) contestsBtn.innerHTML = '🎁 Конкурсы';
-
-          const ratingBtn = document.querySelector('[data-section="rating-section"]');
-          if (ratingBtn) ratingBtn.innerHTML = '💖 Рейтинг';
-
-          const changeThemeBtn = document.getElementById('change-theme-btn');
-          if (changeThemeBtn) changeThemeBtn.innerHTML = '<span class="kitty-btn-icon">💝</span> Сменить тему';
-
-          const contactBtn = document.getElementById('contact-owner-btn');
-          if (contactBtn) contactBtn.innerHTML = '<span class="kitty-btn-icon">💌</span> Связь с владельцем';
-
-          const profileSection = document.querySelector('#profile-section h2');
-          if (profileSection) profileSection.innerHTML = '🐱 Профиль';
-
-          const contestsSection = document.querySelector('#contests-section h2');
-          if (contestsSection) contestsSection.innerHTML = '🎁 Конкурсы';
-
-          const ratingSection = document.querySelector('#rating-section h2');
-          if (ratingSection) ratingSection.innerHTML = '💖 Рейтинг';
-
-        } else if (themeId === 'aot') {
-          // Показываем изображение титана
-          const titanImage = document.getElementById('aot-titan-image');
-          if (titanImage) {
-            titanImage.classList.remove('hidden');
-          }
-
-          const profileBtn = document.querySelector('[data-section="profile-section"]');
-          if (profileBtn) profileBtn.innerHTML = '⚔️ Профиль';
-
-          const contestsBtn = document.querySelector('[data-section="contests-section"]');
-          if (contestsBtn) contestsBtn.innerHTML = '🛡️ Конкурсы';
-
-          const ratingBtn = document.querySelector('[data-section="rating-section"]');
-          if (ratingBtn) ratingBtn.innerHTML = '🏆 Рейтинг';
-
-          const changeThemeBtn = document.getElementById('change-theme-btn');
-          if (changeThemeBtn) changeThemeBtn.innerHTML = '⚔️ Сменить тему';
-
-          const profileSection = document.querySelector('#profile-section h2');
-          if (profileSection) profileSection.innerHTML = '⚔️ Профиль';
-
-          const contestsSection = document.querySelector('#contests-section h2');
-          if (contestsSection) contestsSection.innerHTML = '🛡️ Конкурсы';
-
-          const ratingSection = document.querySelector('#rating-section h2');
-          if (ratingSection) ratingSection.innerHTML = '🏆 Рейтинг';
-
-        } else {
-          // Скрываем изображение титана для других тем
-          const titanImage = document.getElementById('aot-titan-image');
-          if (titanImage) {
-            titanImage.classList.add('hidden');
-          }
-
-          const profileBtn = document.querySelector('[data-section="profile-section"]');
-          if (profileBtn) profileBtn.innerHTML = '👤 Профиль';
-
-          const contestsBtn = document.querySelector('[data-section="contests-section"]');
-          if (contestsBtn) contestsBtn.innerHTML = '🏆 Конкурсы';
-
-          const ratingBtn = document.querySelector('[data-section="rating-section"]');
-          if (ratingBtn) ratingBtn.innerHTML = '⭐ Рейтинг';
-
-          const changeThemeBtn = document.getElementById('change-theme-btn');
-          if (changeThemeBtn) changeThemeBtn.innerHTML = '<span class="kitty-btn-icon">🎨</span> Сменить тему';
-
-          const contactBtn = document.getElementById('contact-owner-btn');
-          if (contactBtn) contactBtn.innerHTML = '📨 Связь с владельцем';
-
-          const profileSection = document.querySelector('#profile-section h2');
-          if (profileSection) profileSection.innerHTML = '👤 Профиль';
-
-          const contestsSection = document.querySelector('#contests-section h2');
-          if (contestsSection) contestsSection.innerHTML = '🏆 Конкурсы';
-
-          const ratingSection = document.querySelector('#rating-section h2');
-          if (ratingSection) ratingSection.innerHTML = '⭐ Рейтинг';
-        }
-      }
-
-      function initThemeSelector() {
-        const themeModal = document.getElementById('theme-selector-modal');
-        const changeThemeBtn = document.getElementById('change-theme-btn');
-        const closeThemeModal = document.getElementById('close-theme-modal');
-        const themesList = document.getElementById('themes-list');
-
-        if (!themeModal || !changeThemeBtn || !closeThemeModal || !themesList) {
-          console.error('Элементы модального окна темы не найдены');
-          return;
-        }
-
-        function renderThemes() {
-          updateThemeSelector();
-        }
-
-        changeThemeBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          renderThemes();
-          themeModal.classList.remove('hidden');
-          document.body.classList.add('modal-open');
-        });
-
-        closeThemeModal.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          themeModal.classList.add('hidden');
-          document.body.classList.remove('modal-open');
-        });
-
-        themeModal.addEventListener('click', (e) => {
-          if (e.target === themeModal) {
-            themeModal.classList.add('hidden');
-            document.body.classList.remove('modal-open');
-          }
-        });
-      }
-
-      // 🛒 Система магазина
-      const shopItems = {
-        avatarStars: [
-          { id: 'star-gold', icon: '⭐', name: 'Золотая звезда', price: 10, priceType: 'stars' },
-          { id: 'star-silver', icon: '✨', name: 'Серебряная звезда', price: 5, priceType: 'stars' },
-          { id: 'star-rainbow', icon: '🌟', name: 'Радужная звезда', price: 20, priceType: 'stars' },
-          { id: 'star-diamond', icon: '💎', name: 'Алмазная звезда', price: 50, priceType: 'stars' },
-          { id: 'star-fire', icon: '🔥', name: 'Огненная звезда', price: 30, priceType: 'stars' },
-          { id: 'star-ice', icon: '❄️', name: 'Ледяная звезда', price: 25, priceType: 'stars' }
-        ],
-        themes: [
-          { 
-            id: 'kitty', 
-            name: 'Kitty', 
-            icon: '🐱', 
-            priceStars: 150, 
-            priceTON: 1, 
-            priceGifts: null, 
-            description: 'Милые котики и лапки на каждом шагу' 
-          },
-          { 
-            id: 'mario', 
-            name: 'Mario', 
-            icon: '🍄', 
-            priceStars: 250, 
-            priceTON: 2, 
-            priceGifts: null, 
-            description: 'Ретро стиль Super Mario Bros с пиксельной графикой' 
-          }
-        ],
-        nftGifts: [
-          { id: 'nft-gift-1', icon: '🎁', name: 'NFT Подарок 1', price: 200, priceType: 'stars', nftLink: '' },
-          { id: 'nft-gift-2', icon: '🎁', name: 'NFT Подарок 2', price: 300, priceType: 'stars', nftLink: '' },
-          { id: 'nft-gift-3', icon: '🎁', name: 'NFT Подарок 3', price: 500, priceType: 'stars', nftLink: '' }
-        ]
-      };
-
-      // Получение купленных товаров из базы данных
-      async function getPurchasedItems() {
-        const currentUserId = window.currentUserId || 0;
-        if (!currentUserId) {
-          return { avatarStars: [], themes: [], nftGifts: [] };
-        }
-        
-        try {
-          // Сначала пытаемся получить из API
-          const response = await window.fetchJSON(`/api/payment/purchased-items?tg_id=${currentUserId}`);
-          if (response && response.purchased_items) {
-            // Синхронизируем с localStorage для офлайн-режима
-            try {
-              localStorage.setItem('purchasedItems', JSON.stringify(response.purchased_items));
-            } catch (e) {
-              console.warn('Не удалось сохранить в localStorage:', e);
-            }
-            return response.purchased_items;
-          }
-        } catch (e) {
-          console.warn('Ошибка получения покупок из API, используем localStorage:', e);
-        }
-        
-        // Fallback на localStorage
-        try {
-          const purchased = localStorage.getItem('purchasedItems');
-          return purchased ? JSON.parse(purchased) : { avatarStars: [], themes: [], nftGifts: [] };
-        } catch (e) {
-          return { avatarStars: [], themes: [], nftGifts: [] };
-        }
-      }
-
-      // Сохранение купленных товаров в базу данных
-      async function savePurchasedItems(items) {
-        const currentUserId = window.currentUserId || 0;
-        
-        // Сохраняем в localStorage для быстрого доступа
-        try {
-          localStorage.setItem('purchasedItems', JSON.stringify(items));
-        } catch (e) {
-          console.warn('Не удалось сохранить в localStorage:', e);
-        }
-        
-        // Сохраняем в базу данных через API
-        if (currentUserId) {
-          // Находим все новые покупки и сохраняем их
-          // Это будет вызываться при добавлении новой покупки через addPurchasedItem
-        }
-      }
-
-      // Проверка, куплен ли товар
-      async function isItemPurchased(category, itemId) {
-        const purchased = await getPurchasedItems();
-        return purchased[category] && purchased[category].includes(itemId);
-      }
-
-      // Добавление купленного товара
-      async function addPurchasedItem(category, itemId) {
-        const currentUserId = window.currentUserId || 0;
-        
-        // Обновляем локально
-        const purchased = await getPurchasedItems();
-        if (!purchased[category]) {
-          purchased[category] = [];
-        }
-        if (!purchased[category].includes(itemId)) {
-          purchased[category].push(itemId);
-          await savePurchasedItems(purchased);
-          
-          // Сохраняем в базу данных через API
-          if (currentUserId) {
-            try {
-              await window.fetchJSON('/api/payment/add-purchase', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  tg_id: currentUserId,
-                  category: category,
-                  item_id: itemId
-                })
-              });
-              console.log(`✅ Покупка сохранена в БД: ${category}/${itemId}`);
-            } catch (e) {
-              console.error('Ошибка сохранения покупки в БД:', e);
-              // Продолжаем работу даже если сохранение в БД не удалось
-            }
-          }
-        }
-      }
-
-      // Текущий выбранный товар для покупки
-      let currentPurchaseItem = null;
-
-      // Покупка товара - показываем модалку выбора способа оплаты
-      async function purchaseItem(category, itemId) {
-        const item = shopItems[category]?.find(i => i.id === itemId);
-        if (!item) {
-          alert('❌ Товар не найден');
-          return;
-        }
-
-        if (await isItemPurchased(category, itemId)) {
-          alert('✅ Этот товар уже куплен!');
-          return;
-        }
-
-        // Проверяем доступность Telegram WebApp для реальной оплаты
-        const isWebAppAvailable = window.Telegram?.WebApp?.initDataUnsafe;
-        if (!isWebAppAvailable) {
-          console.warn('⚠️ Telegram WebApp недоступен. Приложение должно быть открыто через бота в Telegram для реальной оплаты.');
-          console.warn('📱 Для тестирования доступен тестовый режим (товары будут добавлены без реальной оплаты).');
-        }
-
-        // Сохраняем текущий товар
-        currentPurchaseItem = { category, itemId, item };
-
-        // Показываем модалку выбора способа оплаты
-        showPaymentMethodModal();
-      }
-
-      // Показ модалки выбора способа оплаты
-      function showPaymentMethodModal() {
-        if (!currentPurchaseItem) return;
-
-        const modal = document.getElementById('payment-method-modal');
-        const methodsList = document.getElementById('payment-methods-list');
-        
-        if (!modal || !methodsList) return;
-
-        const { item } = currentPurchaseItem;
-
-        // Получаем цены для разных способов оплаты
-        let priceStars = item.priceStars || item.price || 0;
-        let priceTON = item.priceTON || 0;
-        let priceGifts = item.priceGifts;
-
-        // Способы оплаты
-        const paymentMethods = [
-          {
-            id: 'stars',
-            name: 'Telegram Stars',
-            icon: '⭐',
-            description: priceStars > 0 ? `${priceStars} ⭐` : 'Недоступно',
-            available: priceStars > 0,
-            price: priceStars
-          },
-          {
-            id: 'ton',
-            name: 'CryptoBot',
-            icon: '🤖',
-            description: priceTON > 0 ? `${priceTON} TON` : 'Недоступно',
-            available: priceTON > 0,
-            price: priceTON
-          },
-          {
-            id: 'gifts',
-            name: 'NFT Gifts',
-            icon: '🎁',
-            description: priceGifts !== null ? (typeof priceGifts === 'number' ? `${priceGifts} ⭐` : priceGifts) : 'Скоро',
-            available: priceGifts !== null && typeof priceGifts === 'number',
-            price: priceGifts
-          }
-        ];
-
-        methodsList.innerHTML = paymentMethods.map(method => `
-          <div class="rounded-lg border ${method.available ? 'border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40' : 'border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60'} p-4 transition-all" 
-               ${method.available ? `onclick="window.selectPaymentMethod('${method.id}')"` : ''}>
-            <div class="flex items-center gap-3">
-              <div class="text-3xl">${method.icon}</div>
-              <div class="flex-1">
-                <div class="font-semibold text-white">${method.name}</div>
-                <div class="text-sm ${method.available ? 'text-gray-400' : 'text-gray-500'}">${method.description}</div>
-              </div>
-              ${method.available ? '<div class="text-violet-400 text-xl">→</div>' : '<div class="text-gray-500 text-sm">Недоступно</div>'}
-            </div>
-          </div>
-        `).join('');
-
-        modal.classList.remove('hidden');
-        document.body.classList.add('modal-open');
-      }
-
-      // Выбор способа оплаты
-      async function selectPaymentMethod(methodId) {
-        if (!currentPurchaseItem) return;
-
-        const { category, itemId, item } = currentPurchaseItem;
-        const paymentModal = document.getElementById('payment-method-modal');
-
-        // Закрываем модалку выбора способа оплаты
-        if (paymentModal) {
-          paymentModal.classList.add('hidden');
-          document.body.classList.remove('modal-open');
-        }
-
-        try {
-          if (methodId === 'stars') {
-            await processStarsPayment(category, itemId, item);
-          } else if (methodId === 'ton') {
-            await processTONPayment(category, itemId, item);
-          } else if (methodId === 'gifts') {
-            await processGiftsPayment(category, itemId, item);
-          }
-        } catch (error) {
-          console.error('❌ Ошибка обработки оплаты:', error);
-          // Не показываем общую ошибку, если это было из processStarsPayment
-          // (там уже есть своя обработка ошибок)
-          if (error && error.message && !error.message.includes('Счет отправлен')) {
-            alert('❌ Ошибка при обработке оплаты: ' + String(error.message || 'Неизвестная ошибка'));
-          }
-        }
-      }
-
-      // Обработка оплаты через Telegram Stars
-      async function processStarsPayment(category, itemId, item) {
-        const currentUserId = window.currentUserId || 0;
-        
-        // Получаем цену в Stars
-        const price = item.priceStars || item.price || 0;
-        if (price <= 0) {
-          alert('❌ Цена не указана для этого товара');
-          return;
-        }
-        
-          // Создаем invoice через сервер - отправляем счет пользователю в бота
-        try {
-          console.log(`📋 Создание счета для покупки: ${item.name}, цена: ${price} ⭐`);
-          const response = await window.fetchJSON('/api/payment/create-stars-invoice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: item.name,
-              description: `Покупка: ${item.name}`,
-              amount: price,
-              user_id: currentUserId,
-              category: category,
-              item_id: itemId
-            })
-          });
-          
-          // Детальное логирование ответа для отладки
-          console.log('📋 Ответ сервера получен (сырой):', response);
-          console.log('📋 Тип response:', typeof response);
-          
-          // Проверяем ответ от сервера
-          if (!response) {
-            console.error('❌ Не получен ответ от сервера');
-            alert('❌ Ошибка при создании счета: не получен ответ от сервера.');
-            return;
-          }
-          
-          // Проверяем, что response - объект
-          if (typeof response !== 'object') {
-            console.error('❌ Ответ не является объектом:', response);
-            alert('❌ Ошибка при создании счета: неверный формат ответа от сервера.');
-            return;
-          }
-          
-          // Проверяем success (может быть true, 'true', 1, и т.д.)
-          const isSuccess = response.success === true || 
-                           response.success === 'true' || 
-                           response.success === 1 ||
-                           (typeof response.success === 'string' && response.success.toLowerCase() === 'true');
-          
-          console.log('📋 response.success:', response.success);
-          console.log('📋 response.success === true:', response.success === true);
-          console.log('📋 isSuccess (расширенная проверка):', isSuccess);
-          console.log('📋 JSON ответа:', JSON.stringify(response));
-          
-          if (isSuccess) {
-            // Счет успешно отправлен в бота, уведомляем пользователя
-            console.log('✅ Счет успешно создан! Показываем сообщение пользователю.');
-            alert('✅ Счет на оплату ' + price + ' ⭐ отправлен в бота!\n\nПерейдите в чат с ботом, чтобы оплатить покупку. После оплаты товар будет добавлен автоматически.');
-            return;
-          }
-          
-          // Если success не true, показываем ошибку
-          const errorMsg = response.message || response.detail || 'Неизвестная ошибка';
-          console.error('❌ Ошибка создания счета. Ответ сервера:', response);
-          console.error('❌ response.success =', response.success, '(тип:', typeof response.success, ')');
-          console.error('❌ Полный response:', JSON.stringify(response, null, 2));
-          alert('❌ Ошибка при создании счета: ' + String(errorMsg));
-          return;
-          
-        } catch (error) {
-          console.error('❌ Исключение при создании invoice:', error);
-          console.error('❌ Тип ошибки:', typeof error);
-          console.error('❌ error.message:', error.message);
-          console.error('❌ error.response:', error.response);
-          console.error('❌ Полная ошибка:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-          
-          // Проверяем, есть ли детали ошибки (безопасно, без eval)
-          let errorMessage = 'Неизвестная ошибка';
-          
-          if (error && typeof error === 'object') {
-            if (error.message && typeof error.message === 'string') {
-              errorMessage = error.message;
-            } else if (error.response && typeof error.response === 'object') {
-              // Пытаемся получить детали из response
-              if (error.response.detail && typeof error.response.detail === 'string') {
-                errorMessage = error.response.detail;
-              } else if (error.response.message && typeof error.response.message === 'string') {
-                errorMessage = error.response.message;
-              }
-            } else if (error.detail && typeof error.detail === 'string') {
-              errorMessage = error.detail;
-            }
-          }
-          
-          // Не показываем ошибку, если это не критичная проблема
-          if (!errorMessage.includes('Счет отправлен') && !errorMessage.includes('успешно')) {
-            alert('❌ Ошибка при создании счета: ' + String(errorMessage));
-          }
-        }
-        
-        // Fallback для тестирования (когда WebApp недоступен)
-        if (!window.Telegram?.WebApp?.openInvoice) {
-          // Fallback: симулируем покупку для тестирования (когда WebApp недоступен)
-          if (confirm(`Купить "${item.name}" за ${price} ⭐?\n\n(Тестовый режим: Telegram WebApp недоступен)`)) {
-            // В тестовом режиме сразу добавляем товар без проверки оплаты
-            await addPurchasedItem(category, itemId);
-            await renderShop();
-            await updateThemeSelector();
-            alert(`✅ ${item.name} успешно куплен! (Тестовый режим)`);
-          }
-        }
-      }
-
-      // Обработка оплаты через TON
-      async function processTONPayment(category, itemId, item) {
-        const currentUserId = window.currentUserId || 0;
-        
-        // Получаем цену в TON
-        const tonAmount = item.priceTON || 0;
-        if (tonAmount <= 0) {
-          alert('❌ Цена не указана для этого товара');
-          return;
-        }
-        
-        // Создаем счет через CryptoBot API
-        try {
-          const response = await window.fetchJSON('/api/payment/create-invoice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: tonAmount,
-              currency: 'TON',
-              description: `Покупка: ${item.name}`,
-              user_id: currentUserId,
-              category: category,
-              item_id: itemId
-            })
-          });
-          
-          if (!response.success || !response.invoice_url) {
-            alert('❌ Ошибка при создании счета. Попробуйте позже.');
-            return;
-          }
-          
-          // Открываем ссылку на оплату через Telegram WebApp
-          if (window.Telegram?.WebApp?.openLink) {
-            // Используем Telegram WebApp API для открытия ссылки
-            window.Telegram.WebApp.openLink(response.invoice_url);
-          } else {
-            // Fallback для обычного браузера
-            window.open(response.invoice_url, '_blank');
-          }
-          
-          // Показываем сообщение пользователю
-          alert(`✅ Счет создан!\n\n💳 Сумма: ${tonAmount} TON\n👤 Счет для вашего аккаунта (ID: ${currentUserId})\n\nОткройте CryptoBot для оплаты.\nПосле оплаты товар будет добавлен автоматически.`);
-          
-          // Периодически проверяем статус оплаты
-          const invoiceId = response.invoice_id;
-          let checkCount = 0;
-          const maxChecks = 60; // Проверяем 60 раз (5 минут)
-          
-          const checkInterval = setInterval(async () => {
-            checkCount++;
-            
-            try {
-              const verifyResponse = await window.fetchJSON('/api/payment/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  invoice_id: invoiceId,
-                  category: category,
-                  itemId: itemId,
-                  userId: currentUserId
-                })
-              });
-              
-              if (verifyResponse.verified) {
-                clearInterval(checkInterval);
-                await addPurchasedItem(category, itemId);
-                await renderShop();
-                await updateThemeSelector();
-                alert(`✅ ${item.name} успешно куплен!`);
-              } else if (checkCount >= maxChecks) {
-                clearInterval(checkInterval);
-                alert('⏱ Время ожидания оплаты истекло. Если вы оплатили, товар будет добавлен автоматически.');
-              }
-            } catch (error) {
-              console.error('Ошибка проверки оплаты:', error);
-              if (checkCount >= maxChecks) {
-                clearInterval(checkInterval);
-              }
-            }
-          }, 5000); // Проверяем каждые 5 секунд
-          
-        } catch (error) {
-          console.error('Ошибка создания счета:', error);
-          alert('❌ Ошибка при создании счета: ' + (error.message || 'Неизвестная ошибка'));
-        }
-      }
-
-      // Обработка оплаты через NFT Gifts
-      async function processGiftsPayment(category, itemId, item) {
-        const currentUserId = window.currentUserId || 0;
-        
-        // Проверяем, доступны ли Gifts для этого товара
-        if (item.priceGifts === null || typeof item.priceGifts !== 'number') {
-          alert('❌ Оплата через NFT Gifts пока недоступна для этого товара');
-          return;
-        }
-        
-        // Получаем ID креатора для отправки подарка
-        try {
-          const response = await window.fetchJSON('/api/payment/get-creator-id');
-          const creatorId = response.creator_id || '';
-          
-          if (!creatorId) {
-            alert('❌ ID креатора не настроен. Обратитесь к администратору.');
-            return;
-          }
-
-          // Для Gifts нужно использовать специальный API Telegram
-          // Создаем invoice для Gifts
-          const invoice = {
-            title: item.name,
-            description: `Покупка: ${item.name} (NFT подарок)`,
-            payload: JSON.stringify({ category, itemId, userId: currentUserId, paymentMethod: 'gifts', creatorId: creatorId }),
-            provider_token: '', // Для Gifts
-            currency: 'XTR', // Gifts оплачиваются через Stars
-            prices: [{ label: item.name, amount: item.priceGifts * 100 }], // В копейках Stars
-            max_tip_amount: 0,
-            suggested_tip_amounts: [],
-            start_parameter: `shop_${category}_${itemId}_gifts`,
-            provider_data: JSON.stringify({ category, itemId, paymentMethod: 'gifts', creatorId: creatorId })
-          };
-
-          // Открываем платежное окно Telegram для Gifts
-          if (window.Telegram?.WebApp?.openInvoice) {
-            window.Telegram.WebApp.openInvoice(invoice, async (status) => {
-              if (status === 'paid') {
-                // Проверяем оплату на сервере
-                const verified = await verifyPayment(category, itemId, 'gifts', invoice.payload);
-                if (verified) {
-                  await addPurchasedItem(category, itemId);
-                  await renderShop();
-                  await updateThemeSelector();
-                  alert(`✅ ${item.name} успешно куплен! Подарок отправлен креатору.`);
-                } else {
-                  alert('❌ Ошибка при проверке оплаты. Обратитесь в поддержку.');
-                }
-              } else if (status === 'failed') {
-                alert('❌ Ошибка при оплате');
-              }
-            });
-          } else {
-            // Fallback: симулируем покупку для тестирования (когда WebApp недоступен)
-            if (confirm(`Купить "${item.name}" за ${item.priceGifts} ⭐ (NFT Gifts)?\n\n(Тестовый режим: Telegram WebApp недоступен)`)) {
-              // В тестовом режиме сразу добавляем товар без проверки оплаты
-              await addPurchasedItem(category, itemId);
-              await renderShop();
-              await updateThemeSelector();
-              alert(`✅ ${item.name} успешно куплен! (Тестовый режим)`);
-            }
-          }
-        } catch (error) {
-          console.error('Ошибка получения ID креатора:', error);
-          alert('❌ Ошибка при получении данных для оплаты');
-        }
-      }
-
-      // Проверка оплаты на сервере
-      async function verifyPayment(invoiceId, category, itemId, userId) {
-        try {
-          const response = await window.fetchJSON('/api/payment/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              invoice_id: invoiceId,
-              category: category,
-              itemId: itemId,
-              userId: userId
-            })
-          });
-          return response.verified === true;
-        } catch (error) {
-          console.error('Ошибка проверки оплаты:', error);
-          return false;
-        }
-      }
-
-      // Рендеринг магазина
-      async function renderShop() {
-        const purchased = await getPurchasedItems();
-
-        // Рендерим темы
-        const themesContainer = document.getElementById('themes-shop');
-        if (themesContainer) {
-          themesContainer.innerHTML = await Promise.all(shopItems.themes.map(async item => {
-            const isPurchased = await isItemPurchased('themes', item.id);
-            return `
-              <div class="rounded-lg border ${isPurchased ? 'border-green-400/50 bg-green-900/20' : 'border-violet-400/30 bg-black/30'} p-4">
-                <div class="flex items-center gap-4">
-                  <div class="text-4xl">${item.icon}</div>
-                  <div class="flex-1">
-                    <div class="font-semibold text-white mb-1">${item.name}</div>
-                    <div class="text-sm text-gray-400 mb-2">${item.description}</div>
-                    <div class="text-xs text-violet-400">
-                      ${item.priceStars ? `${item.priceStars} ⭐` : ''} 
-                      ${item.priceTON ? ` • ${item.priceTON} TON (CryptoBot)` : ''}
-                      ${item.priceGifts === null ? ' • NFT: Скоро' : ''}
-                    </div>
-                  </div>
-                  <button 
-                    onclick="window.purchaseItem('themes', '${item.id}')"
-                    class="px-4 py-2 rounded-lg text-sm font-semibold ${isPurchased ? 'bg-green-600/50 text-green-200 cursor-not-allowed' : 'neon-button'}"
-                    ${isPurchased ? 'disabled' : ''}
-                  >
-                    ${isPurchased ? '✓ Куплено' : 'Купить'}
-                  </button>
-                </div>
-              </div>
-            `;
-          })).then(results => results.join(''));
-        }
-      }
-
-      // Обновление селектора тем с купленными темами
-      async function updateThemeSelector() {
-        const purchased = await getPurchasedItems();
-        const purchasedThemes = purchased.themes || [];
-
-        // Обновляем рендер тем в модалке - показываем только доступные темы
-        const themesList = document.getElementById('themes-list');
-        if (themesList) {
-          const currentTheme = localStorage.getItem('selectedTheme') || 'default';
-          themesList.innerHTML = '';
-          
-          // Всегда показываем тему "По умолчанию"
-          const defaultTheme = themes.default;
-          if (defaultTheme) {
-            const isActive = 'default' === currentTheme;
-            const themeCard = document.createElement('div');
-            themeCard.className = `rounded-lg border p-4 cursor-pointer transition-all ${
-              isActive 
-                ? 'border-violet-400 bg-violet-500/20' 
-                : 'border-violet-400/30 bg-black/30 hover:border-violet-400/50 hover:bg-black/40'
-            }`;
-            themeCard.innerHTML = `
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="text-3xl">${defaultTheme.icon}</div>
-                  <div>
-                    <div class="font-semibold text-white">${defaultTheme.name}</div>
-                    <div class="text-sm text-gray-400">${defaultTheme.description}</div>
-                  </div>
-                </div>
-                ${isActive ? '<div class="text-violet-400 text-xl">✓</div>' : ''}
-              </div>
-            `;
-            
-            themeCard.addEventListener('click', () => {
-              applyTheme('default');
-              updateThemeSelector();
-              const themeModal = document.getElementById('theme-selector-modal');
-              if (themeModal) {
-                setTimeout(() => {
-                  themeModal.classList.add('hidden');
-                  document.body.classList.remove('modal-open');
-                }, 300);
-              }
-            });
-            
-            themesList.appendChild(themeCard);
-          }
-          
-          // Показываем только купленные темы
-          purchasedThemes.forEach(themeId => {
-            const theme = shopItems.themes.find(t => t.id === themeId);
-            if (theme) {
-              const isActive = themeId === currentTheme;
-              const themeCard = document.createElement('div');
-              themeCard.className = `rounded-lg border p-4 cursor-pointer transition-all ${
-                isActive 
-                  ? 'border-violet-400 bg-violet-500/20' 
-                  : 'border-violet-400/30 bg-black/30 hover:border-violet-400/50 hover:bg-black/40'
-              }`;
-              themeCard.innerHTML = `
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="text-3xl">${theme.icon}</div>
-                    <div>
-                      <div class="font-semibold text-white">${theme.name}</div>
-                      <div class="text-sm text-gray-400">${theme.description}</div>
-                    </div>
-                  </div>
-                  ${isActive ? '<div class="text-violet-400 text-xl">✓</div>' : ''}
-                </div>
-              `;
-              
-              themeCard.addEventListener('click', () => {
-                applyTheme(themeId);
-                updateThemeSelector();
-                const themeModal = document.getElementById('theme-selector-modal');
-                if (themeModal) {
-                  setTimeout(() => {
-                    themeModal.classList.add('hidden');
-                    document.body.classList.remove('modal-open');
-                  }, 300);
-                }
-              });
-              
-              themesList.appendChild(themeCard);
-            }
-          });
-        }
-      }
-
-      // Экспортируем функции для глобального доступа
-      window.purchaseItem = purchaseItem;
-      window.selectPaymentMethod = selectPaymentMethod;
-      window.renderShop = renderShop;
-      window.updateThemeSelector = updateThemeSelector;
-
-      // Инициализация модалки выбора способа оплаты
-      function initPaymentMethodModal() {
-        const modal = document.getElementById('payment-method-modal');
-        const closeBtn = document.getElementById('close-payment-modal');
-        
-        if (closeBtn) {
-          closeBtn.addEventListener('click', () => {
-            if (modal) {
-              modal.classList.add('hidden');
-              document.body.classList.remove('modal-open');
-            }
-            currentPurchaseItem = null;
-          });
-        }
-
-        if (modal) {
-          modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-              modal.classList.add('hidden');
-              document.body.classList.remove('modal-open');
-              currentPurchaseItem = null;
-            }
-          });
-        }
-      }
-
-      // Инициализация магазина при загрузке секции
-      function initShop() {
-        renderShop();
-        initPaymentMethodModal();
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-          loadTheme();
-          setTimeout(initThemeSelector, 100);
-          setTimeout(initShop, 200);
-        });
-      } else {
-        loadTheme();
-        setTimeout(initThemeSelector, 100);
-        setTimeout(initShop, 200);
-      }
-    })();
-    
     // Функция для показа списка работ конкурса
     window.showContestWorks = async function(contestId) {
       const modal = document.getElementById('contest-works-modal');
@@ -5271,6 +4923,7 @@
         alert('Ошибка при аннулировании работы: ' + (error.message || 'Неизвестная ошибка'));
       }
     });
+
   </script>
 </body>
 </html>
