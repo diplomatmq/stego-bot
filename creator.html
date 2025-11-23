@@ -722,6 +722,46 @@
         </div>
       </div>
     </div>
+    
+    <!-- 🔍 Модалка: Список работ конкурса -->
+    <div id="contest-works-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[600px] max-h-[90vh] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 overflow-y-auto">
+        <button id="close-contest-works-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">🔍 Работы конкурса</h3>
+        <div id="contest-works-list" class="space-y-3">
+          <div class="text-center text-gray-400 py-4">Загрузка...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 🗑️ Модалка: Причина аннулирования работы -->
+    <div id="cancel-work-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
+        <button id="close-cancel-work-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">🗑️ Аннулировать работу</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm text-gray-400 mb-2">Выберите причину аннулирования:</label>
+            <select id="cancel-reason-select" class="input-field w-full p-2 rounded">
+              <option value="">-- Выберите причину --</option>
+              <option value="Не соответствует теме конкурса">Не соответствует теме конкурса</option>
+              <option value="Нарушение правил конкурса">Нарушение правил конкурса</option>
+              <option value="Низкое качество работы">Низкое качество работы</option>
+              <option value="Плагиат">Плагиат</option>
+              <option value="Другая причина">Другая причина</option>
+            </select>
+          </div>
+          <div id="custom-reason-div" class="hidden">
+            <label class="block text-sm text-gray-400 mb-2">Укажите причину:</label>
+            <textarea id="custom-reason-text" class="input-field w-full p-2 rounded" rows="3" placeholder="Введите причину аннулирования..."></textarea>
+          </div>
+          <div class="flex gap-3 pt-4">
+            <button id="cancel-work-confirm-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-semibold">🗑️ Аннулировать</button>
+            <button id="cancel-work-cancel-btn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg font-semibold">Отмена</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </main>
 
@@ -3092,7 +3132,23 @@
                 console.log(`📊 Конкурс ${c.id}: isEnded=${isEnded}, resultsCalculated=${drawingResultsCalculated}, isCreator=${drawingIsCreator}, currentUserId=${currentUserIdNum}, created_by=${createdByIdNum} (raw: ${c.created_by}, type: ${typeof c.created_by})`);
                 console.log(`📋 Полные данные конкурса ${c.id}:`, JSON.stringify(c, null, 2));
                 
-                if (isEnded && !drawingResultsCalculated) {
+                // Проверяем, идет ли время приема работ
+                const submissionEndDate = c.submission_end_date ? new Date(c.submission_end_date) : null;
+                const now = new Date();
+                const isSubmissionPeriodActive = submissionEndDate && now <= submissionEndDate;
+                
+                if (isSubmissionPeriodActive && drawingIsCreator) {
+                  // Показываем кнопку "Проверить работы" во время приема работ
+                  drawingResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="showContestWorks(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="check-works-btn-${c.id}"
+                    >
+                      🔍 Проверить работы
+                    </button>
+                  </div>`;
+                } else if (isEnded && !drawingResultsCalculated) {
                   // Показываем кнопку "Подсчет итогов" только для создателя
                   if (drawingIsCreator) {
                     console.log(`✅ Создаем кнопку "Подсчет итогов" для конкурса ${c.id} (isEnded=${isEnded}, isCreator=${drawingIsCreator})`);
@@ -4718,6 +4774,140 @@
         });
       }
     })();
+    // Функция для показа списка работ конкурса
+    window.showContestWorks = async function(contestId) {
+      const modal = document.getElementById('contest-works-modal');
+      const list = document.getElementById('contest-works-list');
+      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+      
+      modal.classList.remove('hidden');
+      list.innerHTML = '<div class="text-center text-gray-400 py-4">Загрузка...</div>';
+      
+      try {
+        const response = await fetchJSON(`/api/contests/${contestId}/works?current_user_id=${currentUserId}`);
+        
+        if (!response.success || !response.works || response.works.length === 0) {
+          list.innerHTML = '<div class="text-center text-gray-400 py-4">Работ пока нет</div>';
+          return;
+        }
+        
+        list.innerHTML = response.works.map(work => `
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-black/20 border border-violet-400/20">
+            <div class="flex-1">
+              <div class="font-semibold text-white">Работа #${work.work_number}</div>
+              <div class="text-sm text-gray-400">Участник: ${work.username}</div>
+              ${work.image_url ? `
+                <img src="${work.image_url}" alt="Работа #${work.work_number}" class="mt-2 w-full max-w-[200px] rounded-lg" />
+              ` : ''}
+            </div>
+            <button 
+              onclick="openCancelWorkModal(${contestId}, ${work.work_number}, '${work.username.replace(/'/g, "\\'")}')"
+              class="bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg"
+              title="Аннулировать работу"
+            >
+              🗑️
+            </button>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Ошибка загрузки работ:', error);
+        list.innerHTML = '<div class="text-center text-red-400 py-4">Ошибка загрузки работ</div>';
+      }
+    };
+    
+    // Функция для открытия модального окна аннулирования
+    window.openCancelWorkModal = function(contestId, workNumber, username) {
+      const modal = document.getElementById('cancel-work-modal');
+      const reasonSelect = document.getElementById('cancel-reason-select');
+      const customReasonDiv = document.getElementById('custom-reason-div');
+      const customReasonText = document.getElementById('custom-reason-text');
+      
+      // Сохраняем данные для использования при подтверждении
+      window.currentCancelData = { contestId, workNumber, username };
+      
+      // Сбрасываем форму
+      reasonSelect.value = '';
+      customReasonDiv.classList.add('hidden');
+      customReasonText.value = '';
+      
+      // Обработчик изменения причины
+      reasonSelect.onchange = function() {
+        if (this.value === 'Другая причина') {
+          customReasonDiv.classList.remove('hidden');
+        } else {
+          customReasonDiv.classList.add('hidden');
+        }
+      };
+      
+      modal.classList.remove('hidden');
+    };
+    
+    // Обработчики закрытия модальных окон
+    document.getElementById('close-contest-works-modal')?.addEventListener('click', () => {
+      document.getElementById('contest-works-modal').classList.add('hidden');
+    });
+    
+    document.getElementById('close-cancel-work-modal')?.addEventListener('click', () => {
+      document.getElementById('cancel-work-modal').classList.add('hidden');
+    });
+    
+    document.getElementById('cancel-work-cancel-btn')?.addEventListener('click', () => {
+      document.getElementById('cancel-work-modal').classList.add('hidden');
+    });
+    
+    // Обработчик подтверждения аннулирования
+    document.getElementById('cancel-work-confirm-btn')?.addEventListener('click', async () => {
+      const reasonSelect = document.getElementById('cancel-reason-select');
+      const customReasonText = document.getElementById('custom-reason-text');
+      const { contestId, workNumber, username } = window.currentCancelData || {};
+      
+      if (!contestId || !workNumber) {
+        alert('Ошибка: данные о работе не найдены');
+        return;
+      }
+      
+      let reason = reasonSelect.value;
+      if (reason === 'Другая причина') {
+        reason = customReasonText.value.trim();
+        if (!reason) {
+          alert('Пожалуйста, укажите причину аннулирования');
+          return;
+        }
+      }
+      
+      if (!reason) {
+        alert('Пожалуйста, выберите причину аннулирования');
+        return;
+      }
+      
+      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+      
+      try {
+        const response = await fetchJSON(`/api/contests/${contestId}/works/${workNumber}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            reason: reason
+          })
+        });
+        
+        if (response.success) {
+          alert(`✅ Работа #${workNumber} от ${username} успешно аннулирована`);
+          document.getElementById('cancel-work-modal').classList.add('hidden');
+          // Обновляем список работ
+          await window.showContestWorks(contestId);
+          // Обновляем список конкурсов
+          await window.loadContests();
+        } else {
+          alert('Ошибка при аннулировании работы');
+        }
+      } catch (error) {
+        console.error('Ошибка аннулирования работы:', error);
+        alert('Ошибка при аннулировании работы: ' + (error.message || 'Неизвестная ошибка'));
+      }
+    });
+
   </script>
 </body>
 </html>
