@@ -5121,6 +5121,156 @@
         setTimeout(initShop, 200);
       }
     })();
+    
+    // Функция для показа списка работ конкурса
+    window.showContestWorks = async function(contestId) {
+      const modal = document.getElementById('contest-works-modal');
+      const list = document.getElementById('contest-works-list');
+      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+      
+      modal.classList.remove('hidden');
+      list.innerHTML = '<div class="text-center text-gray-400 py-4">Загрузка...</div>';
+      
+      try {
+        const response = await fetchJSON(`/api/contests/${contestId}/works?current_user_id=${currentUserId}`);
+        
+        console.log('Ответ API для работ:', response);
+        
+        if (!response || !response.success) {
+          const errorMsg = response?.detail || response?.message || 'Неизвестная ошибка';
+          list.innerHTML = `<div class="text-center text-red-400 py-4">Ошибка: ${errorMsg}</div>`;
+          return;
+        }
+        
+        if (!response.works || response.works.length === 0) {
+          list.innerHTML = '<div class="text-center text-gray-400 py-4">Работ пока нет</div>';
+          return;
+        }
+        
+        list.innerHTML = response.works.map(work => `
+          <div class="flex items-center gap-3 p-3 rounded-lg bg-black/20 border border-violet-400/20">
+            <div class="flex-1">
+              <div class="font-semibold text-white">Работа #${work.work_number}</div>
+              <div class="text-sm text-gray-400">Участник: ${work.username}</div>
+              ${work.image_url ? `
+                <img src="${work.image_url}" alt="Работа #${work.work_number}" class="mt-2 w-full max-w-[200px] rounded-lg" />
+              ` : ''}
+            </div>
+            <button 
+              onclick="openCancelWorkModal(${contestId}, ${work.work_number}, '${work.username.replace(/'/g, "\\'")}')"
+              class="bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg"
+              title="Аннулировать работу"
+            >
+              🗑️
+            </button>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Ошибка загрузки работ:', error);
+        let errorMsg = 'Неизвестная ошибка';
+        if (error.message) {
+          errorMsg = error.message;
+        } else if (error.detail) {
+          errorMsg = error.detail;
+        } else if (typeof error === 'string') {
+          errorMsg = error;
+        }
+        list.innerHTML = `<div class="text-center text-red-400 py-4">Ошибка загрузки работ: ${errorMsg}</div>`;
+      }
+    };
+    
+    // Функция для открытия модального окна аннулирования
+    window.openCancelWorkModal = function(contestId, workNumber, username) {
+      const modal = document.getElementById('cancel-work-modal');
+      const reasonSelect = document.getElementById('cancel-reason-select');
+      const customReasonDiv = document.getElementById('custom-reason-div');
+      const customReasonText = document.getElementById('custom-reason-text');
+      
+      // Сохраняем данные для использования при подтверждении
+      window.currentCancelData = { contestId, workNumber, username };
+      
+      // Сбрасываем форму
+      reasonSelect.value = '';
+      customReasonDiv.classList.add('hidden');
+      customReasonText.value = '';
+      
+      // Обработчик изменения причины
+      reasonSelect.onchange = function() {
+        if (this.value === 'Другая причина') {
+          customReasonDiv.classList.remove('hidden');
+        } else {
+          customReasonDiv.classList.add('hidden');
+        }
+      };
+      
+      modal.classList.remove('hidden');
+    };
+    
+    // Обработчики закрытия модальных окон
+    document.getElementById('close-contest-works-modal')?.addEventListener('click', () => {
+      document.getElementById('contest-works-modal').classList.add('hidden');
+    });
+    
+    document.getElementById('close-cancel-work-modal')?.addEventListener('click', () => {
+      document.getElementById('cancel-work-modal').classList.add('hidden');
+    });
+    
+    document.getElementById('cancel-work-cancel-btn')?.addEventListener('click', () => {
+      document.getElementById('cancel-work-modal').classList.add('hidden');
+    });
+    
+    // Обработчик подтверждения аннулирования
+    document.getElementById('cancel-work-confirm-btn')?.addEventListener('click', async () => {
+      const reasonSelect = document.getElementById('cancel-reason-select');
+      const customReasonText = document.getElementById('custom-reason-text');
+      const { contestId, workNumber, username } = window.currentCancelData || {};
+      
+      if (!contestId || !workNumber) {
+        alert('Ошибка: данные о работе не найдены');
+        return;
+      }
+      
+      let reason = reasonSelect.value;
+      if (reason === 'Другая причина') {
+        reason = customReasonText.value.trim();
+        if (!reason) {
+          alert('Пожалуйста, укажите причину аннулирования');
+          return;
+        }
+      }
+      
+      if (!reason) {
+        alert('Пожалуйста, выберите причину аннулирования');
+        return;
+      }
+      
+      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+      
+      try {
+        const response = await fetchJSON(`/api/contests/${contestId}/works/${workNumber}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            reason: reason
+          })
+        });
+        
+        if (response.success) {
+          alert(`✅ Работа #${workNumber} от ${username} успешно аннулирована`);
+          document.getElementById('cancel-work-modal').classList.add('hidden');
+          // Обновляем список работ
+          await window.showContestWorks(contestId);
+          // Обновляем список конкурсов
+          await window.loadContests();
+        } else {
+          alert('Ошибка при аннулировании работы');
+        }
+      } catch (error) {
+        console.error('Ошибка аннулирования работы:', error);
+        alert('Ошибка при аннулировании работы: ' + (error.message || 'Неизвестная ошибка'));
+      }
+    });
   </script>
 </body>
 </html>
