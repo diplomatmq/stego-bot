@@ -4913,8 +4913,12 @@
           document.getElementById('cancel-work-modal').classList.add('hidden');
           // Обновляем список работ
           await window.showContestWorks(contestId);
-          // Обновляем список конкурсов
-          await window.loadContests();
+          // Обновляем список конкурсов (если функция доступна)
+          if (typeof loadContests === 'function') {
+            await loadContests();
+          } else if (typeof window.loadContests === 'function') {
+            await window.loadContests();
+          }
         } else {
           alert('Ошибка при аннулировании работы');
         }
