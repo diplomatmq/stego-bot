@@ -4786,7 +4786,15 @@
       try {
         const response = await fetchJSON(`/api/contests/${contestId}/works?current_user_id=${currentUserId}`);
         
-        if (!response.success || !response.works || response.works.length === 0) {
+        console.log('Ответ API для работ:', response);
+        
+        if (!response || !response.success) {
+          const errorMsg = response?.detail || response?.message || 'Неизвестная ошибка';
+          list.innerHTML = `<div class="text-center text-red-400 py-4">Ошибка: ${errorMsg}</div>`;
+          return;
+        }
+        
+        if (!response.works || response.works.length === 0) {
           list.innerHTML = '<div class="text-center text-gray-400 py-4">Работ пока нет</div>';
           return;
         }
@@ -4811,7 +4819,15 @@
         `).join('');
       } catch (error) {
         console.error('Ошибка загрузки работ:', error);
-        list.innerHTML = '<div class="text-center text-red-400 py-4">Ошибка загрузки работ</div>';
+        let errorMsg = 'Неизвестная ошибка';
+        if (error.message) {
+          errorMsg = error.message;
+        } else if (error.detail) {
+          errorMsg = error.detail;
+        } else if (typeof error === 'string') {
+          errorMsg = error;
+        }
+        list.innerHTML = `<div class="text-center text-red-400 py-4">Ошибка загрузки работ: ${errorMsg}</div>`;
       }
     };
     
