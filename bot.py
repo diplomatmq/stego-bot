@@ -5,6 +5,7 @@ import uvicorn
 from datetime import datetime, timezone
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, PreCheckoutQuery, ContentType
+from aiogram.dispatcher.middlewares import BaseMiddleware
 from sqlalchemy.future import select
 
 from config import BOT_TOKEN, CREATOR_ID, WEBAPP_URL
@@ -559,8 +560,8 @@ async def run_bot():
     print("🤖 Запуск Telegram-бота...")
     
     # Добавляем middleware для логирования ВСЕХ входящих обновлений
-    # В aiogram 2.x middleware регистрируется через dp.middleware.setup()
-    class UpdateLoggingMiddleware:
+    # В aiogram 2.x middleware должен наследоваться от BaseMiddleware
+    class UpdateLoggingMiddleware(BaseMiddleware):
         async def __call__(self, handler, event, data):
             # Логируем все callback_query
             if hasattr(event, 'callback_query') and event.callback_query:
