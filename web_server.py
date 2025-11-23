@@ -2947,12 +2947,11 @@ async def get_contest_works(contest_id: int, current_user_id: int = Query(...)):
         if not (is_creator or is_admin):
             raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра работ")
         
-        # Проверяем, что идет время приема работ
-        now_msk = datetime.now()
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk > submission_end:
-            raise HTTPException(status_code=400, detail="Время приема работ истекло")
+        # Проверяем, что идет время приема работ (но разрешаем просмотр даже после окончания для создателя/админа)
+        # Убрали эту проверку, чтобы создатель/админ могли просматривать работы в любое время
     
+    # Получаем информацию об участниках в одной сессии
+    works_info = []
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
         contest_entry = drawing_data.get(str(contest_id))
@@ -2961,52 +2960,51 @@ async def get_contest_works(contest_id: int, current_user_id: int = Query(...)):
         
         works_raw = contest_entry.get("works", [])
         works_sorted = sorted(works_raw, key=lambda w: w.get("work_number", 0))
-        
-        # Получаем информацию об участниках
-        works_info = []
-        async with async_session() as session:
-            for work in works_sorted:
-                work_number = work.get("work_number")
-                participant_user_id = work.get("participant_user_id")
-                local_path = work.get("local_path")
-                
-                if not work_number or not participant_user_id:
-                    continue
-                
-                # Получаем username участника
-                username = None
-                user_result = await session.execute(
-                    select(User).where(User.telegram_id == participant_user_id)
-                )
-                user = user_result.scalars().first()
-                if user and user.username:
-                    username = user.username
-                else:
-                    # Если username нет в User, берем из Participant
-                    from models import Participant
-                    participant_result = await session.execute(
-                        select(Participant).where(
-                            Participant.giveaway_id == contest_id,
-                            Participant.user_id == participant_user_id
-                        )
+    
+    # Используем отдельную сессию для получения информации об участниках
+    async with async_session() as works_session:
+        from models import Participant
+        for work in works_sorted:
+            work_number = work.get("work_number")
+            participant_user_id = work.get("participant_user_id")
+            local_path = work.get("local_path")
+            
+            if not work_number or not participant_user_id:
+                continue
+            
+            # Получаем username участника
+            username = None
+            user_result = await works_session.execute(
+                select(User).where(User.telegram_id == participant_user_id)
+            )
+            user = user_result.scalars().first()
+            if user and user.username:
+                username = user.username
+            else:
+                # Если username нет в User, берем из Participant
+                participant_result = await works_session.execute(
+                    select(Participant).where(
+                        Participant.giveaway_id == contest_id,
+                        Participant.user_id == participant_user_id
                     )
-                    participant = participant_result.scalars().first()
-                    if participant:
-                        username = participant.username
-                
-                works_info.append({
-                    "work_number": work_number,
-                    "participant_user_id": participant_user_id,
-                    "username": username or f"User_{participant_user_id}",
-                    "has_image": bool(local_path),
-                    "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image" if local_path else None
-                })
-        
-        return {
-            "success": True,
-            "works": works_info,
-            "total": len(works_info)
-        }
+                )
+                participant = participant_result.scalars().first()
+                if participant:
+                    username = participant.username
+            
+            works_info.append({
+                "work_number": work_number,
+                "participant_user_id": participant_user_id,
+                "username": username or f"User_{participant_user_id}",
+                "has_image": bool(local_path),
+                "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image" if local_path else None
+            })
+    
+    return {
+        "success": True,
+        "works": works_info,
+        "total": len(works_info)
+    }
 
 @app.post("/api/contests/{contest_id}/works/{work_number}/cancel")
 async def cancel_contest_work(contest_id: int, work_number: int, request: Request):
