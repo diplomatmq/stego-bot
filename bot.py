@@ -20,11 +20,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
 
-# Словарь для хранения состояния ожидания причины отказа работы
-# Формат: {user_id: {"contest_id": int, "work_number": int, "participant_user_id": int}}
-awaiting_cancel_reason = {}
-
-
 async def check_subscription_to_channel(bot: Bot, user_id: int, channel_username: str) -> bool:
     """Проверяет подписку пользователя на канал"""
     try:
@@ -33,54 +28,6 @@ async def check_subscription_to_channel(bot: Bot, user_id: int, channel_username
     except Exception as e:
         logging.warning(f"Ошибка проверки подписки на {channel_username}: {e}")
         return False
-
-# Обработчик для аннулирования работ - регистрируется в run_bot() ПЕРВЫМ
-# НЕ используем декоратор @dp.callback_query_handler, чтобы контролировать порядок регистрации
-async def cancel_work_callback_handler(callback_query: types.CallbackQuery):
-    """Обработчик кнопки 'Аннулировать' работу"""
-    logging.info(f"🔔🔔🔔 ОБРАБОТЧИК СРАБОТАЛ! Callback для аннулирования: {callback_query.data} от пользователя {callback_query.from_user.id}")
-    
-    # Отвечаем на callback сразу, чтобы убрать индикатор загрузки
-    try:
-        await callback_query.answer("Обработка...")
-    except Exception as e:
-        logging.warning(f"⚠️ Не удалось ответить на callback: {e}")
-    
-    try:
-        # Парсим данные из callback_data: cancel_work:contest_id:work_number:user_id или cancel:contest_id:work_number:user_id
-        parts = callback_query.data.split(':')
-        logging.info(f"📋 Парсинг callback_data: {parts}, количество частей: {len(parts)}")
-        
-        if len(parts) != 4:
-            logging.error(f"❌ Неверный формат callback_data: {callback_query.data}, частей: {len(parts)}")
-            await callback_query.message.answer("❌ Ошибка: неверный формат данных")
-            return
-        
-        contest_id = int(parts[1])
-        work_number = int(parts[2])
-        participant_user_id = int(parts[3])
-        creator_id = callback_query.from_user.id
-        
-        logging.info(f"✅ Парсинг успешен: contest_id={contest_id}, work_number={work_number}, participant_user_id={participant_user_id}, creator_id={creator_id}")
-        
-        # Сохраняем состояние ожидания причины
-        awaiting_cancel_reason[creator_id] = {
-            "contest_id": contest_id,
-            "work_number": work_number,
-            "participant_user_id": participant_user_id
-        }
-        
-        logging.info(f"💾 Сохранено состояние ожидания причины для создателя {creator_id}")
-        
-        await callback_query.message.answer(
-            "📝 Пожалуйста, напишите причину аннулирования работы:"
-        )
-        logging.info(f"✅ Запрос причины отправлен создателю {creator_id}")
-        
-    except Exception as e:
-        logging.error(f"Ошибка при обработке аннулирования работы: {e}", exc_info=True)
-        await callback_query.message.answer("❌ Произошла ошибка при обработке запроса")
-
 
 # Обработчик для проверки подписки - регистрируется в run_bot()
 async def check_subscription_callback_handler(callback_query: types.CallbackQuery):
@@ -190,111 +137,6 @@ async def check_subscription_callback_handler(callback_query: types.CallbackQuer
         parse_mode="Markdown",
         reply_markup=kb
     )
-
-
-@dp.message_handler(lambda m: m.from_user.id in awaiting_cancel_reason and m.text and not m.text.startswith('/'))
-async def handle_cancel_reason(message: types.Message):
-    """Обработчик ввода причины аннулирования работы"""
-    creator_id = message.from_user.id
-    reason = message.text.strip()
-    
-    if not reason:
-        await message.answer("❌ Причина не может быть пустой. Пожалуйста, напишите причину аннулирования:")
-        return
-    
-    try:
-        cancel_data = awaiting_cancel_reason.pop(creator_id)
-        contest_id = cancel_data["contest_id"]
-        work_number = cancel_data["work_number"]
-        participant_user_id = cancel_data["participant_user_id"]
-        
-        # Загружаем данные конкурса
-        from web_server import load_drawing_data, save_drawing_data, drawing_data_lock
-        
-        async with drawing_data_lock:
-            drawing_data = load_drawing_data()
-            contest_key = str(contest_id)
-            contest_entry = drawing_data.get(contest_key)
-            
-            if not contest_entry:
-                await message.answer("❌ Конкурс не найден")
-                return
-            
-            # Находим работу
-            works = contest_entry.get("works", [])
-            work = None
-            for w in works:
-                if w.get("work_number") == work_number and w.get("participant_user_id") == participant_user_id:
-                    work = w
-                    break
-            
-            if not work:
-                await message.answer("❌ Работа не найдена")
-                return
-            
-            # Удаляем файл фото, если он существует
-            local_path = work.get("local_path")
-            if local_path:
-                try:
-                    from web_server import ROOT_DIR
-                    import os
-                    full_path = os.path.join(ROOT_DIR, local_path)
-                    if os.path.exists(full_path):
-                        os.remove(full_path)
-                        logging.info(f"🗑️ Удален файл фото: {full_path}")
-                except Exception as e:
-                    logging.warning(f"⚠️ Не удалось удалить файл {local_path}: {e}")
-            
-            # Полностью удаляем работу из списка
-            works.remove(work)
-            
-            save_drawing_data(drawing_data)
-            
-            # Обновляем participant в базе данных - удаляем photo_link
-            try:
-                from db import async_session
-                from models import Participant
-                from sqlalchemy.future import select
-                
-                async with async_session() as session:
-                    participant_result = await session.execute(
-                        select(Participant).where(
-                            Participant.giveaway_id == contest_id,
-                            Participant.user_id == participant_user_id
-                        )
-                    )
-                    participant = participant_result.scalars().first()
-                    if participant:
-                        participant.photo_link = None
-                        participant.photo_message_id = None
-                        await session.commit()
-                        logging.info(f"✅ Обновлен participant для пользователя {participant_user_id} в конкурсе {contest_id}")
-            except Exception as e:
-                logging.error(f"⚠️ Ошибка при обновлении participant в БД: {e}")
-        
-        # Получаем название конкурса
-        contest_title = contest_entry.get("title", f"Конкурс #{contest_id}")
-        
-        # Отправляем сообщение участнику
-        try:
-            participant_message = (
-                f"❌ Ваша работа аннулирована в конкурсе \"{contest_title}\"\n\n"
-                f"Причина: {reason}"
-            )
-            await bot.send_message(chat_id=participant_user_id, text=participant_message)
-            await message.answer(f"✅ Работа #{work_number} аннулирована. Участнику отправлено уведомление.")
-        except Exception as e:
-            logging.error(f"Ошибка при отправке сообщения участнику {participant_user_id}: {e}")
-            await message.answer(
-                f"✅ Работа #{work_number} аннулирована.\n"
-                f"⚠️ Не удалось отправить уведомление участнику (возможно, он не начал диалог с ботом)."
-            )
-        
-    except Exception as e:
-        logging.error(f"Ошибка при обработке причины аннулирования: {e}", exc_info=True)
-        await message.answer("❌ Произошла ошибка при обработке причины аннулирования")
-        # Убираем состояние на случай ошибки
-        awaiting_cancel_reason.pop(creator_id, None)
 
 
 @dp.message_handler(commands=['start'])
@@ -574,29 +416,6 @@ async def run_bot():
     dp.middleware.setup(UpdateLoggingMiddleware())
     logging.info("✅ Middleware для логирования обновлений зарегистрирован")
     
-    # ВАЖНО: В aiogram 2.x порядок регистрации обработчиков имеет значение!
-    # Регистрируем обработчики callback'ов в правильном порядке:
-    # 1. Сначала специфичные обработчики (с точными условиями)
-    # 2. Потом общие обработчики (с startswith и т.д.)
-    
-    # Регистрируем обработчик cancel_work ПЕРВЫМ (до всех остальных)
-    # Это критично, чтобы он не был перехвачен другими обработчиками
-    
-    # Создаем фильтр для отладки
-    def cancel_filter(callback_query: types.CallbackQuery):
-        if not callback_query.data:
-            return False
-        matches = callback_query.data.startswith('cancel_work:') or callback_query.data.startswith('cancel:')
-        if matches:
-            logging.info(f"🎯 ФИЛЬТР СРАБОТАЛ для callback_data: '{callback_query.data}'")
-        return matches
-    
-    dp.register_callback_query_handler(
-        cancel_work_callback_handler,
-        cancel_filter
-    )
-    logging.info("✅ Обработчик аннулирования зарегистрирован ПЕРВЫМ с фильтром")
-    
     # Регистрируем обработчик проверки подписки
     dp.register_callback_query_handler(
         check_subscription_callback_handler,
@@ -617,10 +436,9 @@ async def run_bot():
             pass
     
     # Регистрируем обработчик для необработанных callback'ов ПОСЛЕДНИМ
-    # Но только если callback не начинается с cancel_work: или cancel:
     dp.register_callback_query_handler(
         log_unhandled_callbacks,
-        lambda c: c.data and not (c.data.startswith('cancel_work:') or c.data.startswith('cancel:')) and c.data != 'check_subscription'
+        lambda c: c.data and c.data != 'check_subscription'
     )
     logging.info("✅ Обработчик для логирования необработанных callback'ов зарегистрирован")
     
@@ -629,11 +447,6 @@ async def run_bot():
     register_creator_handlers(dp)
     
     logging.info("✅ Все обработчики зарегистрированы")
-    
-    # Выводим список всех зарегистрированных callback handlers для отладки
-    logging.info("📋 Список зарегистрированных callback handlers:")
-    for handler in dp.callback_query.handlers:
-        logging.info(f"  - {handler}")
     
     # Проверяем все активные конкурсы и собираем исторические комментарии
     from giveaway import check_all_giveaways_historical_comments
