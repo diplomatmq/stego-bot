@@ -2238,34 +2238,9 @@ async def upload_photo_for_drawing_contest(
                         caption_creator = f"Конкурс рисунков #{contest_id}\nРабота #{work_number}\nУчастник: ID: {user_id}"
                     caption_user = f"Конкурс рисунков #{contest_id}\nВаша работа #{work_number}"
 
-                    # Создаем кнопку "Аннулировать" под фото
-                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                    callback_data = f"cancel_work:{contest_id}:{work_number}:{user_id}"
-                    callback_data_bytes = len(callback_data.encode('utf-8'))
-                    logger.info(f"🔘 Создана кнопка 'Аннулировать' с callback_data: {callback_data} (длина: {callback_data_bytes} байт)")
-                    
-                    # Telegram ограничивает callback_data до 64 байт
-                    if callback_data_bytes > 64:
-                        logger.error(f"❌ callback_data слишком длинный ({callback_data_bytes} байт), максимально 64 байта!")
-                        # Используем более короткий формат
-                        callback_data = f"cancel:{contest_id}:{work_number}:{user_id}"
-                        callback_data_bytes = len(callback_data.encode('utf-8'))
-                        logger.info(f"🔘 Используется короткий формат: {callback_data} (длина: {callback_data_bytes} байт)")
-                    
-                    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="❌ Аннулировать", callback_data=callback_data)]
-                    ])
-                    
-                    # Логируем структуру клавиатуры для отладки
                     try:
-                        keyboard_dict = cancel_keyboard.to_python()
-                        logger.info(f"🔘 Структура клавиатуры: {keyboard_dict}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Не удалось сериализовать клавиатуру: {e}")
-
-                    try:
-                        logger.info(f"📤 Попытка отправить фото конкурса {contest_id} создателю {chat_id} с callback_data: {callback_data}")
-                        sent_message = await send_photo_with_fallback(chat_id, caption_creator, reply_markup=cancel_keyboard)
+                        logger.info(f"📤 Попытка отправить фото конкурса {contest_id} создателю {chat_id}")
+                        sent_message = await send_photo_with_fallback(chat_id, caption_creator)
                         logger.info(f"✅ Фото успешно отправлено создателю {chat_id}, message_id={sent_message.message_id}, reply_markup установлен")
                     except Exception as send_error:
                         logger.error(f"❌ Ошибка при отправке фото создателю {chat_id}: {send_error}", exc_info=True)
@@ -2773,10 +2748,6 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             if not work_number or not local_path or not participant_user_id:
                 continue
             
-            # Пропускаем аннулированные работы
-            if work.get("cancelled", False):
-                continue
-            
             # Пропускаем собственную работу пользователя
             if participant_user_id == user_id:
                 continue
@@ -2896,10 +2867,6 @@ async def submit_vote(contest_id: int, request: Request):
         if not work:
             raise HTTPException(status_code=404, detail="Работа не найдена")
         
-        # Проверяем, что работа не аннулирована
-        if work.get("cancelled", False):
-            raise HTTPException(status_code=404, detail="Работа была аннулирована")
-
         if work.get("participant_user_id") == user_id:
             raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
 
@@ -2915,7 +2882,6 @@ async def submit_vote(contest_id: int, request: Request):
             for w in works
             if w.get("participant_user_id") != user_id 
             and str(user_id) not in (w.get("votes") or {})
-            and not w.get("cancelled", False)  # Пропускаем аннулированные работы
         )
 
         save_drawing_data(drawing_data)
@@ -2937,10 +2903,6 @@ async def get_drawing_work_image(contest_id: int, work_number: int):
         work = next((w for w in contest_entry.get("works", []) if w.get("work_number") == work_number), None)
         if not work:
             raise HTTPException(status_code=404, detail="Работа не найдена")
-        
-        # Проверяем, что работа не аннулирована
-        if work.get("cancelled", False):
-            raise HTTPException(status_code=404, detail="Работа была аннулирована")
         
         local_path = work.get("local_path")
 
@@ -3186,10 +3148,6 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                     votes = work.get("votes", {}) or {}
                     
                     if not work_number or not participant_user_id:
-                        continue
-                    
-                    # Пропускаем аннулированные работы
-                    if work.get("cancelled", False):
                         continue
                     
                     # Получаем username участника из таблицы User (приоритет) или Participant
