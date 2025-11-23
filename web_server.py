@@ -2919,6 +2919,224 @@ async def get_drawing_work_image(contest_id: int, work_number: int):
     media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
     return FileResponse(full_path, media_type=media_type)
 
+@app.get("/api/contests/{contest_id}/works")
+async def get_contest_works(contest_id: int, current_user_id: int = Query(...)):
+    """Получить список всех работ конкурса (для создателя/админа)"""
+    async with async_session() as session:
+        # Проверяем права доступа
+        giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
+        giveaway = giveaway_result.scalars().first()
+        
+        if not giveaway:
+            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        
+        contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
+        if contest_type != 'drawing':
+            raise HTTPException(status_code=400, detail="Этот endpoint доступен только для конкурса рисунков")
+        
+        # Проверяем права: создатель конкурса или админ
+        user_result = await session.execute(select(User).where(User.telegram_id == current_user_id))
+        user = user_result.scalars().first()
+        
+        if not user:
+            raise HTTPException(status_code=403, detail="Пользователь не найден")
+        
+        is_creator = giveaway.created_by == current_user_id
+        is_admin = user.role in ['admin', 'creator']
+        
+        if not (is_creator or is_admin):
+            raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра работ")
+        
+        # Проверяем, что идет время приема работ
+        now_msk = datetime.now()
+        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
+        if submission_end and now_msk > submission_end:
+            raise HTTPException(status_code=400, detail="Время приема работ истекло")
+    
+    async with drawing_data_lock:
+        drawing_data = load_drawing_data()
+        contest_entry = drawing_data.get(str(contest_id))
+        if not contest_entry:
+            return {"success": True, "works": [], "total": 0}
+        
+        works_raw = contest_entry.get("works", [])
+        works_sorted = sorted(works_raw, key=lambda w: w.get("work_number", 0))
+        
+        # Получаем информацию об участниках
+        works_info = []
+        async with async_session() as session:
+            for work in works_sorted:
+                work_number = work.get("work_number")
+                participant_user_id = work.get("participant_user_id")
+                local_path = work.get("local_path")
+                
+                if not work_number or not participant_user_id:
+                    continue
+                
+                # Получаем username участника
+                username = None
+                user_result = await session.execute(
+                    select(User).where(User.telegram_id == participant_user_id)
+                )
+                user = user_result.scalars().first()
+                if user and user.username:
+                    username = user.username
+                else:
+                    # Если username нет в User, берем из Participant
+                    from models import Participant
+                    participant_result = await session.execute(
+                        select(Participant).where(
+                            Participant.giveaway_id == contest_id,
+                            Participant.user_id == participant_user_id
+                        )
+                    )
+                    participant = participant_result.scalars().first()
+                    if participant:
+                        username = participant.username
+                
+                works_info.append({
+                    "work_number": work_number,
+                    "participant_user_id": participant_user_id,
+                    "username": username or f"User_{participant_user_id}",
+                    "has_image": bool(local_path),
+                    "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image" if local_path else None
+                })
+        
+        return {
+            "success": True,
+            "works": works_info,
+            "total": len(works_info)
+        }
+
+@app.post("/api/contests/{contest_id}/works/{work_number}/cancel")
+async def cancel_contest_work(contest_id: int, work_number: int, request: Request):
+    """Аннулировать работу в конкурсе"""
+    data = await request.json()
+    current_user_id = data.get("user_id")
+    reason = data.get("reason", "").strip()
+    
+    if not current_user_id:
+        raise HTTPException(status_code=400, detail="Необходимо указать user_id")
+    
+    if not reason:
+        raise HTTPException(status_code=400, detail="Необходимо указать причину аннулирования")
+    
+    try:
+        current_user_id = int(current_user_id)
+        work_number = int(work_number)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Неверный формат данных")
+    
+    async with async_session() as session:
+        # Проверяем права доступа
+        giveaway_result = await session.execute(select(Giveaway).where(Giveaway.id == contest_id))
+        giveaway = giveaway_result.scalars().first()
+        
+        if not giveaway:
+            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        
+        contest_type = getattr(giveaway, 'contest_type', 'random_comment') if hasattr(giveaway, 'contest_type') else 'random_comment'
+        if contest_type != 'drawing':
+            raise HTTPException(status_code=400, detail="Этот endpoint доступен только для конкурса рисунков")
+        
+        # Проверяем права: создатель конкурса или админ
+        user_result = await session.execute(select(User).where(User.telegram_id == current_user_id))
+        user = user_result.scalars().first()
+        
+        if not user:
+            raise HTTPException(status_code=403, detail="Пользователь не найден")
+        
+        is_creator = giveaway.created_by == current_user_id
+        is_admin = user.role in ['admin', 'creator']
+        
+        if not (is_creator or is_admin):
+            raise HTTPException(status_code=403, detail="Недостаточно прав для аннулирования работ")
+        
+        # Проверяем, что идет время приема работ
+        now_msk = datetime.now()
+        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
+        if submission_end and now_msk > submission_end:
+            raise HTTPException(status_code=400, detail="Время приема работ истекло, нельзя аннулировать работы")
+        
+        # Находим работу
+        async with drawing_data_lock:
+            drawing_data = load_drawing_data()
+            contest_entry = drawing_data.get(str(contest_id))
+            if not contest_entry:
+                raise HTTPException(status_code=404, detail="Конкурс не найден в drawing_contests.json")
+            
+            works = contest_entry.get("works", [])
+            work = None
+            for w in works:
+                if w.get("work_number") == work_number:
+                    work = w
+                    break
+            
+            if not work:
+                raise HTTPException(status_code=404, detail="Работа не найдена")
+            
+            participant_user_id = work.get("participant_user_id")
+            local_path = work.get("local_path")
+            
+            # Удаляем файл фото, если он существует
+            if local_path:
+                try:
+                    full_path = os.path.join(ROOT_DIR, local_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        logger.info(f"🗑️ Удален файл фото: {full_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось удалить файл {local_path}: {e}")
+            
+            # Удаляем работу из списка
+            works.remove(work)
+            save_drawing_data(drawing_data)
+            
+            # Обновляем participant в базе данных - удаляем photo_link
+            from models import Participant
+            participant_result = await session.execute(
+                select(Participant).where(
+                    Participant.giveaway_id == contest_id,
+                    Participant.user_id == participant_user_id
+                )
+            )
+            participant = participant_result.scalars().first()
+            if participant:
+                participant.photo_link = None
+                participant.photo_message_id = None
+                await session.commit()
+                logger.info(f"✅ Обновлен participant для пользователя {participant_user_id} в конкурсе {contest_id}")
+        
+        # Получаем название конкурса
+        contest_title = getattr(giveaway, 'title', f"Конкурс #{contest_id}")
+        
+        # Отправляем сообщение участнику через бота
+        try:
+            from aiogram import Bot
+            bot = Bot(token=BOT_TOKEN)
+            participant_message = (
+                f"❌ Ваша работа аннулирована в конкурсе \"{contest_title}\"\n\n"
+                f"Причина: {reason}"
+            )
+            await bot.send_message(chat_id=participant_user_id, text=participant_message)
+            logger.info(f"✅ Отправлено уведомление участнику {participant_user_id} об аннулировании работы")
+            
+            # Закрываем сессию бота
+            try:
+                bot_session = await bot.get_session()
+                if bot_session:
+                    await bot_session.close()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error(f"⚠️ Ошибка при отправке сообщения участнику {participant_user_id}: {e}")
+            # Не прерываем выполнение, если не удалось отправить сообщение
+        
+        return {
+            "success": True,
+            "message": "Работа успешно аннулирована"
+        }
+
 @app.get("/api/contests/{contest_id}/collection-voting-queue")
 async def get_collection_voting_queue(contest_id: int, user_id: int = Query(...)):
     """Получить список коллекций для голосования в конкурсе коллекций"""
