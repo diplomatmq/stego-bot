@@ -1273,7 +1273,7 @@
       }
 
       // Data fetching helpers (adjust endpoints to your backend)
-      async function fetchJSON(url, options = {}) {
+      window.fetchJSON = async function fetchJSON(url, options = {}) {
         // Для запросов на выбор победителей используем больший таймаут, если он не указан
         const defaultTimeout = url.includes('/select-winners') ? 60000 : 10000; // 60 сек для select-winners, 10 сек для остальных
         const timeout = options.timeout || defaultTimeout;
