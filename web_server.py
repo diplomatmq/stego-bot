@@ -101,11 +101,11 @@ async def get_js():
     """JS напрямую из корня"""
     return get_file_with_no_cache(os.path.join(ROOT_DIR, "script.js"))
 
-@app.get("/monkeyscoin.png")
+@app.get("/monkeyscoin.jpg")
 async def get_monkeyscoin():
     """Изображение монетки"""
     import mimetypes
-    coin_path = os.path.join(ROOT_DIR, "monkeyscoin.png")
+    coin_path = os.path.join(ROOT_DIR, "monkeyscoin.jpg")
     if not os.path.exists(coin_path):
         raise HTTPException(status_code=404, detail="Image not found")
     media_type = mimetypes.guess_type(coin_path)[0] or "image/jpeg"
@@ -813,6 +813,81 @@ async def get_purchased_items(tg_id: int = Query(...)):
     except Exception as e:
         logger.error(f"Ошибка при получении покупок: {e}", exc_info=True)
         return {"purchased_items": {"themes": [], "avatarStars": [], "nftGifts": []}}
+
+@app.get("/api/profile/monkey-coins")
+async def get_monkey_coins(tg_id: int = Query(...)):
+    """Получить баланс Monkey Coins пользователя"""
+    try:
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.telegram_id == tg_id))
+            user = result.scalars().first()
+            
+            if not user:
+                return {"monkey_coins": 0}
+            
+            monkey_coins = getattr(user, 'monkey_coins', 0) or 0
+            return {"monkey_coins": monkey_coins}
+    except Exception as e:
+        logger.error(f"Ошибка при получении баланса Monkey Coins: {e}", exc_info=True)
+        return {"monkey_coins": 0}
+
+@app.post("/api/shop/purchase-theme")
+async def purchase_theme(request: Request):
+    """Купить тему за Monkey Coins"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        theme_id = data.get("theme_id")
+        price = data.get("price")
+        
+        if not user_id or not theme_id or not price:
+            raise HTTPException(status_code=400, detail="Необходимо указать user_id, theme_id и price")
+        
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+            
+            if not user:
+                raise HTTPException(status_code=404, detail="Пользователь не найден")
+            
+            # Проверяем баланс
+            monkey_coins = getattr(user, 'monkey_coins', 0) or 0
+            if monkey_coins < price:
+                raise HTTPException(status_code=400, detail=f"Недостаточно Monkey Coins. У вас: {monkey_coins}, нужно: {price}")
+            
+            # Проверяем, не куплена ли уже тема
+            purchased_items = None
+            if hasattr(user, 'purchased_items') and user.purchased_items:
+                try:
+                    if isinstance(user.purchased_items, str):
+                        purchased_items = json.loads(user.purchased_items)
+                    else:
+                        purchased_items = user.purchased_items
+                except:
+                    purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
+            else:
+                purchased_items = {"themes": [], "avatarStars": [], "nftGifts": []}
+            
+            if theme_id in purchased_items.get("themes", []):
+                raise HTTPException(status_code=400, detail="Эта тема уже куплена")
+            
+            # Списываем Monkey Coins
+            user.monkey_coins = monkey_coins - price
+            
+            # Добавляем тему в покупки
+            if "themes" not in purchased_items:
+                purchased_items["themes"] = []
+            purchased_items["themes"].append(theme_id)
+            user.purchased_items = purchased_items
+            
+            await session.commit()
+            
+            return {"success": True, "monkey_coins": user.monkey_coins}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при покупке темы: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при покупке темы: {str(e)}")
 
 @app.post("/api/payment/add-purchase")
 async def add_purchase(request: Request):
