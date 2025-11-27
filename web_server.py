@@ -1942,14 +1942,48 @@ async def participate_in_contest(contest_id: int, request: Request):
 @app.post("/api/contests/{contest_id}/upload-photo")
 async def upload_photo_for_drawing_contest(
     contest_id: int,
-    file: UploadFile = File(...),
-    user_id: int = Form(...),
-    user_username: str = Form(None)
+    request: Request
 ):
     """Загрузка фотографии для конкурса рисунков"""
     try:
-        if not user_id:
+        # Читаем multipart/form-data напрямую из запроса
+        form = await request.form()
+        
+        # Получаем файл и параметры из формы
+        file = form.get("file")
+        user_id_str = form.get("user_id")
+        user_username = form.get("user_username")
+        
+        if not user_id_str:
             raise HTTPException(status_code=400, detail="user_id обязателен")
+        
+        try:
+            user_id = int(user_id_str)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="user_id должен быть числом")
+        
+        if not file or not hasattr(file, 'read'):
+            raise HTTPException(status_code=400, detail="Файл не найден в запросе")
+        
+        # Сохраняем имя файла ДО чтения
+        original_filename = file.filename or "photo.jpg"
+        
+        # Читаем файл ОДИН РАЗ
+        try:
+            file_content = await file.read()
+        except Exception as e:
+            logger.error(f"Ошибка при чтении файла: {e}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Ошибка при чтении файла: {str(e)}")
+        
+        # Проверяем тип файла
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="Файл должен быть изображением")
+        
+        if len(file_content) == 0:
+            raise HTTPException(status_code=400, detail="Файл пуст")
+        
+        if len(file_content) > 10 * 1024 * 1024:  # 10 MB
+            raise HTTPException(status_code=400, detail="Размер файла не должен превышать 10 МБ")
         
         async with async_session() as session:
             # Получаем информацию о конкурсе
@@ -1993,33 +2027,6 @@ async def upload_photo_for_drawing_contest(
             # Проверяем, не загружена ли уже фотография
             if participant.photo_link:
                 raise HTTPException(status_code=400, detail="Вы уже загрузили фотографию для этого конкурса")
-            
-            # Проверяем тип файла
-            if not file.content_type or not file.content_type.startswith('image/'):
-                raise HTTPException(status_code=400, detail="Файл должен быть изображением")
-            
-            # Сохраняем имя файла ДО чтения (после чтения объект file может быть заблокирован)
-            original_filename = file.filename or "photo.jpg"
-            
-            # Читаем файл ОДИН РАЗ - после этого объект file больше не используется
-            # Важно: читаем файл до всех операций с базой данных, чтобы избежать проблем с блокировкой тела запроса
-            try:
-                file_content = await file.read()
-                # Закрываем файл явно после чтения
-                await file.close()
-            except Exception as e:
-                logger.error(f"Ошибка при чтении файла: {e}", exc_info=True)
-                try:
-                    await file.close()
-                except:
-                    pass
-                raise HTTPException(status_code=400, detail=f"Ошибка при чтении файла: {str(e)}")
-            
-            if len(file_content) == 0:
-                raise HTTPException(status_code=400, detail="Файл пуст")
-            
-            if len(file_content) > 10 * 1024 * 1024:  # 10 MB
-                raise HTTPException(status_code=400, detail="Размер файла не должен превышать 10 МБ")
             
             # Ресайзим изображение, если оно слишком большое (Telegram API ограничение: 10000x10000)
             try:
