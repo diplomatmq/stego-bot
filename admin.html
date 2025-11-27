@@ -3117,6 +3117,9 @@
           // Загружаем опыт и уровни для админа
           await loadAdminExperience(currentUserId);
           
+          // Загружаем баланс Monkey Coins
+          await updateCoinsDisplay();
+          
           // Загружаем и синхронизируем покупки из базы данных
           if (p.purchased_items) {
             try {
@@ -4478,18 +4481,14 @@
             id: 'kitty', 
             name: 'Kitty', 
             icon: '🐱', 
-            priceStars: 150, 
-            priceTON: 1, 
-            priceGifts: null, 
+            priceMonkeyCoins: 150, 
             description: 'Милые котики и лапки на каждом шагу' 
           },
           { 
             id: 'mario', 
             name: 'Mario', 
             icon: '🍄', 
-            priceStars: 250, 
-            priceTON: 2, 
-            priceGifts: null, 
+            priceMonkeyCoins: 250, 
             description: 'Ретро стиль Super Mario Bros с пиксельной графикой' 
           }
         ],
@@ -4606,6 +4605,53 @@
           return;
         }
 
+        // Для тем используем только Monkey Coins
+        if (category === 'themes') {
+          const price = item.priceMonkeyCoins || 0;
+          if (price <= 0) {
+            alert('❌ Цена не указана для этого товара');
+            return;
+          }
+
+          try {
+            // Проверяем баланс Monkey Coins
+            const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${currentUserId}`);
+            const balance = balanceResponse?.monkey_coins || 0;
+
+            if (balance < price) {
+              alert(`❌ Недостаточно Monkey Coins!\n\nУ вас: ${balance}\nНужно: ${price}\n\nПополните счет через кнопку "+" в правом верхнем углу.`);
+              return;
+            }
+
+            // Списываем Monkey Coins и покупаем тему
+            const purchaseResponse = await window.fetchJSON('/api/shop/purchase-theme', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: currentUserId,
+                theme_id: itemId,
+                price: price
+              })
+            });
+
+            if (purchaseResponse?.success) {
+              // Обновляем отображение
+              await renderShop();
+              // Обновляем баланс монеток
+              await updateCoinsDisplay();
+              alert(`✅ Тема "${item.name}" успешно куплена!\n\nСписано: ${price} Monkey Coins`);
+            } else {
+              const errorMsg = purchaseResponse?.detail || purchaseResponse?.message || 'Ошибка при покупке';
+              alert(`❌ ${errorMsg}`);
+            }
+          } catch (error) {
+            console.error('Ошибка при покупке темы:', error);
+            alert('❌ Ошибка при покупке темы. Попробуйте позже.');
+          }
+          return;
+        }
+
+        // Для других категорий (avatarStars, nftGifts) оставляем старую логику
         // Проверяем доступность Telegram WebApp для реальной оплаты
         const isWebAppAvailable = window.Telegram?.WebApp?.initDataUnsafe;
         if (!isWebAppAvailable) {
@@ -5021,9 +5067,7 @@
                     <div class="font-semibold text-white mb-1">${item.name}</div>
                     <div class="text-sm text-gray-400 mb-2">${item.description}</div>
                     <div class="text-xs text-violet-400">
-                      ${item.priceStars ? `${item.priceStars} ⭐` : ''} 
-                      ${item.priceTON ? ` • ${item.priceTON} TON (CryptoBot)` : ''}
-                      ${item.priceGifts === null ? ' • NFT: Скоро' : ''}
+                      ${item.priceMonkeyCoins ? `${item.priceMonkeyCoins} Monkey Coins` : ''}
                     </div>
                   </div>
                   <button 
@@ -5039,6 +5083,27 @@
           })).then(results => results.join(''));
         }
       }
+
+      // Обновление отображения баланса Monkey Coins
+      async function updateCoinsDisplay() {
+        try {
+          const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${currentUserId}`);
+          const balance = balanceResponse?.monkey_coins || 0;
+          const coinsCountEl = document.getElementById('coins-count');
+          if (coinsCountEl) {
+            coinsCountEl.textContent = balance;
+          }
+        } catch (error) {
+          console.error('Ошибка загрузки баланса Monkey Coins:', error);
+          const coinsCountEl = document.getElementById('coins-count');
+          if (coinsCountEl) {
+            coinsCountEl.textContent = '0';
+          }
+        }
+      }
+      
+      // Делаем функцию доступной глобально
+      window.updateCoinsDisplay = updateCoinsDisplay;
 
       // Обновление селектора тем с купленными темами
       async function updateThemeSelector() {
