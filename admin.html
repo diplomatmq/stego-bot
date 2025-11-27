@@ -932,9 +932,69 @@
     body.theme-aot .text-violet-400 {
       color: var(--aot-sepia) !important;
     }
+
+    /* 💰 Стили для блока монеток */
+    #coins-header {
+      transition: all 0.3s ease;
+    }
+    
+    #add-coins-btn:hover {
+      transform: scale(1.1);
+    }
+    
+    body.theme-kitty #coins-header {
+      background: rgba(255, 107, 157, 0.9) !important;
+      border-color: rgba(255, 20, 147, 0.6);
+      box-shadow: 0 0 24px rgba(255, 20, 147, 0.4);
+    }
+    
+    body.theme-kitty #add-coins-btn {
+      background: #ff1493;
+    }
+    
+    body.theme-kitty #add-coins-btn:hover {
+      background: #ff6b9d;
+    }
+    
+    body.theme-mario #coins-header {
+      background: rgba(220, 38, 38, 0.9) !important;
+      border-color: rgba(255, 193, 7, 0.6);
+      box-shadow: 0 0 24px rgba(255, 193, 7, 0.4);
+    }
+    
+    body.theme-mario #add-coins-btn {
+      background: #dc2626;
+    }
+    
+    body.theme-mario #add-coins-btn:hover {
+      background: #ef4444;
+    }
+    
+    body.theme-aot #coins-header {
+      background: rgba(92, 74, 47, 0.9) !important;
+      border-color: rgba(139, 111, 71, 0.6);
+      box-shadow: 0 0 24px rgba(139, 111, 71, 0.4);
+    }
+    
+    body.theme-aot #add-coins-btn {
+      background: #5c4a2f;
+    }
+    
+    body.theme-aot #add-coins-btn:hover {
+      background: #8b6f47;
+    }
   </style>
 </head>
 <body class="page-dark text-white min-h-screen flex flex-col neon-sides">
+
+  <!-- 💰 Блок монеток справа сверху -->
+  <div id="coins-header" class="fixed top-4 right-4 z-50 flex items-center gap-2 bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 border border-purple-500/50 shadow-lg shadow-purple-500/30">
+    <button id="add-coins-btn" class="w-8 h-8 flex items-center justify-center rounded-full bg-purple-600 hover:bg-purple-500 transition-colors text-white font-bold text-lg leading-none" style="line-height: 1;">+</button>
+    <div class="flex items-center gap-1">
+      <span id="coins-count" class="text-white font-semibold text-sm">0</span>
+      <img src="monkeyscoin.jpg" alt="Monkey Coin" class="w-6 h-6 object-contain">
+    </div>
+  </div>
 
   <!-- 🔄 Загрузка -->
   <div id="loading-spinner" class="relative w-full h-screen flex flex-col items-center justify-center" style="background: #000; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999;">
