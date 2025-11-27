@@ -101,14 +101,14 @@ async def get_js():
     """JS напрямую из корня"""
     return get_file_with_no_cache(os.path.join(ROOT_DIR, "script.js"))
 
-@app.get("/monkeyscoin.jpg")
+@app.get("/monkeyscoin.png")
 async def get_monkeyscoin():
     """Изображение монетки"""
     import mimetypes
-    coin_path = os.path.join(ROOT_DIR, "monkeyscoin.jpg")
+    coin_path = os.path.join(ROOT_DIR, "monkeyscoin.png")
     if not os.path.exists(coin_path):
         raise HTTPException(status_code=404, detail="Image not found")
-    media_type = mimetypes.guess_type(coin_path)[0] or "image/jpeg"
+    media_type = mimetypes.guess_type(coin_path)[0] or "image/png"
     return FileResponse(coin_path, media_type=media_type)
 
 
