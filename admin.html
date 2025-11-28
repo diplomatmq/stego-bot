@@ -1177,76 +1177,56 @@
 
     <!-- 💰 Модалка: Пополнение баланса Monkey Coins -->
     <div id="topup-coins-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
+      <div class="relative w-full sm:w-[450px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-4 mx-4">
         <button id="close-topup-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
-        <h3 class="text-lg font-semibold mb-4">💰 Пополнить баланс Monkey Coins</h3>
+        <h3 class="text-base font-semibold mb-3">💰 Пополнить баланс</h3>
         
-        <!-- Выбор способа оплаты -->
-        <div id="topup-payment-methods" class="space-y-3 mb-4">
+        <!-- Выбор способа оплаты - в ряд -->
+        <div id="topup-payment-methods" class="grid grid-cols-2 gap-2 mb-3">
           <!-- NFT (Soon) -->
-          <div class="rounded-lg border border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60 p-4">
-            <div class="flex items-center gap-3">
-              <div class="text-3xl">🎁</div>
-              <div class="flex-1">
-                <div class="font-semibold text-gray-500">NFT</div>
-                <div class="text-sm text-gray-500">Скоро</div>
-              </div>
-              <div class="text-gray-500 text-sm">Недоступно</div>
-            </div>
+          <div class="rounded-lg border border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60 p-3 text-center">
+            <div class="text-2xl mb-1">🎁</div>
+            <div class="font-semibold text-gray-500 text-xs">NFT</div>
+            <div class="text-xs text-gray-500">Скоро</div>
           </div>
           
           <!-- TON (Soon) -->
-          <div class="rounded-lg border border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60 p-4">
-            <div class="flex items-center gap-3">
-              <div class="text-3xl">💎</div>
-              <div class="flex-1">
-                <div class="font-semibold text-gray-500">TON</div>
-                <div class="text-sm text-gray-500">Скоро</div>
-              </div>
-              <div class="text-gray-500 text-sm">Недоступно</div>
-            </div>
+          <div class="rounded-lg border border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60 p-3 text-center">
+            <div class="text-2xl mb-1">💎</div>
+            <div class="font-semibold text-gray-500 text-xs">TON</div>
+            <div class="text-xs text-gray-500">Скоро</div>
           </div>
           
           <!-- CryptoBot (TON) -->
-          <div id="topup-method-cryptobot" class="rounded-lg border border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40 p-4 transition-all" onclick="window.selectTopupMethod('cryptobot')">
-            <div class="flex items-center gap-3">
-              <div class="text-3xl">🤖</div>
-              <div class="flex-1">
-                <div class="font-semibold text-white">CryptoBot</div>
-                <div class="text-sm text-gray-400">1 TON = 100 Monkey Coins</div>
-              </div>
-              <div class="text-violet-400 text-xl">→</div>
-            </div>
+          <div id="topup-method-cryptobot" class="rounded-lg border border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40 p-3 text-center transition-all" onclick="window.selectTopupMethod('cryptobot')">
+            <div class="text-2xl mb-1">🤖</div>
+            <div class="font-semibold text-white text-xs">CryptoBot</div>
+            <div class="text-xs text-gray-400">1 TON = 100</div>
           </div>
           
           <!-- Telegram Stars -->
-          <div id="topup-method-stars" class="rounded-lg border border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40 p-4 transition-all" onclick="window.selectTopupMethod('stars')">
-            <div class="flex items-center gap-3">
-              <div class="text-3xl">⭐</div>
-              <div class="flex-1">
-                <div class="font-semibold text-white">Telegram Stars</div>
-                <div class="text-sm text-gray-400">1 ⭐ = 1 Monkey Coin</div>
-              </div>
-              <div class="text-violet-400 text-xl">→</div>
-            </div>
+          <div id="topup-method-stars" class="rounded-lg border border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40 p-3 text-center transition-all" onclick="window.selectTopupMethod('stars')">
+            <div class="text-2xl mb-1">⭐</div>
+            <div class="font-semibold text-white text-xs">⭐</div>
+            <div class="text-xs text-gray-400">1 ⭐ = 1</div>
           </div>
         </div>
         
         <!-- Поле ввода суммы (скрыто по умолчанию) -->
-        <div id="topup-amount-section" class="hidden space-y-4">
+        <div id="topup-amount-section" class="hidden space-y-3">
           <div>
-            <label id="topup-amount-label" class="block text-sm text-gray-400 mb-2">Введите сумму:</label>
+            <label id="topup-amount-label" class="block text-xs text-gray-400 mb-1">Введите сумму:</label>
             <input 
               type="number" 
               id="topup-amount-input" 
               min="1" 
               step="1" 
-              class="input-field w-full p-3 rounded bg-black/50 border border-violet-400/30 text-white focus:border-violet-400 focus:outline-none" 
+              class="input-field w-full p-2 rounded bg-black/50 border border-violet-400/30 text-white focus:border-violet-400 focus:outline-none text-sm" 
               placeholder="0"
             />
-            <div id="topup-conversion-info" class="text-xs text-violet-400 mt-2"></div>
+            <div id="topup-conversion-info" class="text-xs text-violet-400 mt-1"></div>
           </div>
-          <button id="topup-pay-btn" class="neon-button w-full py-3 rounded-lg font-semibold">
+          <button id="topup-pay-btn" class="neon-button w-full py-2 rounded-lg font-semibold text-sm">
             💳 Оплатить
           </button>
         </div>
@@ -5285,9 +5265,14 @@
 
       function openTopupModal() {
         const modal = document.getElementById('topup-coins-modal');
+        const nav = document.getElementById('admin-nav');
         if (modal) {
           modal.classList.remove('hidden');
           document.body.classList.add('modal-open');
+          // Скрываем нижнюю навигацию
+          if (nav) {
+            nav.classList.add('hidden');
+          }
           currentTopupMethod = null;
           document.getElementById('topup-amount-section').classList.add('hidden');
           document.getElementById('topup-amount-input').value = '';
@@ -5296,9 +5281,14 @@
 
       function closeTopupModal() {
         const modal = document.getElementById('topup-coins-modal');
+        const nav = document.getElementById('admin-nav');
         if (modal) {
           modal.classList.add('hidden');
           document.body.classList.remove('modal-open');
+          // Показываем нижнюю навигацию обратно
+          if (nav) {
+            nav.classList.remove('hidden');
+          }
           currentTopupMethod = null;
           document.getElementById('topup-amount-section').classList.add('hidden');
           document.getElementById('topup-amount-input').value = '';
@@ -5313,13 +5303,13 @@
         const conversionInfo = document.getElementById('topup-conversion-info');
         
         document.querySelectorAll('[id^="topup-method-"]').forEach(el => {
-          el.classList.remove('border-violet-400', 'bg-violet-500/20');
+          el.classList.remove('border-violet-400', 'bg-violet-500/20', 'ring-2', 'ring-violet-400');
           el.classList.add('border-violet-400/30', 'bg-black/30');
         });
         
         const selectedMethod = document.getElementById(`topup-method-${method}`);
         if (selectedMethod) {
-          selectedMethod.classList.add('border-violet-400', 'bg-violet-500/20');
+          selectedMethod.classList.add('border-violet-400', 'bg-violet-500/20', 'ring-2', 'ring-violet-400');
           selectedMethod.classList.remove('border-violet-400/30', 'bg-black/30');
         }
         
