@@ -295,10 +295,48 @@ async def process_successful_payment(message: types.Message):
             else:
                 payload_data = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
             
+            payment_type = payload_data.get("type")
             category = payload_data.get("category")
             item_id = payload_data.get("item_id")
             payment_method = payload_data.get("payment_method", "stars")
             
+            # Обработка пополнения баланса
+            if payment_type == "topup":
+                monkey_coins = payload_data.get("monkey_coins", 0)
+                
+                logging.info(f"💰 Пополнение баланса: Пользователь {username} (ID: {user_id}) оплатил {payment.total_amount} {payment.currency} и получил {monkey_coins} Monkey Coins")
+                
+                # Пополняем баланс в базе данных
+                try:
+                    from db import async_session
+                    from models import User
+                    from sqlalchemy.future import select
+                    
+                    async with async_session() as session:
+                        result = await session.execute(select(User).where(User.telegram_id == user_id))
+                        user = result.scalars().first()
+                        
+                        if user:
+                            current_balance = getattr(user, 'monkey_coins', 0) or 0
+                            user.monkey_coins = current_balance + int(monkey_coins)
+                            await session.commit()
+                            
+                            logging.info(f"✅ Баланс пополнен: Пользователь {username} (ID: {user_id}) получил {monkey_coins} Monkey Coins, новый баланс: {user.monkey_coins}")
+                            
+                            # Отправляем подтверждение пользователю
+                            await message.answer(
+                                f"✅ **Баланс пополнен!**\n\n"
+                                f"Получено: {monkey_coins} Monkey Coins\n"
+                                f"Ваш баланс: {user.monkey_coins} Monkey Coins",
+                                parse_mode="Markdown"
+                            )
+                            return
+                except Exception as e:
+                    logging.error(f"❌ Ошибка пополнения баланса в БД: {e}", exc_info=True)
+                    await message.answer("❌ Ошибка при пополнении баланса. Обратитесь в поддержку.")
+                    return
+            
+            # Обработка покупки товаров (старая логика)
             # Определяем название товара
             item_name = "Неизвестный товар"
             if category == "themes":
