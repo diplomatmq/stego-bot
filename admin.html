@@ -1175,6 +1175,84 @@
       </div>
     </div>
 
+    <!-- 💰 Модалка: Пополнение баланса Monkey Coins -->
+    <div id="topup-coins-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
+        <button id="close-topup-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4">💰 Пополнить баланс Monkey Coins</h3>
+        
+        <!-- Выбор способа оплаты -->
+        <div id="topup-payment-methods" class="space-y-3 mb-4">
+          <!-- NFT (Soon) -->
+          <div class="rounded-lg border border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60 p-4">
+            <div class="flex items-center gap-3">
+              <div class="text-3xl">🎁</div>
+              <div class="flex-1">
+                <div class="font-semibold text-gray-500">NFT</div>
+                <div class="text-sm text-gray-500">Скоро</div>
+              </div>
+              <div class="text-gray-500 text-sm">Недоступно</div>
+            </div>
+          </div>
+          
+          <!-- TON (Soon) -->
+          <div class="rounded-lg border border-gray-600/30 bg-black/20 cursor-not-allowed opacity-60 p-4">
+            <div class="flex items-center gap-3">
+              <div class="text-3xl">💎</div>
+              <div class="flex-1">
+                <div class="font-semibold text-gray-500">TON</div>
+                <div class="text-sm text-gray-500">Скоро</div>
+              </div>
+              <div class="text-gray-500 text-sm">Недоступно</div>
+            </div>
+          </div>
+          
+          <!-- CryptoBot (TON) -->
+          <div id="topup-method-cryptobot" class="rounded-lg border border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40 p-4 transition-all" onclick="window.selectTopupMethod('cryptobot')">
+            <div class="flex items-center gap-3">
+              <div class="text-3xl">🤖</div>
+              <div class="flex-1">
+                <div class="font-semibold text-white">CryptoBot</div>
+                <div class="text-sm text-gray-400">1 TON = 100 Monkey Coins</div>
+              </div>
+              <div class="text-violet-400 text-xl">→</div>
+            </div>
+          </div>
+          
+          <!-- Telegram Stars -->
+          <div id="topup-method-stars" class="rounded-lg border border-violet-400/30 bg-black/30 cursor-pointer hover:border-violet-400/50 hover:bg-black/40 p-4 transition-all" onclick="window.selectTopupMethod('stars')">
+            <div class="flex items-center gap-3">
+              <div class="text-3xl">⭐</div>
+              <div class="flex-1">
+                <div class="font-semibold text-white">Telegram Stars</div>
+                <div class="text-sm text-gray-400">1 ⭐ = 1 Monkey Coin</div>
+              </div>
+              <div class="text-violet-400 text-xl">→</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Поле ввода суммы (скрыто по умолчанию) -->
+        <div id="topup-amount-section" class="hidden space-y-4">
+          <div>
+            <label id="topup-amount-label" class="block text-sm text-gray-400 mb-2">Введите сумму:</label>
+            <input 
+              type="number" 
+              id="topup-amount-input" 
+              min="1" 
+              step="1" 
+              class="input-field w-full p-3 rounded bg-black/50 border border-violet-400/30 text-white focus:border-violet-400 focus:outline-none" 
+              placeholder="0"
+            />
+            <div id="topup-conversion-info" class="text-xs text-violet-400 mt-2"></div>
+          </div>
+          <button id="topup-pay-btn" class="neon-button w-full py-3 rounded-lg font-semibold">
+            💳 Оплатить
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 📨 Модалка: Отправить сообщение владельцу -->
     <div id="contact-owner-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4">
@@ -5201,6 +5279,176 @@
       window.selectPaymentMethod = selectPaymentMethod;
       window.renderShop = renderShop;
       window.updateThemeSelector = updateThemeSelector;
+
+      // 💰 Система пополнения баланса Monkey Coins
+      let currentTopupMethod = null;
+
+      function openTopupModal() {
+        const modal = document.getElementById('topup-coins-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          document.body.classList.add('modal-open');
+          currentTopupMethod = null;
+          document.getElementById('topup-amount-section').classList.add('hidden');
+          document.getElementById('topup-amount-input').value = '';
+        }
+      }
+
+      function closeTopupModal() {
+        const modal = document.getElementById('topup-coins-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          document.body.classList.remove('modal-open');
+          currentTopupMethod = null;
+          document.getElementById('topup-amount-section').classList.add('hidden');
+          document.getElementById('topup-amount-input').value = '';
+        }
+      }
+
+      function selectTopupMethod(method) {
+        currentTopupMethod = method;
+        const amountSection = document.getElementById('topup-amount-section');
+        const amountInput = document.getElementById('topup-amount-input');
+        const amountLabel = document.getElementById('topup-amount-label');
+        const conversionInfo = document.getElementById('topup-conversion-info');
+        
+        document.querySelectorAll('[id^="topup-method-"]').forEach(el => {
+          el.classList.remove('border-violet-400', 'bg-violet-500/20');
+          el.classList.add('border-violet-400/30', 'bg-black/30');
+        });
+        
+        const selectedMethod = document.getElementById(`topup-method-${method}`);
+        if (selectedMethod) {
+          selectedMethod.classList.add('border-violet-400', 'bg-violet-500/20');
+          selectedMethod.classList.remove('border-violet-400/30', 'bg-black/30');
+        }
+        
+        amountSection.classList.remove('hidden');
+        amountInput.value = '';
+        amountInput.focus();
+        
+        if (method === 'stars') {
+          amountLabel.textContent = 'Введите количество звезд:';
+          amountInput.placeholder = 'Например: 100';
+          conversionInfo.textContent = '1 ⭐ = 1 Monkey Coin';
+        } else if (method === 'cryptobot') {
+          amountLabel.textContent = 'Введите количество TON:';
+          amountInput.placeholder = 'Например: 1';
+          conversionInfo.textContent = '1 TON = 100 Monkey Coins';
+        }
+        
+        amountInput.oninput = function() {
+          const amount = parseFloat(this.value) || 0;
+          if (method === 'stars') {
+            conversionInfo.textContent = `${amount} ⭐ = ${amount} Monkey Coins`;
+          } else if (method === 'cryptobot') {
+            conversionInfo.textContent = `${amount} TON = ${amount * 100} Monkey Coins`;
+          }
+        };
+      }
+
+      async function processTopupPayment() {
+        if (!currentTopupMethod) {
+          alert('❌ Выберите способ оплаты');
+          return;
+        }
+
+        const amountInput = document.getElementById('topup-amount-input');
+        const amount = parseFloat(amountInput.value) || 0;
+
+        if (amount <= 0) {
+          alert('❌ Введите сумму больше 0');
+          return;
+        }
+
+        try {
+          if (currentTopupMethod === 'stars') {
+            const response = await window.fetchJSON('/api/topup/create-stars-invoice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: amount,
+                user_id: currentUserId
+              })
+            });
+
+            if (response?.success) {
+              closeTopupModal();
+              setTimeout(async () => {
+                await updateCoinsDisplay();
+              }, 5000);
+              alert(`✅ Счет на ${amount} ⭐ отправлен в бота!\n\nПерейдите в чат с ботом, чтобы оплатить. После оплаты баланс будет пополнен автоматически.`);
+            } else {
+              const errorMsg = response?.detail || response?.message || 'Ошибка при создании счета';
+              alert(`❌ ${errorMsg}`);
+            }
+          } else if (currentTopupMethod === 'cryptobot') {
+            const monkeyCoinsAmount = amount * 100;
+            
+            const response = await window.fetchJSON('/api/topup/create-invoice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: amount,
+                currency: 'TON',
+                user_id: currentUserId,
+                monkey_coins: monkeyCoinsAmount
+              })
+            });
+
+            if (response?.success) {
+              closeTopupModal();
+              setTimeout(async () => {
+                await updateCoinsDisplay();
+              }, 5000);
+              if (response.invoice_url) {
+                window.open(response.invoice_url, '_blank');
+                alert(`✅ Счет на ${amount} TON создан!\n\nОткройте ссылку для оплаты. После оплаты баланс будет пополнен автоматически.`);
+              } else {
+                alert(`✅ Счет на ${amount} TON создан! Проверьте бота для оплаты.`);
+              }
+            } else {
+              const errorMsg = response?.detail || response?.message || 'Ошибка при создании счета';
+              alert(`❌ ${errorMsg}`);
+            }
+          }
+        } catch (error) {
+          console.error('Ошибка при создании счета:', error);
+          alert('❌ Ошибка при создании счета. Попробуйте позже.');
+        }
+      }
+
+      (function initTopupHandlers() {
+        const addCoinsBtn = document.getElementById('add-coins-btn');
+        const closeTopupModalBtn = document.getElementById('close-topup-modal');
+        const topupPayBtn = document.getElementById('topup-pay-btn');
+
+        if (addCoinsBtn) {
+          addCoinsBtn.addEventListener('click', openTopupModal);
+        }
+
+        if (closeTopupModalBtn) {
+          closeTopupModalBtn.addEventListener('click', closeTopupModal);
+        }
+
+        if (topupPayBtn) {
+          topupPayBtn.addEventListener('click', processTopupPayment);
+        }
+
+        const topupModal = document.getElementById('topup-coins-modal');
+        if (topupModal) {
+          topupModal.addEventListener('click', function(e) {
+            if (e.target === topupModal) {
+              closeTopupModal();
+            }
+          });
+        }
+      })();
+
+      window.openTopupModal = openTopupModal;
+      window.closeTopupModal = closeTopupModal;
+      window.selectTopupMethod = selectTopupMethod;
+      window.processTopupPayment = processTopupPayment;
 
       // Инициализация модалки выбора способа оплаты
       function initPaymentMethodModal() {
