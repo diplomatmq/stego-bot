@@ -5934,9 +5934,13 @@
         if (modal) {
           modal.classList.remove('hidden');
           document.body.classList.add('modal-open');
-          // Скрываем нижнюю навигацию
+          // Скрываем нижнюю навигацию - используем несколько способов для надежности
           if (nav) {
             nav.classList.add('hidden');
+            nav.style.display = 'none';
+            nav.style.visibility = 'hidden';
+            nav.style.opacity = '0';
+            nav.style.pointerEvents = 'none';
           }
           // Сбрасываем состояние
           currentTopupMethod = null;
@@ -5955,6 +5959,10 @@
           // Показываем нижнюю навигацию обратно
           if (nav) {
             nav.classList.remove('hidden');
+            nav.style.display = 'flex';
+            nav.style.visibility = 'visible';
+            nav.style.opacity = '1';
+            nav.style.pointerEvents = 'auto';
           }
           currentTopupMethod = null;
           document.getElementById('topup-amount-section').classList.add('hidden');
