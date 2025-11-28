@@ -68,6 +68,19 @@
 
     .page-dark { background-color: var(--neon-bg); color: var(--text-primary); }
 
+    /* Скрытие спиннера у input[type="number"] */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      appearance: none;
+      margin: 0;
+    }
+    
+    input[type="number"] {
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+
     @keyframes neonFlow {
       0% { background-position: 0% 50%; }
       50% { background-position: 100% 50%; }
@@ -1566,6 +1579,7 @@
               step="1" 
               class="input-field w-full p-2 rounded bg-black/50 border border-violet-400/30 text-white focus:border-violet-400 focus:outline-none text-sm" 
               placeholder="0"
+              style="-moz-appearance: textfield; appearance: textfield;"
             />
             <div id="topup-conversion-info" class="text-xs text-violet-400 mt-1"></div>
           </div>
