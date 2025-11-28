@@ -831,6 +831,159 @@ async def get_monkey_coins(tg_id: int = Query(...)):
         logger.error(f"Ошибка при получении баланса Monkey Coins: {e}", exc_info=True)
         return {"monkey_coins": 0}
 
+@app.post("/api/topup/create-stars-invoice")
+async def create_topup_stars_invoice(request: Request):
+    """Создать invoice для пополнения баланса через Telegram Stars"""
+    try:
+        data = await request.json()
+        amount = data.get("amount")
+        user_id = data.get("user_id")
+        
+        if not amount or not user_id:
+            raise HTTPException(status_code=400, detail="Необходимо указать amount и user_id")
+        
+        # 1 звезда = 1 Monkey Coin
+        monkey_coins = int(amount)
+        
+        # Создаем payload для отслеживания платежа
+        payload_data = {
+            "type": "topup",
+            "user_id": str(user_id),
+            "payment_method": "stars",
+            "monkey_coins": monkey_coins
+        }
+        unique_payload = f"{json.dumps(payload_data)}_{int(time.time())}"
+        start_param = f"topup_stars_{int(time.time())}"
+        
+        # Создаем invoice через бота
+        bot = Bot(token=BOT_TOKEN)
+        try:
+            from aiogram.types import LabeledPrice
+            prices = [LabeledPrice(label=f"Пополнение баланса на {monkey_coins} Monkey Coins", amount=int(amount))]
+            
+            message = await bot.send_invoice(
+                chat_id=user_id,
+                title="💰 Пополнение баланса Monkey Coins",
+                description=f"Пополнение баланса на {monkey_coins} Monkey Coins",
+                payload=unique_payload,
+                provider_token="",
+                currency="XTR",
+                prices=prices,
+                start_parameter=start_param
+            )
+            
+            logger.info(f"📋 Счет на пополнение создан: Пользователь {user_id}, {amount} ⭐ = {monkey_coins} Monkey Coins")
+            
+            return {
+                "success": True,
+                "message": "Счет отправлен в бота",
+                "invoice_id": str(message.message_id) if hasattr(message, 'message_id') else None
+            }
+        finally:
+            await bot.session.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при создании счета на пополнение: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при создании счета: {str(e)}")
+
+@app.post("/api/topup/create-invoice")
+async def create_topup_invoice(request: Request):
+    """Создать invoice для пополнения баланса через CryptoBot"""
+    try:
+        data = await request.json()
+        amount = data.get("amount")
+        currency = data.get("currency", "TON")
+        user_id = data.get("user_id")
+        monkey_coins = data.get("monkey_coins")
+        
+        if not amount or not user_id or not monkey_coins:
+            raise HTTPException(status_code=400, detail="Необходимо указать amount, user_id и monkey_coins")
+        
+        # Создаем payload для отслеживания платежа
+        payload_data = {
+            "type": "topup",
+            "user_id": str(user_id),
+            "payment_method": "cryptobot",
+            "monkey_coins": monkey_coins,
+            "amount": amount,
+            "currency": currency
+        }
+        payload_str = json.dumps(payload_data)
+        
+        description = f"Пополнение баланса на {monkey_coins} Monkey Coins ({amount} {currency})"
+        description_with_user = f"{description}\n\n👤 Счет для пользователя ID: {user_id}"
+        
+        # Создаем счет через CryptoBot
+        invoice = await cryptobot.create_invoice(
+            amount=amount,
+            currency=currency,
+            description=description_with_user,
+            user_id=user_id,
+            payload=payload_str
+        )
+        
+        if "error" in invoice:
+            raise HTTPException(status_code=500, detail=f"Ошибка создания счета: {invoice.get('error')}")
+        
+        invoice_id = invoice.get("invoice_id")
+        invoice_url = invoice.get("pay_url")
+        
+        logger.info(f"📋 Счет на пополнение создан: Пользователь {user_id}, {amount} {currency} = {monkey_coins} Monkey Coins")
+        
+        return {
+            "success": True,
+            "invoice_id": invoice_id,
+            "invoice_url": invoice_url,
+            "payload": payload_str
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при создании счета на пополнение: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при создании счета: {str(e)}")
+
+@app.post("/api/topup/add-coins")
+async def add_monkey_coins(request: Request):
+    """Пополнить баланс Monkey Coins пользователя"""
+    try:
+        data = await request.json()
+        user_id = data.get("user_id")
+        amount = data.get("amount")
+        
+        if not user_id or not amount:
+            raise HTTPException(status_code=400, detail="Необходимо указать user_id и amount")
+        
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+            
+            if not user:
+                raise HTTPException(status_code=404, detail="Пользователь не найден")
+            
+            # Получаем текущий баланс
+            monkey_coins = getattr(user, 'monkey_coins', 0) or 0
+            # Добавляем монетки
+            user.monkey_coins = monkey_coins + int(amount)
+            
+            await session.commit()
+            
+            logger.info(f"✅ Баланс пополнен: Пользователь {user_id}, добавлено {amount} Monkey Coins, новый баланс: {user.monkey_coins}")
+            
+            return {
+                "success": True,
+                "monkey_coins": user.monkey_coins,
+                "added": int(amount)
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при пополнении баланса: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при пополнении баланса: {str(e)}")
+
 @app.post("/api/shop/purchase-theme")
 async def purchase_theme(request: Request):
     """Купить тему за Monkey Coins"""
@@ -963,17 +1116,55 @@ async def payment_webhook(request: Request):
                 verification_result = await cryptobot.verify_payment(invoice_id)
                 
                 if verification_result.get("paid"):
-                    # Парсим payload для получения информации о покупке
+                    # Парсим payload для получения информации о покупке или пополнении
                     payload = verification_result.get("payload")
                     if payload:
                         try:
-                            category = payload.get("category")
-                            item_id = payload.get("item_id")
-                            user_id = payload.get("user_id")
+                            # Парсим JSON payload
+                            if isinstance(payload, str):
+                                payload_data = json.loads(payload)
+                            else:
+                                payload_data = payload
+                            
+                            payment_type = payload_data.get("type")
+                            user_id = payload_data.get("user_id")
                             
                             if not user_id:
                                 logger.warning(f"⚠️ Payload не содержит user_id для invoice_id {invoice_id}")
                                 return {"ok": True}
+                            
+                            # Обработка пополнения баланса
+                            if payment_type == "topup":
+                                monkey_coins = payload_data.get("monkey_coins", 0)
+                                
+                                async with async_session() as session:
+                                    result = await session.execute(select(User).where(User.telegram_id == int(user_id)))
+                                    user = result.scalars().first()
+                                    
+                                    if user:
+                                        current_balance = getattr(user, 'monkey_coins', 0) or 0
+                                        user.monkey_coins = current_balance + int(monkey_coins)
+                                        await session.commit()
+                                        
+                                        logger.info(f"✅ Баланс пополнен через CryptoBot: invoice_id {invoice_id}, пользователь {user_id}, добавлено {monkey_coins} Monkey Coins, новый баланс: {user.monkey_coins}")
+                                        
+                                        # Отправляем уведомление пользователю через бота
+                                        try:
+                                            bot = Bot(token=BOT_TOKEN)
+                                            await bot.send_message(
+                                                chat_id=int(user_id),
+                                                text=f"✅ **Баланс пополнен!**\n\nПолучено: {monkey_coins} Monkey Coins\nВаш баланс: {user.monkey_coins} Monkey Coins",
+                                                parse_mode="Markdown"
+                                            )
+                                            await bot.session.close()
+                                        except Exception as e:
+                                            logger.error(f"Ошибка отправки уведомления: {e}")
+                                    
+                                return {"ok": True}
+                            
+                            # Обработка покупки товаров (старая логика)
+                            category = payload_data.get("category")
+                            item_id = payload_data.get("item_id")
                             
                             logger.info(f"✅ Успешная оплата через CryptoBot: invoice_id {invoice_id}, пользователь {user_id}, товар {category}/{item_id}")
                             
