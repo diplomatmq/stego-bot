@@ -1648,6 +1648,7 @@
 
           currentUserRole = data.role;
           currentUserId = parseInt(tgId);
+          window.currentUserId = currentUserId; // Экспортируем для доступа из других функций
 
           // Telegram WebApp initialization
           if (window.Telegram?.WebApp) {
