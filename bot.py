@@ -238,26 +238,28 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
     """
     Обработчик предварительного запроса на оплату
     Критично для работы оплаты через Telegram Stars - должен отвечать быстро!
+    Telegram требует ответ в течение нескольких секунд, иначе окно оплаты закрывается.
     """
     try:
+        # КРИТИЧНО: Сначала отвечаем Telegram, потом логируем
+        # Это гарантирует быстрый ответ и предотвращает закрытие окна оплаты
+        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+        
+        # Теперь можем безопасно логировать (после ответа)
         user_id = pre_checkout_query.from_user.id
         username = pre_checkout_query.from_user.username or pre_checkout_query.from_user.full_name or f"ID_{user_id}"
         payload = pre_checkout_query.invoice_payload
         amount = pre_checkout_query.total_amount
         currency = pre_checkout_query.currency
         
-        logging.info(f"💳 Pre-checkout query получен: Пользователь {username} (ID: {user_id}) готов оплатить {amount} {currency}, payload: {payload}")
-        
-        # Немедленно подтверждаем готовность принять платеж
-        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-        logging.info(f"✅ Pre-checkout query подтвержден: Пользователь {username} (ID: {user_id}) может оплатить счет")
+        logging.info(f"💳 Pre-checkout query получен и подтвержден: Пользователь {username} (ID: {user_id}) готов оплатить {amount} {currency}, payload: {payload}")
     except Exception as e:
         logging.error(f"❌ Ошибка при обработке pre-checkout query: {e}", exc_info=True)
         # В случае ошибки отклоняем запрос
         try:
             await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Ошибка обработки платежа")
-        except:
-            pass
+        except Exception as e2:
+            logging.error(f"❌ Не удалось отправить ответ об ошибке: {e2}", exc_info=True)
 
 
 @dp.message_handler(content_types=ContentType.SUCCESSFUL_PAYMENT)
@@ -449,6 +451,9 @@ async def run_bot():
             # Логируем все сообщения
             elif hasattr(event, 'message') and event.message:
                 logging.info(f"📥 ПОЛУЧЕНО СООБЩЕНИЕ: от пользователя {event.message.from_user.id} (username: {event.message.from_user.username})")
+            # Логируем pre_checkout_query для отладки платежей
+            elif hasattr(event, 'pre_checkout_query') and event.pre_checkout_query:
+                logging.info(f"💳 ПОЛУЧЕН PRE_CHECKOUT_QUERY: от пользователя {event.pre_checkout_query.from_user.id}, сумма: {event.pre_checkout_query.total_amount} {event.pre_checkout_query.currency}")
             return await handler(event, data)
     
     dp.middleware.setup(UpdateLoggingMiddleware())
