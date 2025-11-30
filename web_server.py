@@ -579,6 +579,7 @@ async def create_stars_invoice(request: Request):
                 username = f"ID_{user_id}"
             
             # Отправляем invoice пользователю через бота
+            logger.info(f"📤 [INVOICE] Отправка счета пользователю {username} (ID: {user_id}): {title}, {amount} ⭐")
             message = await bot.send_invoice(
                 chat_id=user_id,
                 title=title,
@@ -591,7 +592,8 @@ async def create_stars_invoice(request: Request):
             )
             
             # Логируем создание счета
-            logger.info(f"📋 Счет создан: Пользователь {username} (ID: {user_id}) получил счет на {amount} ⭐ за покупку {title} (категория: {category}, товар: {item_id})")
+            invoice_id = str(message.message_id) if hasattr(message, 'message_id') else None
+            logger.info(f"✅ [INVOICE] Счет успешно отправлен! Invoice ID: {invoice_id}, Пользователь {username} (ID: {user_id}) получил счет на {amount} ⭐ за покупку {title} (категория: {category}, товар: {item_id})")
             
             # Сохраняем результат ПЕРЕД любыми дополнительными операциями
             invoice_id = str(message.message_id) if hasattr(message, 'message_id') else None
