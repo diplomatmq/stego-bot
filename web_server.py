@@ -880,7 +880,12 @@ async def create_topup_stars_invoice(request: Request):
                 "invoice_id": str(message.message_id) if hasattr(message, 'message_id') else None
             }
         finally:
-            await bot.session.close()
+            try:
+                session = await bot.get_session()
+                if session:
+                    await session.close()
+            except:
+                pass
             
     except HTTPException:
         raise
@@ -1156,7 +1161,12 @@ async def payment_webhook(request: Request):
                                                 text=f"✅ **Баланс пополнен!**\n\nПолучено: {monkey_coins} Monkey Coins\nВаш баланс: {user.monkey_coins} Monkey Coins",
                                                 parse_mode="Markdown"
                                             )
-                                            await bot.session.close()
+                                            try:
+                                                session = await bot.get_session()
+                                                if session:
+                                                    await session.close()
+                                            except:
+                                                pass
                                         except Exception as e:
                                             logger.error(f"Ошибка отправки уведомления: {e}")
                                     
