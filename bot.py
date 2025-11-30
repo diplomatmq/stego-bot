@@ -240,26 +240,35 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
     Критично для работы оплаты через Telegram Stars - должен отвечать быстро!
     Telegram требует ответ в течение нескольких секунд, иначе окно оплаты закрывается.
     """
+    import time
+    start_time = time.time()
+    
     try:
-        # КРИТИЧНО: Сначала отвечаем Telegram, потом логируем
-        # Это гарантирует быстрый ответ и предотвращает закрытие окна оплаты
-        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-        
-        # Теперь можем безопасно логировать (после ответа)
+        # Логируем получение запроса ДО ответа (быстро, без задержек)
         user_id = pre_checkout_query.from_user.id
         username = pre_checkout_query.from_user.username or pre_checkout_query.from_user.full_name or f"ID_{user_id}"
         payload = pre_checkout_query.invoice_payload
         amount = pre_checkout_query.total_amount
         currency = pre_checkout_query.currency
         
-        logging.info(f"💳 Pre-checkout query получен и подтвержден: Пользователь {username} (ID: {user_id}) готов оплатить {amount} {currency}, payload: {payload}")
+        logging.info(f"💳 [PRE-CHECKOUT] Получен запрос от {username} (ID: {user_id}), сумма: {amount} {currency}, query_id: {pre_checkout_query.id}")
+        
+        # КРИТИЧНО: Сразу отвечаем Telegram - это самое важное!
+        # Telegram требует ответ в течение 10 секунд, иначе окно оплаты закрывается
+        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+        
+        response_time = time.time() - start_time
+        logging.info(f"✅ [PRE-CHECKOUT] Ответ отправлен за {response_time:.3f} сек. Пользователь {username} (ID: {user_id}) может оплатить {amount} {currency}, payload: {payload}")
+        
     except Exception as e:
-        logging.error(f"❌ Ошибка при обработке pre-checkout query: {e}", exc_info=True)
+        error_time = time.time() - start_time
+        logging.error(f"❌ [PRE-CHECKOUT] Ошибка через {error_time:.3f} сек: {e}", exc_info=True)
         # В случае ошибки отклоняем запрос
         try:
             await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Ошибка обработки платежа")
+            logging.error(f"❌ [PRE-CHECKOUT] Запрос отклонен из-за ошибки")
         except Exception as e2:
-            logging.error(f"❌ Не удалось отправить ответ об ошибке: {e2}", exc_info=True)
+            logging.error(f"❌ [PRE-CHECKOUT] Не удалось отправить ответ об ошибке: {e2}", exc_info=True)
 
 
 @dp.message_handler(content_types=ContentType.SUCCESSFUL_PAYMENT)
@@ -272,9 +281,11 @@ async def process_successful_payment(message: types.Message):
         user_id = message.from_user.id
         username = message.from_user.username or message.from_user.full_name
         
-        logging.info(f"✅ Успешная оплата получена от пользователя {username} (ID: {user_id})")
-        logging.info(f"💰 Сумма: {payment.total_amount} {payment.currency}")
-        logging.info(f"📦 Payload: {payment.invoice_payload}")
+        logging.info(f"🎉 [PAYMENT] ✅ УСПЕШНАЯ ОПЛАТА получена от пользователя {username} (ID: {user_id})")
+        logging.info(f"💰 [PAYMENT] Сумма: {payment.total_amount} {payment.currency}")
+        logging.info(f"📦 [PAYMENT] Payload: {payment.invoice_payload}")
+        logging.info(f"🆔 [PAYMENT] Telegram Payment ID: {payment.telegram_payment_charge_id if hasattr(payment, 'telegram_payment_charge_id') else 'N/A'}")
+        logging.info(f"🆔 [PAYMENT] Provider Payment ID: {payment.provider_payment_charge_id if hasattr(payment, 'provider_payment_charge_id') else 'N/A'}")
         
         # Парсим payload для получения информации о покупке
         try:
@@ -489,7 +500,11 @@ async def run_bot():
     register_giveaway_handlers(dp)
     register_creator_handlers(dp)
     
+    # Проверяем, что критические обработчики платежей зарегистрированы
     logging.info("✅ Все обработчики зарегистрированы")
+    logging.info("💳 Проверка обработчиков платежей:")
+    logging.info(f"   - pre_checkout_query: {'✅ Зарегистрирован' if hasattr(dp, '_handlers') else '⚠️ Проверьте регистрацию'}")
+    logging.info(f"   - successful_payment: {'✅ Зарегистрирован' if hasattr(dp, '_handlers') else '⚠️ Проверьте регистрацию'}")
     
     # Проверяем все активные конкурсы и собираем исторические комментарии
     from giveaway import check_all_giveaways_historical_comments
@@ -505,7 +520,11 @@ async def run_bot():
             pass
     
     logging.info("🚀 Запуск polling...")
-    await dp.start_polling()
+    # Явно указываем, что принимаем все типы обновлений, включая pre_checkout_query и successful_payment
+    # Это критично для работы платежей через Telegram Stars
+    await dp.start_polling(
+        allowed_updates=["message", "callback_query", "pre_checkout_query", "poll", "poll_answer"]
+    )
 
 
 async def main():
