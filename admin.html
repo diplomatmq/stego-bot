@@ -1816,6 +1816,7 @@
       let adminChannelLink = null; // Сохраняем ссылку на канал админа
       let adminChatLink = null; // Ссылка на чат админа
       let currentContestType = "Рандомный комментарий"; // Тип текущего конкурса
+      let currentContestFilterType = 'active'; // Фильтр активных/завершенных конкурсов
       let currentDrawingWinnersCount = 1; // Количество победителей для конкурса рисунков
       let currentCollectionWinnersCount = 1; // Количество победителей для конкурса коллекций
       let originalBaseValue = ''; // Защищенное значение базовых условий
@@ -2188,7 +2189,11 @@
         });
       }
 
-      async function loadContests() {
+      async function loadContests(contestFilterType = null) {
+        // Обновляем тип фильтрации, если передан
+        if (contestFilterType) {
+          currentContestFilterType = contestFilterType;
+        }
         try {
           // Показываем индикатор загрузки
           contestList.innerHTML = '<div class="text-gray-400 text-center py-4">⏳ Загрузка конкурсов...</div>';
@@ -2247,14 +2252,14 @@
           const completedContests = contestsWithStatus.filter(item => item.isCompleted);
           
           // Фильтруем конкурсы по выбранному типу
-          const contestsToShow = currentContestType === 'active' ? activeContests : completedContests;
+          const contestsToShow = currentContestFilterType === 'active' ? activeContests : completedContests;
           
           // Очищаем список
           contestList.innerHTML = '';
           
           // Если нет конкурсов выбранного типа, показываем сообщение
           if (contestsToShow.length === 0) {
-            contestList.innerHTML = `<div class="text-gray-500 text-center py-4">Нет ${currentContestType === 'active' ? 'активных' : 'завершенных'} конкурсов</div>`;
+            contestList.innerHTML = `<div class="text-gray-500 text-center py-4">Нет ${currentContestFilterType === 'active' ? 'активных' : 'завершенных'} конкурсов</div>`;
             return;
           }
           
@@ -4407,7 +4412,8 @@
               if (contestConditionsEl) contestConditionsEl.value = '';
               if (postLinkError) postLinkError.classList.add('hidden');
               
-              await loadContests();
+              // Загружаем конкурсы с текущим фильтром (по умолчанию 'active')
+              await loadContests(currentContestFilterType);
               showSection('contests-section');
             } else if (window.currentContestId) {
               // Это обновление существующего конкурса (для редактирования)
@@ -4433,7 +4439,8 @@
               if (contestPostLinkEl) contestPostLinkEl.value = '';
               if (contestConditionsEl) contestConditionsEl.value = '';
               if (postLinkError) postLinkError.classList.add('hidden');
-              await loadContests();
+              // Загружаем конкурсы с текущим фильтром (по умолчанию 'active')
+              await loadContests(currentContestFilterType);
               showSection('contests-section');
               window.currentContestId = null;
               window.currentWinnersCount = null;
