@@ -2951,7 +2951,16 @@
         modal.classList.remove('hidden');
       }
 
-      async function loadContests(showLoading = true) {
+      // Инициализируем переменную для фильтрации конкурсов
+      if (typeof window.currentContestType === 'undefined') {
+        window.currentContestType = 'active';
+      }
+      
+      async function loadContests(showLoading = true, contestType = null) {
+        // Обновляем тип фильтрации, если передан
+        if (contestType) {
+          window.currentContestType = contestType;
+        }
         try {
           // Показываем индикатор загрузки только если явно запрошено
           if (contestList && showLoading) {
@@ -3018,8 +3027,21 @@
           const activeContests = contestsWithStatus.filter(item => !item.isCompleted);
           const completedContests = contestsWithStatus.filter(item => item.isCompleted);
           
+          // Фильтруем конкурсы по выбранному типу
+          const contestsToShow = (window.currentContestType || 'active') === 'active' ? activeContests : completedContests;
+          
           if (!contestList) {
             console.error('contestList не найден');
+            return;
+          }
+          
+          // Очищаем список
+          contestList.innerHTML = '';
+          
+          // Если нет конкурсов выбранного типа, показываем сообщение
+          if (contestsToShow.length === 0) {
+            const currentType = window.currentContestType || 'active';
+            contestList.innerHTML = `<div class="text-gray-500 text-center py-4">Нет ${currentType === 'active' ? 'активных' : 'завершенных'} конкурсов</div>`;
             return;
           }
           
