@@ -1030,7 +1030,14 @@
 
     <!-- 🏆 Конкурсы -->
     <section id="contests-section" class="content-section" style="padding-top: 40px;">
-      <h2 class="text-xl font-bold mb-4">Активные конкурсы</h2>
+      <h2 class="text-xl font-bold mb-4">Конкурсы</h2>
+      
+      <!-- Переключатель между активными и завершенными -->
+      <div class="flex gap-2 mb-4">
+        <button id="contests-active-btn" class="nav-button active px-4 py-2 rounded-lg" data-contest-type="active">✨ Активные</button>
+        <button id="contests-completed-btn" class="nav-button px-4 py-2 rounded-lg" data-contest-type="completed">🏁 Завершенные</button>
+      </div>
+      
       <button id="create-contest-btn" class="neon-button w-full py-3 rounded-lg mb-6">➕ Создать конкурс</button>
       <div id="contest-list" class="space-y-4"></div>
     </section>
@@ -2235,19 +2242,21 @@
           const activeContests = contestsWithStatus.filter(item => !item.isCompleted);
           const completedContests = contestsWithStatus.filter(item => item.isCompleted);
           
-          // Очищаем список и добавляем заголовок для активных конкурсов
+          // Фильтруем конкурсы по выбранному типу
+          const contestsToShow = currentContestType === 'active' ? activeContests : completedContests;
+          
+          // Очищаем список
           contestList.innerHTML = '';
           
-          if (activeContests.length > 0) {
-            const activeHeader = document.createElement('div');
-            activeHeader.className = 'text-xl font-bold text-violet-400 mb-4 mt-4';
-            activeHeader.textContent = '✨ Активные конкурсы';
-            contestList.appendChild(activeHeader);
+          // Если нет конкурсов выбранного типа, показываем сообщение
+          if (contestsToShow.length === 0) {
+            contestList.innerHTML = `<div class="text-gray-500 text-center py-4">Нет ${currentContestType === 'active' ? 'активных' : 'завершенных'} конкурсов</div>`;
+            return;
           }
           
-          // Создаем карточки для активных конкурсов
-          for (let idx = 0; idx < activeContests.length; idx++) {
-            const { contest: c, index: i, winnersData } = activeContests[idx];
+          // Создаем карточки для выбранного типа конкурсов
+          for (let idx = 0; idx < contestsToShow.length; idx++) {
+            const { contest: c, index: i, winnersData } = contestsToShow[idx];
             
             const card = document.createElement('div');
             card.className = 'deletable-item rounded-lg border border-violet-400/30 p-3 bg-black/30';
@@ -2655,171 +2664,6 @@
               setupLongPress(card, c.id, 'contest', c.title || c.name || 'Конкурс');
             }
           }
-          
-          // Добавляем заголовок для завершенных конкурсов
-          if (completedContests.length > 0) {
-            const completedHeader = document.createElement('div');
-            completedHeader.className = 'text-xl font-bold text-gray-400 mb-4 mt-6';
-            completedHeader.textContent = '🏁 Завершенные конкурсы';
-            contestList.appendChild(completedHeader);
-          }
-          
-          // Создаем карточки для завершенных конкурсов
-          for (let idx = 0; idx < completedContests.length; idx++) {
-            const { contest: c, index: i, winnersData } = completedContests[idx];
-            
-            const card = document.createElement('div');
-            card.className = 'deletable-item rounded-lg border border-violet-400/30 p-3 bg-black/30 opacity-75';
-            card.dataset.contestId = c.id;
-            
-            const period = (c.start_at || c.end_at)
-              ? `<div class="text-xs text-gray-400 mt-1">${c.start_at ? 'Старт: ' + toMoscowDateTime(c.start_at) : ''} ${c.end_at ? ' · Конец: ' + toMoscowDateTime(c.end_at) : ''}</div>`
-              : '';
-            
-            const postLink = c.post_link 
-              ? `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                   <div class="text-xs text-gray-500 mb-1">🔗 Часть 1: Ссылка на пост</div>
-                   <a href="${c.post_link}" target="_blank" class="text-blue-400 hover:underline text-sm break-all">${c.post_link}</a>
-                 </div>` 
-              : '';
-            
-            const conditions = c.conditions 
-              ? `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                   <div class="text-xs text-gray-500 mb-1">📋 Часть 2: Условия участия</div>
-                   <div class="text-sm text-gray-300">${c.conditions}</div>
-                 </div>` 
-              : '';
-            
-            const contestTitle = c.title || c.name || 'Конкурс';
-            
-            // Копируем логику отображения призов, победителей и т.д. из активных конкурсов
-            // (упрощенная версия для завершенных - без кнопок действий)
-            let prizesHtml = '';
-            if (c.prize_links && Array.isArray(c.prize_links) && c.prize_links.length > 0) {
-              const prizesToShow = c.prize_links.slice(0, Math.min(3, c.prize_links.length));
-              
-              function normalizePrizeLink(link) {
-                if (!link) return '';
-                link = link.trim();
-                if (link.startsWith('http://') || link.startsWith('https://')) {
-                  return link;
-                }
-                if (link.startsWith('t.me/')) {
-                  return 'https://' + link;
-                }
-                return 'https://' + link;
-              }
-              
-              function getNFTImageHtml(link, idx) {
-                const normalizedLink = normalizePrizeLink(link);
-                return `
-                  <img 
-                    src="/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}" 
-                    alt="Приз ${idx + 1}"
-                    class="w-full h-full object-cover rounded-lg prize-image"
-                    onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');"
-                    loading="lazy"
-                  />
-                `;
-              }
-              
-              const gridCols = prizesToShow.length === 1 ? 'grid-cols-1' : prizesToShow.length === 2 ? 'grid-cols-2' : 'grid-cols-3';
-              
-              prizesHtml = `
-                <div class="mb-4">
-                  <div class="grid ${gridCols} gap-3 mb-3">
-                    ${prizesToShow.map((prizeLink, idx) => {
-                      const normalizedLink = normalizePrizeLink(prizeLink);
-                      return `
-                      <div class="relative rounded-xl overflow-hidden border-2 border-violet-400/40 bg-gradient-to-br from-violet-600/30 via-pink-600/30 to-purple-600/30 aspect-square group hover:scale-105 transition-transform shadow-lg cursor-pointer">
-                        <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48Y2lyY2xlIGN4PSIxMCIgY3k9IjEwIiByPSIxLjUiIGZpbGw9IiNmZmYiIG9wYWNpdHk9IjAuMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20"></div>
-                        <a href="${normalizedLink}" target="_blank" class="absolute inset-0 z-10 block">
-                          <div class="w-full h-full relative">
-                            ${getNFTImageHtml(prizeLink, idx)}
-                            <div class="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg fallback-prize hidden">
-                              <div class="text-5xl opacity-70">🎁</div>
-                            </div>
-                          </div>
-                        </a>
-                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-2 z-20 pointer-events-none">
-                          <div class="text-xs text-white font-semibold text-center">${idx + 1} место</div>
-                        </div>
-                      </div>
-                    `;
-                    }).join('')}
-                  </div>
-                  ${c.prize_links.length > 3 ? `<div class="text-xs text-gray-400 text-center">+${c.prize_links.length - 3} еще призов</div>` : ''}
-                </div>
-              `;
-            }
-            
-            // Победители для завершенных конкурсов
-            let winnersHtml = '';
-            try {
-              const winners = winnersData?.winners || [];
-              const isConfirmed = winnersData?.is_confirmed || false;
-              
-              if (winners && winners.length > 0) {
-                winnersHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                  <div class="text-xs text-gray-500 mb-2">🏆 Победители (${winners.length}):</div>
-                  <div class="space-y-2">
-                    ${winners.map((w, idx) => {
-                      const place = w.place || (idx + 1);
-                      const userDisplay = w.user_username ? `@${w.user_username}` : (w.user_id ? `ID: ${w.user_id}` : 'Неизвестно');
-                      let prizeLink = w.prize_link;
-                      if (prizeLink && !prizeLink.startsWith('http://') && !prizeLink.startsWith('https://')) {
-                        prizeLink = 'https://' + prizeLink;
-                      }
-                      const prizeDisplay = prizeLink ? `<a href="${prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз ${place} места</a>` : '<span class="text-gray-500">Нет приза</span>';
-                      const winnerLink = w.comment_link || w.photo_link;
-                      return `
-                      <div class="flex flex-col gap-1 text-sm p-2 rounded-lg bg-black/20 border border-violet-400/20">
-                        <div class="flex items-center gap-2">
-                          <span class="text-violet-400 font-bold flex-shrink-0">${place} место</span>
-                          <span class="text-gray-300">${userDisplay}</span>
-                        </div>
-                        <div class="flex items-center gap-2 text-xs">
-                          ${winnerLink ? `
-                            <a href="${winnerLink}" target="_blank" class="text-blue-400 hover:underline break-all flex-1 min-w-0">${winnerLink}</a>
-                          ` : '<span class="text-gray-500">Ссылка не указана</span>'}
-                        </div>
-                        <div class="text-xs text-gray-400">
-                          Приз: ${prizeDisplay}
-                        </div>
-                      </div>
-                    `;
-                    }).join('')}
-                  </div>
-                </div>`;
-              }
-            } catch (e) {
-              console.error('Ошибка загрузки победителей:', e);
-            }
-            
-            card.innerHTML = `
-              ${prizesHtml || ''}
-              
-              <div class="font-bold text-xl text-white mb-3">${contestTitle}</div>
-              
-              ${postLink}
-              ${conditions}
-              
-              <div class="mt-2 pt-2 border-t border-violet-400/20">
-                ${period}
-              </div>
-              
-              ${winnersHtml}
-            `;
-            
-            if (c.is_confirmed) {
-              card.classList.add('contest-confirmed');
-            }
-            
-            contestList.appendChild(card);
-            if (!c.is_confirmed) {
-              setupLongPress(card, c.id, 'contest', c.title || c.name || 'Конкурс');
-            }
-          }
         } catch (e) {
           console.error('Ошибка загрузки конкурсов:', e);
           if (contestList) {
@@ -2828,6 +2672,28 @@
           }
         }
       }
+      
+      // Обработчики для переключения между активными и завершенными конкурсами
+      setTimeout(() => {
+        const activeContestsBtn = document.getElementById('contests-active-btn');
+        const completedContestsBtn = document.getElementById('contests-completed-btn');
+        
+        if (activeContestsBtn) {
+          activeContestsBtn.addEventListener('click', () => {
+            activeContestsBtn.classList.add('active');
+            if (completedContestsBtn) completedContestsBtn.classList.remove('active');
+            loadContests('active');
+          });
+        }
+        
+        if (completedContestsBtn) {
+          completedContestsBtn.addEventListener('click', () => {
+            completedContestsBtn.classList.add('active');
+            if (activeContestsBtn) activeContestsBtn.classList.remove('active');
+            loadContests('completed');
+          });
+        }
+      }, 1000);
       
       // Функция для выбора победителей (legacy - теперь выбираются автоматически)
       // Оставлена для обратной совместимости, но не используется в UI
