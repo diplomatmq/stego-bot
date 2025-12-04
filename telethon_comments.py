@@ -69,14 +69,32 @@ async def collect_comments_via_telethon(
             
             logger.info(f"✅ Telethon: Сбор комментариев для поста {channel_username}/{post_message_id}")
             
-            # Получаем канал
-            channel = await client.get_entity(channel_username)
-            logger.info(f"✅ Telethon: Получен канал {channel.title} (ID: {channel.id})")
+            # Получаем канал (может быть username или числовой ID)
+            try:
+                # Пробуем получить как username
+                if not channel_username.isdigit() and not (channel_username.startswith('-') and channel_username[1:].isdigit()):
+                    channel = await client.get_entity(channel_username)
+                else:
+                    # Это числовой ID, используем его напрямую
+                    channel = await client.get_entity(int(channel_username))
+                logger.info(f"✅ Telethon: Получен канал {channel.title if hasattr(channel, 'title') else 'N/A'} (ID: {channel.id})")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при получении канала {channel_username}: {e}")
+                raise
             
             # Инициализируем переменные
             discussion_group_id = None
             source_entity = None
-            reply_to_id = post_message_id  # По умолчанию используем post_message_id
+            reply_to_id = post_message_id  # По умолчанию используем post_message_id из канала
+            
+            # Получаем сообщение поста из канала для проверки связанной группы обсуждения
+            post_message = None
+            try:
+                post_message = await client.get_messages(channel.id, ids=post_message_id)
+                if post_message:
+                    logger.info(f"✅ Telethon: Получен пост {post_message_id} из канала {channel_username}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось получить пост {post_message_id} из канала: {e}")
             
             # Пробуем получить группу обсуждения через discussion_group_username
             if discussion_group_username:
@@ -86,15 +104,26 @@ async def collect_comments_via_telethon(
                         discussion_group_id = discussion_group_entity.id
                         source_entity = discussion_group_username
                         logger.info(f"✅ Telethon: Используем указанную группу обсуждения: {discussion_group_username} (ID: {discussion_group_id})")
+                        
+                        # Если есть пост из канала, пытаемся найти связанное сообщение в группе обсуждения
+                        if post_message and hasattr(post_message, 'replies') and post_message.replies:
+                            replies = post_message.replies
+                            if hasattr(replies, 'channel_id') and replies.channel_id == discussion_group_id:
+                                # Если есть max_id в replies, это ID связанного сообщения в группе обсуждения
+                                if hasattr(replies, 'max_id') and replies.max_id:
+                                    reply_to_id = replies.max_id
+                                    logger.info(f"✅ Telethon: Найден связанный пост в группе обсуждения с ID {reply_to_id}")
+                                elif hasattr(replies, 'replies') and replies.replies:
+                                    # Альтернативный способ - используем replies.replies
+                                    reply_to_id = replies.replies
+                                    logger.info(f"✅ Telethon: Найден связанный пост в группе обсуждения с ID {reply_to_id}")
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось получить группу обсуждения по username {discussion_group_username}: {e}")
             
             # Если не нашли через username, пробуем получить из канала
-            if not source_entity:
+            if not source_entity and post_message:
                 try:
-                    # Получаем сообщение поста из канала
-                    post_message = await client.get_messages(channel.id, ids=post_message_id)
-                    if post_message and hasattr(post_message, 'replies') and post_message.replies:
+                    if hasattr(post_message, 'replies') and post_message.replies:
                         replies = post_message.replies
                         if hasattr(replies, 'channel_id') and replies.channel_id:
                             # Получаем группу обсуждения
@@ -108,17 +137,26 @@ async def collect_comments_via_telethon(
                                     source_entity = discussion_group_entity.username
                                 else:
                                     source_entity = discussion_group_id
+                                
+                                # Находим ID связанного сообщения в группе обсуждения
+                                if hasattr(replies, 'max_id') and replies.max_id:
+                                    reply_to_id = replies.max_id
+                                    logger.info(f"✅ Telethon: Найден связанный пост в группе обсуждения с ID {reply_to_id}")
+                                elif hasattr(replies, 'replies') and replies.replies:
+                                    reply_to_id = replies.replies
+                                    logger.info(f"✅ Telethon: Найден связанный пост в группе обсуждения с ID {reply_to_id}")
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось получить группу обсуждения из канала: {e}")
             
             # Если все еще не определили, используем канал как fallback
             if not source_entity:
                 source_entity = channel_username
-                logger.warning(f"⚠️ Используем канал как источник комментариев (группа обсуждения не найдена)")
+                reply_to_id = post_message_id  # Используем исходный post_message_id для канала
+                logger.info(f"✅ Telethon: Используем канал как источник комментариев (группа обсуждения не найдена)")
             else:
-                logger.info(f"✅ Используем группу обсуждения: {source_entity}")
+                logger.info(f"✅ Telethon: Используем группу обсуждения: {source_entity}")
             
-            logger.info(f"🔍 Telethon: Ищем комментарии к посту {post_message_id} (reply_to={reply_to_id}) в {source_entity}")
+            logger.info(f"🔍 Telethon: Ищем комментарии к посту (reply_to={reply_to_id}) в {source_entity}")
             
             # Настраиваем фильтрацию по времени, если указана дата окончания
             msk_tz = pytz.timezone('Europe/Moscow')
