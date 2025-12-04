@@ -572,7 +572,15 @@ async def select_winners_from_contest(contest_id: int, winners_count: int, bot: 
         chat_id, message_id = parsed
         
         # Извлекаем username канала из chat_id (убираем @ если есть)
-        channel_username = chat_id.replace('@', '') if chat_id.startswith('@') else None
+        # Если chat_id - это числовой ID (не username), используем его напрямую
+        if chat_id.startswith('@'):
+            channel_username = chat_id.replace('@', '')
+        elif chat_id.isdigit() or (chat_id.startswith('-') and chat_id[1:].isdigit()):
+            # Это числовой ID, нужно будет использовать его напрямую в Telethon
+            channel_username = chat_id
+        else:
+            # Пробуем использовать как username
+            channel_username = chat_id
         
         logger.info(f"Получение комментариев для конкурса {contest_id}: чат={chat_id}, сообщение={message_id}")
         
