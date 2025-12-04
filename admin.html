@@ -1584,7 +1584,7 @@
       </div>
       
       <button id="add-prize-btn" class="neon-button w-full py-2 rounded-lg mb-4" style="pointer-events: auto;">➕ Добавить приз</button>
-      <button id="submit-prizes" class="neon-button w-full py-3 rounded-lg" style="pointer-events: auto;">✅ Сохранить призы</button>
+      <button id="submit-prizes" class="neon-button w-full py-3 rounded-lg" style="pointer-events: auto;">✅ Создать конкурс</button>
     </div>
   </div>
 
@@ -1821,6 +1821,9 @@
       let originalBaseValue = ''; // Защищенное значение базовых условий
       let currentEditContestId = null; // ID редактируемого конкурса
       const telethonInProgress = new Set(); // Конкурсы, для которых уже запущен сбор комментариев
+      
+      // Временные данные конкурса (сохраняются при нажатии "Добавить данные", используются при создании)
+      let pendingContestData = null; // Данные конкурса, ожидающие создания
 
       function openModal(el) { el.classList.remove('hidden'); }
       function closeModal(el) { el.classList.add('hidden'); }
@@ -1844,6 +1847,7 @@
       if (closeContestModal) {
         closeContestModal.addEventListener('click', () => {
           closeModal(contestModal);
+          pendingContestData = null; // Очищаем временные данные при закрытии
         });
       }
 
@@ -3086,6 +3090,10 @@
         if (submitBtn) submitBtn.classList.add('hidden');
         if (updateBtn) updateBtn.classList.remove('hidden');
         
+        // Очищаем временные данные при открытии редактирования
+        pendingContestData = null;
+        window.currentContestId = contest.id; // Устанавливаем ID для обновления
+        
         // Извлекаем тему из названия конкурса (формат: "Конкурс рисунков: Тема")
         const contestName = contest.title || contest.name || '';
         const themeMatch = contestName.match(/Конкурс рисунков:\s*(.+)/i);
@@ -3689,42 +3697,37 @@
           }
           
           const winnersCount = parseInt(document.getElementById('contest-winners-count').value) || 1;
-          const payload = {
-            title: document.getElementById('contest-title').value.trim(),
+          
+          // Проверяем обязательные поля
+          const title = document.getElementById('contest-title').value.trim();
+          const conditions = document.getElementById('contest-conditions').value.trim();
+          
+          if (!postLink || !conditions) {
+            alert('⚠️ Пожалуйста, заполните все обязательные поля (ссылка на пост и условия участия)');
+            return;
+          }
+          
+          // Сохраняем данные конкурса во временную переменную (НЕ создаем конкурс)
+          pendingContestData = {
+            title: title,
             contest_type: apiContestType,
             post_link: postLink,
-            conditions: document.getElementById('contest-conditions').value.trim(),
-            prize: '', // Пустое значение, так как призы будут добавлены отдельно
+            conditions: conditions,
+            prize: '',
             start_at: null,
             end_at: null,
             winners_count: winnersCount,
-            created_by: currentUserId  // ID админа, создавшего конкурс
+            created_by: currentUserId
           };
           
-          try {
-            const response = await fetchJSON('/api/contests', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-
-            if (!response || response.success === false || !response.id) {
-              const msg = (response && (response.message || response.detail)) || 'Не удалось создать конкурс';
-              alert('⚠️ ' + msg);
-              return;
-            }
-
-            closeModal(contestModal);
-            
-            // Сохраняем ID созданного конкурса для добавления призов
-            window.currentContestId = response.id;
-            window.currentWinnersCount = winnersCount;
-            // Показываем модалку для ввода призов
-            openPrizesModal();
-          } catch (e) {
-            console.error('Ошибка при создании конкурса:', e);
-            alert('Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
-          }
+          // Сохраняем количество победителей для модалки призов
+          window.currentWinnersCount = winnersCount;
+          window.currentJuryEnabled = false; // Для рандомных конкурсов жюри не используется
+          
+          closeModal(contestModal);
+          
+          // Показываем модалку для ввода призов (конкурс будет создан только после добавления призов)
+          openPrizesModal();
         });
       }
 
@@ -3844,6 +3847,7 @@
           if (jurySettingsDiv) jurySettingsDiv.classList.add('hidden');
           currentJuryCount = 1;
           updateJuryMembers(1);
+          pendingContestData = null; // Очищаем временные данные при закрытии
           closeModal(drawingContestModal);
         });
       }
@@ -3898,28 +3902,15 @@
           const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
           
           // Собираем данные жюри (только включение/выключение и количество, данные введем позже)
-          let juryData = null;
           const juryEnabled = juryEnabledCheckbox && juryEnabledCheckbox.checked;
           const juryCount = parseInt(document.getElementById('drawing-contest-jury-count')?.value) || 1;
-          
-          if (juryEnabled) {
-            juryData = {
-              enabled: true,
-              members_count: juryCount,
-              members: [] // Данные будут введены в модалке призов
-            };
-          } else {
-            juryData = {
-              enabled: false,
-              members: []
-            };
-          }
           
           // Сохраняем информацию о жюри для модалки призов
           window.currentJuryEnabled = juryEnabled;
           window.currentJuryCount = juryCount;
           
-          const payload = {
+          // Сохраняем данные конкурса во временную переменную (НЕ создаем конкурс)
+          pendingContestData = {
             title: contestTitle,
             name: contestTitle,
             conditions: conditions,
@@ -3933,52 +3924,20 @@
             post_link: '',
             channel_link: adminChannelLink,
             discussion_group_link: adminChatLink,
-            jury: juryData
+            jury: {
+              enabled: juryEnabled,
+              members_count: juryEnabled ? juryCount : 0,
+              members: [] // Данные будут введены в модалке призов
+            }
           };
           
-          try {
-            const response = await fetchJSON('/api/contests', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            
-            if (response.success && response.id) {
-              closeModal(drawingContestModal);
-              window.currentContestId = response.id;
-              window.currentWinnersCount = winnersCount;
-              
-              // Показываем модалку для ввода призов (через функцию openPrizesModal)
-              if (typeof openPrizesModal === 'function') {
-                openPrizesModal();
-              } else {
-                // Fallback: открываем модалку напрямую
-                const prizesModal = document.getElementById('prizes-modal');
-                if (prizesModal) {
-                  const prizesList = document.getElementById('prizes-list');
-                  if (prizesList) {
-                    prizesList.innerHTML = '';
-                    for (let i = 0; i < winnersCount; i++) {
-                      const prizeDiv = document.createElement('div');
-                      prizeDiv.className = 'flex gap-2 items-center';
-                      prizeDiv.style.pointerEvents = 'auto';
-                      prizeDiv.innerHTML = `
-                        <label class="text-sm text-gray-400 w-20">Приз ${i + 1}:</label>
-                        <input type="text" class="prize-input input-field flex-1 p-2 rounded" placeholder="t.me/nft/название-номер" data-index="${i + 1}" style="pointer-events: auto; position: relative; z-index: 1;" />
-                      `;
-                      prizesList.appendChild(prizeDiv);
-                    }
-                    openModal(prizesModal);
-                  }
-                }
-              }
-            } else {
-              alert('⚠️ Ошибка при создании конкурса: ' + (response.message || 'Неизвестная ошибка'));
-            }
-          } catch (e) {
-            console.error('Ошибка создания конкурса рисунков:', e);
-            alert('⚠️ Ошибка при создании конкурса: ' + (e.message || 'Неизвестная ошибка'));
-          }
+          // Сохраняем количество победителей для модалки призов
+          window.currentWinnersCount = winnersCount;
+          
+          closeModal(drawingContestModal);
+          
+          // Показываем модалку для ввода призов (конкурс будет создан только после добавления призов)
+          openPrizesModal();
         });
       }
       
@@ -4071,6 +4030,106 @@
             console.error('Ошибка обновления конкурса рисунков:', e);
             alert('⚠️ Ошибка при обновлении конкурса: ' + (e.message || 'Неизвестная ошибка'));
           }
+        });
+      }
+      
+      // Обработчики для модалки конкурса коллекций
+      const collectionContestModal = document.getElementById('collection-contest-modal');
+      const closeCollectionContestModal = document.getElementById('close-collection-contest-modal');
+      const submitCollectionContest = document.getElementById('submit-collection-contest');
+      
+      if (closeCollectionContestModal && collectionContestModal) {
+        closeCollectionContestModal.addEventListener('click', () => {
+          currentEditContestId = null;
+          const submitBtn = document.getElementById('submit-collection-contest');
+          const updateBtn = document.getElementById('update-collection-contest');
+          if (submitBtn) submitBtn.classList.remove('hidden');
+          if (updateBtn) updateBtn.classList.add('hidden');
+          const modalTitle = document.getElementById('collection-contest-modal-title');
+          if (modalTitle) modalTitle.textContent = 'Создать конкурс коллекций';
+          pendingContestData = null; // Очищаем временные данные при закрытии
+          closeModal(collectionContestModal);
+        });
+      }
+      
+      // Обработчик создания конкурса коллекций
+      if (submitCollectionContest) {
+        submitCollectionContest.addEventListener('click', async () => {
+          const theme = document.getElementById('collection-contest-theme')?.value.trim();
+          const baseConditions = document.getElementById('collection-contest-conditions-base')?.value.trim() || '';
+          const additionalConditions = document.getElementById('collection-contest-conditions-additional')?.value.trim() || '';
+          const winnersCount = parseInt(document.getElementById('collection-contest-winners-count')?.value) || 1;
+          const submissionEndDate = document.getElementById('collection-contest-submission-end')?.value;
+          const votingEndDate = document.getElementById('collection-contest-voting-end')?.value;
+          
+          // Объединяем базовые и дополнительные условия
+          let conditions = baseConditions;
+          if (additionalConditions) {
+            conditions += (conditions ? '\n\n' : '') + additionalConditions;
+          }
+          
+          if (!theme || !baseConditions || !submissionEndDate || !votingEndDate) {
+            alert('⚠️ Пожалуйста, заполните все обязательные поля');
+            return;
+          }
+          
+          // Проверяем, что у админа есть канал и чат
+          if (!adminChannelLink || !adminChatLink) {
+            alert('⚠️ У вас не назначены канал и/или чат! Обратитесь к создателю для назначения активов.');
+            return;
+          }
+          
+          // Валидация времени: минимум 10 минут между окончанием приема и окончанием голосования
+          const submissionEnd = new Date(submissionEndDate);
+          const votingEnd = new Date(votingEndDate);
+          const timeDiff = (votingEnd - submissionEnd) / 1000 / 60;
+          
+          if (timeDiff < 10) {
+            alert('⚠️ Между окончанием приема работ и окончанием голосования должно быть минимум 10 минут');
+            return;
+          }
+          
+          if (submissionEnd >= votingEnd) {
+            alert('⚠️ Дата окончания приема работ должна быть раньше даты окончания голосования');
+            return;
+          }
+          
+          // Формируем название конкурса
+          const contestTitle = `Конкурс коллекций: ${theme}`;
+          
+          // Получаем текущее время в МСК для времени начала
+          const now = new Date();
+          const mskTimeString = now.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 16).replace(' ', 'T');
+          
+          // Сохраняем данные конкурса во временную переменную (НЕ создаем конкурс)
+          pendingContestData = {
+            title: contestTitle,
+            name: contestTitle,
+            conditions: conditions,
+            prize: '',
+            start_at: mskTimeString,
+            end_at: votingEndDate,
+            submission_end_date: submissionEndDate,
+            winners_count: winnersCount,
+            created_by: currentUserId,
+            contest_type: 'collection',
+            post_link: '',
+            channel_link: adminChannelLink,
+            discussion_group_link: adminChatLink,
+            jury: {
+              enabled: false,
+              members: []
+            }
+          };
+          
+          // Сохраняем количество победителей для модалки призов
+          window.currentWinnersCount = winnersCount;
+          window.currentJuryEnabled = false; // Для конкурсов коллекций жюри не используется
+          
+          closeModal(collectionContestModal);
+          
+          // Показываем модалку для ввода призов (конкурс будет создан только после добавления призов)
+          openPrizesModal();
         });
       }
       
@@ -4309,31 +4368,80 @@
           }
           
           try {
-            const updateData = { 
-              prize_links: prizeLinks,
-              current_user_id: currentUserId
-            };
-            if (juryData) {
-              updateData.jury = juryData;
+            // Если есть pendingContestData, значит это создание нового конкурса
+            if (pendingContestData) {
+              // Добавляем призы и жюри к данным конкурса
+              pendingContestData.prize_links = prizeLinks;
+              if (juryData) {
+                pendingContestData.jury = juryData;
+              }
+              
+              // Создаем конкурс со всеми данными
+              const response = await fetchJSON('/api/contests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pendingContestData)
+              });
+              
+              if (!response || response.success === false || !response.id) {
+                const msg = (response && (response.message || response.detail)) || 'Не удалось создать конкурс';
+                alert('⚠️ ' + msg);
+                return;
+              }
+              
+              // Очищаем временные данные
+              pendingContestData = null;
+              window.currentContestId = null;
+              window.currentWinnersCount = null;
+              window.currentJuryEnabled = null;
+              window.currentJuryCount = null;
+              
+              closeModal(prizesModal);
+              
+              // Очищаем форму
+              const contestTitleEl = document.getElementById('contest-title');
+              const contestPostLinkEl = document.getElementById('contest-post-link');
+              const contestConditionsEl = document.getElementById('contest-conditions');
+              if (contestTitleEl) contestTitleEl.value = '';
+              if (contestPostLinkEl) contestPostLinkEl.value = '';
+              if (contestConditionsEl) contestConditionsEl.value = '';
+              if (postLinkError) postLinkError.classList.add('hidden');
+              
+              await loadContests();
+              showSection('contests-section');
+            } else if (window.currentContestId) {
+              // Это обновление существующего конкурса (для редактирования)
+              const updateData = { 
+                prize_links: prizeLinks,
+                current_user_id: currentUserId
+              };
+              if (juryData) {
+                updateData.jury = juryData;
+              }
+              
+              await fetchJSON(`/api/contests/${window.currentContestId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updateData)
+              });
+              closeModal(prizesModal);
+              // Очищаем форму
+              const contestTitleEl = document.getElementById('contest-title');
+              const contestPostLinkEl = document.getElementById('contest-post-link');
+              const contestConditionsEl = document.getElementById('contest-conditions');
+              if (contestTitleEl) contestTitleEl.value = '';
+              if (contestPostLinkEl) contestPostLinkEl.value = '';
+              if (contestConditionsEl) contestConditionsEl.value = '';
+              if (postLinkError) postLinkError.classList.add('hidden');
+              await loadContests();
+              showSection('contests-section');
+              window.currentContestId = null;
+              window.currentWinnersCount = null;
+              window.currentJuryEnabled = null;
+              window.currentJuryCount = null;
+            } else {
+              alert('⚠️ Ошибка: не найдены данные для создания или обновления конкурса');
             }
-            
-            await fetchJSON(`/api/contests/${window.currentContestId}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(updateData)
-            });
-            closeModal(prizesModal);
-            // Очищаем форму
-            document.getElementById('contest-title').value = '';
-            document.getElementById('contest-post-link').value = '';
-            document.getElementById('contest-conditions').value = '';
-            postLinkError.classList.add('hidden');
-            await loadContests();
-            showSection('contests-section');
-            window.currentContestId = null;
-            window.currentWinnersCount = null;
-            window.currentJuryEnabled = null;
-            window.currentJuryCount = null;
           } catch (e) {
             let errorMsg = 'Ошибка при сохранении призов';
             if (e.message) {
