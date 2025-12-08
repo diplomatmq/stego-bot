@@ -22,6 +22,10 @@ class User(Base):
     ton_wallet = Column(String, nullable=True)  # TON кошелек пользователя
     monkey_coins = Column(Integer, default=0)  # Monkey Coins - внутренняя валюта
     purchased_items = Column(JSON, nullable=True)  # Купленные товары: {"themes": ["kitty", "mario"], "avatarStars": [], "nftGifts": []}
+    pro_subscription_start = Column(DateTime, nullable=True)  # Дата начала Pro подписки
+    pro_subscription_end = Column(DateTime, nullable=True)  # Дата окончания Pro подписки
+    pro_contests_created = Column(Integer, default=0)  # Количество созданных конкурсов за текущий период подписки
+    pro_last_topup_required = Column(Boolean, default=False)  # Требуется ли пополнение баланса на 50+ для следующей активации
 
 class Channel(Base):
     __tablename__ = "channels"
