@@ -1385,35 +1385,41 @@
         </div>
       </div>
       <div class="space-y-3" style="pointer-events: auto;">
-        <button id="select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
+        <button id="select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
           <div class="flex-1">
-            <div class="font-semibold text-lg flex items-center gap-2">
+            <div class="font-semibold text-lg">
               🎲 Рандом комментарий
-              <span id="random-comment-price" class="text-sm font-normal text-violet-400 hidden">• 10 🪙</span>
             </div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на основе случайного выбора комментариев из поста</div>
           </div>
-          <span class="text-2xl">→</span>
+          <div class="flex flex-col items-end gap-2">
+            <span class="text-2xl">→</span>
+            <span id="random-comment-price" class="text-sm font-semibold text-violet-400 hidden">10 🪙</span>
+          </div>
         </button>
-        <button id="select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
+        <button id="select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
           <div class="flex-1">
-            <div class="font-semibold text-lg flex items-center gap-2">
+            <div class="font-semibold text-lg">
               🎨 Конкурс рисунков
-              <span id="drawing-contest-price" class="text-sm font-normal text-violet-400 hidden">• 20 🪙</span>
             </div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на лучший рисунок по заданной теме</div>
           </div>
-          <span class="text-2xl">→</span>
+          <div class="flex flex-col items-end gap-2">
+            <span class="text-2xl">→</span>
+            <span id="drawing-contest-price" class="text-sm font-semibold text-violet-400 hidden">20 🪙</span>
+          </div>
         </button>
-        <button id="select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
+        <button id="select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
           <div class="flex-1">
-            <div class="font-semibold text-lg flex items-center gap-2">
+            <div class="font-semibold text-lg">
               🖼️ Конкурс коллекций
-              <span id="collection-contest-price" class="text-sm font-normal text-violet-400 hidden">• 15 🪙</span>
             </div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на лучшую коллекцию NFT (9 штук)</div>
           </div>
-          <span class="text-2xl">→</span>
+          <div class="flex flex-col items-end gap-2">
+            <span class="text-2xl">→</span>
+            <span id="collection-contest-price" class="text-sm font-semibold text-violet-400 hidden">15 🪙</span>
+          </div>
         </button>
       </div>
     </div>
