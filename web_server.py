@@ -833,6 +833,137 @@ async def get_monkey_coins(tg_id: int = Query(...)):
         logger.error(f"Ошибка при получении баланса Monkey Coins: {e}", exc_info=True)
         return {"monkey_coins": 0}
 
+@app.get("/api/profile/pro-subscription")
+async def get_pro_subscription(tg_id: int = Query(...)):
+    """Получить информацию о Pro подписке пользователя"""
+    try:
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.telegram_id == tg_id))
+            user = result.scalars().first()
+            
+            if not user:
+                return {"active": False, "has_subscription": False}
+            
+            now = datetime.now()
+            pro_start = getattr(user, 'pro_subscription_start', None)
+            pro_end = getattr(user, 'pro_subscription_end', None)
+            pro_contests = getattr(user, 'pro_contests_created', 0) or 0
+            pro_topup_required = getattr(user, 'pro_last_topup_required', False)
+            
+            is_active = False
+            if pro_start and pro_end:
+                is_active = pro_start <= now <= pro_end
+            
+            return {
+                "active": is_active,
+                "has_subscription": pro_start is not None,
+                "start_date": pro_start.isoformat() if pro_start else None,
+                "end_date": pro_end.isoformat() if pro_end else None,
+                "contests_created": pro_contests,
+                "topup_required": pro_topup_required
+            }
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о подписке: {e}", exc_info=True)
+        return {"active": False, "has_subscription": False}
+
+@app.post("/api/profile/activate-pro-subscription")
+async def activate_pro_subscription(request: Request):
+    """Активировать Pro подписку для пользователя"""
+    try:
+        data = await request.json()
+        tg_id = data.get("tg_id")
+        channel_link = data.get("channel_link", "").strip()
+        chat_link = data.get("chat_link", "").strip()
+        
+        if not tg_id:
+            return {"success": False, "message": "❌ Не указан ID пользователя"}
+        
+        if not channel_link:
+            return {"success": False, "message": "❌ Ссылка на канал обязательна"}
+        
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.telegram_id == tg_id))
+            user = result.scalars().first()
+            
+            if not user:
+                return {"success": False, "message": "❌ Пользователь не найден"}
+            
+            # Проверяем текущий статус подписки
+            now = datetime.now()
+            pro_start = getattr(user, 'pro_subscription_start', None)
+            pro_end = getattr(user, 'pro_subscription_end', None)
+            pro_topup_required = getattr(user, 'pro_last_topup_required', False)
+            pro_contests = getattr(user, 'pro_contests_created', 0) or 0
+            
+            # Проверяем, активна ли подписка
+            is_active = False
+            if pro_start and pro_end:
+                is_active = pro_start <= now <= pro_end
+            
+            # Если подписка активна, не нужно активировать снова
+            if is_active:
+                return {"success": False, "message": "❌ У вас уже есть активная Pro подписка"}
+            
+            # Если подписка закончилась, проверяем, создал ли пользователь хотя бы один конкурс
+            if pro_end and pro_end < now:
+                if pro_contests == 0:
+                    # Не создал ни одного конкурса - требуется пополнение
+                    pro_topup_required = True
+                    user.pro_last_topup_required = True
+                else:
+                    # Создал хотя бы один конкурс - сбрасываем флаг
+                    user.pro_last_topup_required = False
+                await session.commit()
+            
+            # Проверяем баланс
+            current_balance = getattr(user, 'monkey_coins', 0) or 0
+            
+            # Если требуется пополнение (не создал конкурс в прошлый раз)
+            if pro_topup_required:
+                # Нужно пополнить баланс минимум на 50
+                # Проверяем, было ли пополнение после последней подписки
+                if current_balance < 50:
+                    return {
+                        "success": False,
+                        "message": "❌ Для активации подписки необходимо пополнить баланс минимум на 50 Monkey Coins.\n\nТекущий баланс: " + str(current_balance) + "\nТребуется: 50+\n\nВы не создали ни одного конкурса в прошлый период подписки."
+                    }
+            else:
+                # Обычная проверка баланса >= 50
+                if current_balance < 50:
+                    return {
+                        "success": False,
+                        "message": f"❌ Недостаточно Monkey Coins для активации Pro подписки!\n\nУ вас: {current_balance}\nНужно: 50\n\nПополните баланс через кнопку \"+\" в правом верхнем углу."
+                    }
+            
+            # Активируем подписку на месяц
+            subscription_start = now
+            from datetime import timedelta
+            subscription_end = now + timedelta(days=30)
+            
+            user.pro_subscription_start = subscription_start
+            user.pro_subscription_end = subscription_end
+            user.pro_contests_created = 0  # Сбрасываем счетчик конкурсов
+            user.pro_last_topup_required = False  # Сбрасываем флаг требования пополнения
+            user.channel_link = channel_link
+            if chat_link:
+                user.chat_link = chat_link
+            
+            # НЕ списываем баланс - подписка бесплатная при наличии баланса >= 50
+            
+            await session.commit()
+            
+            logger.info(f"✅ Pro подписка активирована для пользователя {tg_id} до {subscription_end}")
+            
+            return {
+                "success": True,
+                "message": "✅ Pro подписка успешно активирована на 30 дней!",
+                "end_date": subscription_end.isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Ошибка при активации Pro подписки: {e}", exc_info=True)
+        return {"success": False, "message": f"❌ Ошибка: {str(e)}"}
+
 @app.post("/api/topup/create-stars-invoice")
 async def create_topup_stars_invoice(request: Request):
     """Создать invoice для пополнения баланса через Telegram Stars"""
@@ -1497,6 +1628,32 @@ async def create_giveaway(request: Request):
                             "fee": fee,
                             "new_balance": current_balance - fee
                         }
+                elif creator_user.role == "user":
+                    # Для обычного пользователя - проверяем Pro подписку
+                    now = datetime.now()
+                    pro_start = getattr(creator_user, 'pro_subscription_start', None)
+                    pro_end = getattr(creator_user, 'pro_subscription_end', None)
+                    
+                    is_pro_active = False
+                    if pro_start and pro_end:
+                        is_pro_active = pro_start <= now <= pro_end
+                    
+                    if not is_pro_active:
+                        return {
+                            "success": False,
+                            "message": "❌ Для создания конкурса необходима активная Pro подписка. Активируйте её в профиле."
+                        }
+                    
+                    # Для пользователя с Pro подпиской используем его канал и чат
+                    if not channel_link:
+                        channel_link = creator_user.channel_link
+                    if not final_discussion_group_link:
+                        final_discussion_group_link = creator_user.chat_link or discussion_group_link
+                    
+                    # НЕ списываем плату для пользователей с Pro подпиской
+                    # Но увеличиваем счетчик созданных конкурсов
+                    pro_contests = getattr(creator_user, 'pro_contests_created', 0) or 0
+                    creator_user.pro_contests_created = pro_contests + 1
         
         # Если discussion_group_link был передан явно, используем его (приоритет)
         if discussion_group_link:
