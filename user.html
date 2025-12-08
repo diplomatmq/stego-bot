@@ -1396,6 +1396,9 @@
         <button id="contests-completed-btn" class="nav-button px-4 py-2 rounded-lg" data-contest-type="completed">🏁 Завершенные</button>
       </div>
       
+      <!-- Кнопка создания конкурса для Pro пользователей -->
+      <button id="user-create-contest-btn" class="neon-button w-full py-3 rounded-lg mb-6 hidden">➕ Создать конкурс</button>
+      
       <div id="contest-list" class="space-y-4 mb-6"></div>
     </section>
 
@@ -1447,6 +1450,21 @@
             <span class="text-gray-400">Статус:</span>
             <span id="profile-status" class="text-green-400 font-semibold"></span>
           </div>
+        </div>
+      </div>
+
+      <!-- ⭐ Pro Подписка -->
+      <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4 mb-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-semibold mb-1">⭐ Pro Подписка</h3>
+            <p class="text-sm text-gray-400" id="pro-subscription-status">Не активирована</p>
+          </div>
+          <button id="activate-pro-btn" class="neon-button px-4 py-2 rounded-lg">Активировать</button>
+        </div>
+        <div id="pro-subscription-info" class="hidden text-sm text-gray-400 space-y-1">
+          <div>Действует до: <span id="pro-subscription-end" class="text-violet-400"></span></div>
+          <div>Создано конкурсов: <span id="pro-contests-count" class="text-violet-400">0</span></div>
         </div>
       </div>
 
@@ -1516,6 +1534,36 @@
       </div>
     </section>
     
+    <!-- ⭐ Модалка: Активация Pro подписки -->
+    <div id="pro-subscription-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div class="relative w-full sm:w-[450px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-4 mx-4">
+        <button id="close-pro-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+        <h3 class="text-base font-semibold mb-3">⭐ Активация Pro подписки</h3>
+        
+        <div class="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-400/30">
+          <p class="text-sm text-gray-300 mb-2">Для активации Pro подписки необходимо:</p>
+          <ul class="text-sm text-gray-400 space-y-1 list-disc list-inside">
+            <li>Баланс минимум 50 Monkey Coins</li>
+            <li>Ссылка на ваш канал (обязательно)</li>
+            <li>Ссылка на чат (необязательно)</li>
+          </ul>
+        </div>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">🔗 Ссылка на канал *</label>
+            <input type="text" id="pro-channel-link" class="input-field w-full p-2 rounded" placeholder="https://t.me/your_channel" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">💬 Ссылка на чат (необязательно)</label>
+            <input type="text" id="pro-chat-link" class="input-field w-full p-2 rounded" placeholder="https://t.me/your_chat" />
+          </div>
+        </div>
+        
+        <button id="confirm-pro-activation" class="neon-button w-full mt-4 py-3 rounded-lg">✅ Активировать подписку</button>
+      </div>
+    </div>
+
     <!-- 🎨 Модалка: Выбор темы -->
     <div id="theme-selector-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
@@ -2632,6 +2680,15 @@
     let currentContestType = 'active';
     
     window.loadContests = async function(silentUpdate = false, contestType = null) {
+      // Показываем/скрываем кнопку создания конкурса для Pro пользователей
+      const createContestBtn = document.getElementById('user-create-contest-btn');
+      if (createContestBtn) {
+        if (window.proSubscriptionActive) {
+          createContestBtn.classList.remove('hidden');
+        } else {
+          createContestBtn.classList.add('hidden');
+        }
+      }
       // Используем переданный тип или текущий выбранный
       if (contestType) {
         currentContestType = contestType;
@@ -3729,6 +3786,9 @@
           
           // Загружаем баланс Monkey Coins
           await updateCoinsDisplay();
+          
+          // Загружаем статус Pro подписки
+          await loadProSubscriptionStatus();
         } catch (e) {
           const params = new URLSearchParams(window.location.search);
           const pid = params.get('tg_id');
@@ -3752,6 +3812,142 @@
             document.getElementById('profile-status').textContent = prole;
           }
         }
+      }
+
+      // Загрузка статуса Pro подписки
+      async function loadProSubscriptionStatus() {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const tgId = params.get('tg_id');
+          
+          if (!tgId) return;
+          
+          const subscription = await window.fetchJSON(`/api/profile/pro-subscription?tg_id=${tgId}`);
+          
+          const statusEl = document.getElementById('pro-subscription-status');
+          const infoEl = document.getElementById('pro-subscription-info');
+          const activateBtn = document.getElementById('activate-pro-btn');
+          const endDateEl = document.getElementById('pro-subscription-end');
+          const contestsCountEl = document.getElementById('pro-contests-count');
+          
+          if (subscription.active) {
+            if (statusEl) statusEl.textContent = 'Активна';
+            if (infoEl) infoEl.classList.remove('hidden');
+            if (activateBtn) activateBtn.textContent = 'Обновить';
+            if (endDateEl && subscription.end_date) {
+              const endDate = new Date(subscription.end_date);
+              endDateEl.textContent = endDate.toLocaleDateString('ru-RU', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            }
+            if (contestsCountEl) {
+              contestsCountEl.textContent = subscription.contests_created || 0;
+            }
+          } else {
+            if (statusEl) statusEl.textContent = subscription.has_subscription ? 'Истекла' : 'Не активирована';
+            if (infoEl) infoEl.classList.add('hidden');
+            if (activateBtn) activateBtn.textContent = 'Активировать';
+          }
+          
+          // Сохраняем статус для использования в других функциях
+          window.proSubscriptionActive = subscription.active;
+        } catch (e) {
+          console.error('Ошибка загрузки статуса подписки:', e);
+        }
+      }
+
+      // Обработчик кнопки создания конкурса для пользователей
+      const userCreateContestBtn = document.getElementById('user-create-contest-btn');
+      if (userCreateContestBtn) {
+        userCreateContestBtn.addEventListener('click', () => {
+          // Перенаправляем на admin.html с параметрами пользователя
+          const params = new URLSearchParams(window.location.search);
+          const tgId = params.get('tg_id');
+          if (tgId) {
+            window.location.href = `admin.html?tg_id=${tgId}&role=user`;
+          }
+        });
+      }
+
+      // Обработчики для Pro подписки
+      const activateProBtn = document.getElementById('activate-pro-btn');
+      const proModal = document.getElementById('pro-subscription-modal');
+      const closeProModal = document.getElementById('close-pro-modal');
+      const confirmProActivation = document.getElementById('confirm-pro-activation');
+      
+      if (activateProBtn) {
+        activateProBtn.addEventListener('click', () => {
+          if (proModal) {
+            proModal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+          }
+        });
+      }
+      
+      if (closeProModal && proModal) {
+        closeProModal.addEventListener('click', () => {
+          proModal.classList.add('hidden');
+          document.body.classList.remove('modal-open');
+        });
+      }
+      
+      if (confirmProActivation) {
+        confirmProActivation.addEventListener('click', async () => {
+          const params = new URLSearchParams(window.location.search);
+          const tgId = params.get('tg_id');
+          
+          if (!tgId) {
+            alert('❌ Ошибка: не найден ID пользователя');
+            return;
+          }
+          
+          const channelLink = document.getElementById('pro-channel-link')?.value.trim();
+          const chatLink = document.getElementById('pro-chat-link')?.value.trim();
+          
+          if (!channelLink) {
+            alert('❌ Пожалуйста, укажите ссылку на канал');
+            return;
+          }
+          
+          try {
+            const response = await window.fetchJSON('/api/profile/activate-pro-subscription', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tg_id: parseInt(tgId),
+                channel_link: channelLink,
+                chat_link: chatLink || ''
+              })
+            });
+            
+            if (response.success) {
+              alert(response.message);
+              if (proModal) {
+                proModal.classList.add('hidden');
+                document.body.classList.remove('modal-open');
+              }
+              // Очищаем поля
+              document.getElementById('pro-channel-link').value = '';
+              document.getElementById('pro-chat-link').value = '';
+              // Обновляем статус
+              await loadProSubscriptionStatus();
+              await updateCoinsDisplay();
+              // Обновляем список конкурсов (чтобы показать кнопку создания)
+              if (typeof window.loadContests === 'function') {
+                await window.loadContests();
+              }
+            } else {
+              alert(response.message || '❌ Ошибка при активации подписки');
+            }
+          } catch (e) {
+            console.error('Ошибка активации подписки:', e);
+            alert('❌ Ошибка при активации подписки: ' + (e.message || 'Неизвестная ошибка'));
+          }
+        });
       }
 
       // Rating - загрузка рейтинга
