@@ -1378,24 +1378,39 @@
     <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto;">
       <button id="close-contest-type-selection-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
       <h3 class="text-lg font-semibold mb-4 sticky top-0 bg-[#0b0b10] pb-2 z-0">Выберите тип конкурса</h3>
+      <div id="contest-type-selection-balance" class="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-400/30 hidden">
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-gray-400">Ваш баланс:</span>
+          <span id="contest-type-selection-balance-value" class="text-lg font-semibold text-violet-400">0</span>
+        </div>
+      </div>
       <div class="space-y-3" style="pointer-events: auto;">
         <button id="select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
-          <div>
-            <div class="font-semibold text-lg">🎲 Рандом комментарий</div>
+          <div class="flex-1">
+            <div class="font-semibold text-lg flex items-center gap-2">
+              🎲 Рандом комментарий
+              <span id="random-comment-price" class="text-sm font-normal text-violet-400 hidden">• 10 🪙</span>
+            </div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на основе случайного выбора комментариев из поста</div>
           </div>
           <span class="text-2xl">→</span>
         </button>
         <button id="select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
-          <div>
-            <div class="font-semibold text-lg">🎨 Конкурс рисунков</div>
+          <div class="flex-1">
+            <div class="font-semibold text-lg flex items-center gap-2">
+              🎨 Конкурс рисунков
+              <span id="drawing-contest-price" class="text-sm font-normal text-violet-400 hidden">• 20 🪙</span>
+            </div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на лучший рисунок по заданной теме</div>
           </div>
           <span class="text-2xl">→</span>
         </button>
         <button id="select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
-          <div>
-            <div class="font-semibold text-lg">🖼️ Конкурс коллекций</div>
+          <div class="flex-1">
+            <div class="font-semibold text-lg flex items-center gap-2">
+              🖼️ Конкурс коллекций
+              <span id="collection-contest-price" class="text-sm font-normal text-violet-400 hidden">• 15 🪙</span>
+            </div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на лучшую коллекцию NFT (9 штук)</div>
           </div>
           <span class="text-2xl">→</span>
@@ -1833,13 +1848,15 @@
       let openPrizesModal = null; // Будет определена позже
 
       if (openContestBtn) {
-        openContestBtn.addEventListener('click', (e) => {
+        openContestBtn.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
           // Показываем модалку выбора типа конкурса
           const contestTypeSelectionModal = document.getElementById('contest-type-selection-modal');
           if (contestTypeSelectionModal) {
             openModal(contestTypeSelectionModal);
+            // Обновляем цены при открытии модалки
+            await updateContestTypePrices();
           } else {
             console.error('❌ Модальное окно выбора типа конкурса не найдено!');
           }
@@ -1932,6 +1949,20 @@
       const closeContestTypeSelectionModal = document.getElementById('close-contest-type-selection-modal');
       const selectRandomCommentContest = document.getElementById('select-random-comment-contest');
       const selectDrawingContest = document.getElementById('select-drawing-contest');
+      
+      // Обновляем цены при показе модалки (наблюдатель за изменениями класса)
+      if (contestTypeSelectionModal) {
+        const observer = new MutationObserver(async (mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+              if (!contestTypeSelectionModal.classList.contains('hidden')) {
+                updateContestTypePrices();
+              }
+            }
+          });
+        });
+        observer.observe(contestTypeSelectionModal, { attributes: true, attributeFilter: ['class'] });
+      }
       
       if (closeContestTypeSelectionModal && contestTypeSelectionModal) {
         closeContestTypeSelectionModal.addEventListener('click', (e) => {
@@ -5360,9 +5391,51 @@
           }
         }
       }
+
+      // Обновление цен конкурсов в модалке выбора типа
+      async function updateContestTypePrices() {
+        try {
+          // Проверяем, является ли пользователь админом (не создателем)
+          const isAdmin = currentUserRole === 'admin';
+          
+          const balanceEl = document.getElementById('contest-type-selection-balance');
+          const balanceValueEl = document.getElementById('contest-type-selection-balance-value');
+          const randomPriceEl = document.getElementById('random-comment-price');
+          const drawingPriceEl = document.getElementById('drawing-contest-price');
+          const collectionPriceEl = document.getElementById('collection-contest-price');
+          
+          if (isAdmin) {
+            // Показываем цены и баланс для админов
+            if (balanceEl) balanceEl.classList.remove('hidden');
+            if (randomPriceEl) randomPriceEl.classList.remove('hidden');
+            if (drawingPriceEl) drawingPriceEl.classList.remove('hidden');
+            if (collectionPriceEl) collectionPriceEl.classList.remove('hidden');
+            
+            // Загружаем баланс
+            try {
+              const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${currentUserId}`);
+              const balance = balanceResponse?.monkey_coins || 0;
+              if (balanceValueEl) {
+                balanceValueEl.textContent = `${balance} 🪙`;
+              }
+            } catch (error) {
+              console.error('Ошибка загрузки баланса для модалки:', error);
+            }
+          } else {
+            // Скрываем цены для создателя
+            if (balanceEl) balanceEl.classList.add('hidden');
+            if (randomPriceEl) randomPriceEl.classList.add('hidden');
+            if (drawingPriceEl) drawingPriceEl.classList.add('hidden');
+            if (collectionPriceEl) collectionPriceEl.classList.add('hidden');
+          }
+        } catch (error) {
+          console.error('Ошибка обновления цен конкурсов:', error);
+        }
+      }
       
-      // Делаем функцию доступной глобально
+      // Делаем функции доступными глобально
       window.updateCoinsDisplay = updateCoinsDisplay;
+      window.updateContestTypePrices = updateContestTypePrices;
 
       // Обновление селектора тем с купленными темами
       async function updateThemeSelector() {
