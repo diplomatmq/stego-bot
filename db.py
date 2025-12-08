@@ -27,6 +27,34 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
+        # Миграция для новых колонок Pro подписки (для PostgreSQL)
+        if not IS_SQLITE:
+            try:
+                result = await conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'users'
+                """))
+                existing_user_columns = [row[0] for row in result.fetchall()] if result else []
+                
+                if 'pro_subscription_start' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_subscription_start TIMESTAMP"))
+                    print("✅ Добавлена колонка users.pro_subscription_start (PostgreSQL)")
+                
+                if 'pro_subscription_end' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_subscription_end TIMESTAMP"))
+                    print("✅ Добавлена колонка users.pro_subscription_end (PostgreSQL)")
+                
+                if 'pro_contests_created' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_contests_created INTEGER DEFAULT 0"))
+                    print("✅ Добавлена колонка users.pro_contests_created (PostgreSQL)")
+                
+                if 'pro_last_topup_required' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_last_topup_required BOOLEAN DEFAULT FALSE"))
+                    print("✅ Добавлена колонка users.pro_last_topup_required (PostgreSQL)")
+            except Exception as e:
+                print(f"⚠️ Migration users (PostgreSQL) error: {e}")
+        
         if IS_SQLITE:
             # Migrate: add missing columns to existing users table
             try:
@@ -56,6 +84,22 @@ async def init_db():
                 if 'purchased_items' not in existing_user_columns:
                     await conn.execute(text("ALTER TABLE users ADD COLUMN purchased_items TEXT"))
                     print("✅ Добавлена колонка users.purchased_items")
+                
+                if 'pro_subscription_start' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_subscription_start DATETIME"))
+                    print("✅ Добавлена колонка users.pro_subscription_start")
+                
+                if 'pro_subscription_end' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_subscription_end DATETIME"))
+                    print("✅ Добавлена колонка users.pro_subscription_end")
+                
+                if 'pro_contests_created' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_contests_created INTEGER DEFAULT 0"))
+                    print("✅ Добавлена колонка users.pro_contests_created")
+                
+                if 'pro_last_topup_required' not in existing_user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN pro_last_topup_required BOOLEAN DEFAULT 0"))
+                    print("✅ Добавлена колонка users.pro_last_topup_required")
             except Exception as e:
                 print(f"⚠️ Migration users error: {e}")
             
@@ -249,17 +293,30 @@ async def init_db():
             except Exception as e:
                 print(f"⚠️ Migration participants error: {e}")
             
-            # Migrate: add missing columns to existing giveaways table (contest_type and submission_end_date)
+            # Migrate: add missing columns to existing giveaways table (contest_type, submission_end_date, jury)
             try:
-                result = await conn.execute(text("PRAGMA table_info(giveaways)"))
-                existing_giveaway_columns = [row[1] for row in result.fetchall()] if result else []
+                # Получаем список существующих колонок (разные запросы для SQLite и PostgreSQL)
+                if IS_SQLITE:
+                    result = await conn.execute(text("PRAGMA table_info(giveaways)"))
+                    existing_giveaway_columns = [row[1] for row in result.fetchall()] if result else []
+                else:
+                    # Для PostgreSQL
+                    result = await conn.execute(text("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'giveaways'
+                    """))
+                    existing_giveaway_columns = [row[0] for row in result.fetchall()] if result else []
                 
                 if 'contest_type' not in existing_giveaway_columns:
                     await conn.execute(text("ALTER TABLE giveaways ADD COLUMN contest_type VARCHAR DEFAULT 'random_comment'"))
                     print("✅ Добавлена колонка giveaways.contest_type")
                 
                 if 'submission_end_date' not in existing_giveaway_columns:
-                    await conn.execute(text("ALTER TABLE giveaways ADD COLUMN submission_end_date DATETIME"))
+                    if IS_SQLITE:
+                        await conn.execute(text("ALTER TABLE giveaways ADD COLUMN submission_end_date DATETIME"))
+                    else:
+                        await conn.execute(text("ALTER TABLE giveaways ADD COLUMN submission_end_date TIMESTAMP"))
                     print("✅ Добавлена колонка giveaways.submission_end_date")
                 
                 if 'jury' not in existing_giveaway_columns:
