@@ -1564,6 +1564,49 @@
       </div>
     </div>
 
+    <!-- 🎯 Модалка: Выбор типа конкурса для пользователей -->
+    <div id="user-contest-type-selection-modal" class="hidden fixed inset-0 z-25 flex items-end sm:items-center justify-center bg-black/60 p-4" style="pointer-events: auto;">
+      <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto;">
+        <button id="close-user-contest-type-selection-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
+        <h3 class="text-lg font-semibold mb-4 sticky top-0 bg-[#0b0b10] pb-2 z-0">Выберите тип конкурса</h3>
+        <div id="user-contest-type-selection-balance" class="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-400/30 hidden">
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400">Ваш баланс:</span>
+            <span id="user-contest-type-selection-balance-value" class="text-lg font-semibold text-violet-400">0</span>
+          </div>
+        </div>
+        <div class="space-y-3" style="pointer-events: auto;">
+          <button id="user-select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
+            <div class="flex-1">
+              <div class="font-semibold text-lg flex items-center gap-2">
+                🎲 Рандом комментарий(10<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
+              </div>
+              <div class="text-sm text-gray-400 mt-1">Конкурс на основе случайного выбора комментариев из поста</div>
+            </div>
+            <span class="text-2xl">→</span>
+          </button>
+          <button id="user-select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
+            <div class="flex-1">
+              <div class="font-semibold text-lg flex items-center gap-2">
+                🎨 Конкурс рисунков(20<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
+              </div>
+              <div class="text-sm text-gray-400 mt-1">Конкурс на лучший рисунок по заданной теме</div>
+            </div>
+            <span class="text-2xl">→</span>
+          </button>
+          <button id="user-select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
+            <div class="flex-1">
+              <div class="font-semibold text-lg flex items-center gap-2">
+                🖼️ Конкурс коллекций(15<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
+              </div>
+              <div class="text-sm text-gray-400 mt-1">Конкурс на лучшую коллекцию NFT (9 штук)</div>
+            </div>
+            <span class="text-2xl">→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 🎨 Модалка: Выбор темы -->
     <div id="theme-selector-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
@@ -3860,16 +3903,108 @@
         }
       }
 
+      // Функция обновления цен конкурсов для пользователей
+      async function updateUserContestTypePrices() {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const tgId = params.get('tg_id');
+          
+          if (!tgId) return;
+          
+          // Проверяем активность Pro подписки
+          const subscription = await window.fetchJSON(`/api/profile/pro-subscription?tg_id=${tgId}`);
+          const isProActive = subscription.active || false;
+          
+          const balanceEl = document.getElementById('user-contest-type-selection-balance');
+          const balanceValueEl = document.getElementById('user-contest-type-selection-balance-value');
+          
+          if (isProActive) {
+            // Показываем баланс для Pro пользователей
+            if (balanceEl) balanceEl.classList.remove('hidden');
+            
+            // Загружаем баланс
+            try {
+              const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${tgId}`);
+              const balance = balanceResponse?.monkey_coins || 0;
+              if (balanceValueEl) {
+                balanceValueEl.innerHTML = `${balance} <img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain inline">`;
+              }
+            } catch (error) {
+              console.error('Ошибка загрузки баланса для модалки:', error);
+            }
+          } else {
+            if (balanceEl) balanceEl.classList.add('hidden');
+          }
+        } catch (error) {
+          console.error('Ошибка обновления цен конкурсов:', error);
+        }
+      }
+
       // Обработчик кнопки создания конкурса для пользователей
       const userCreateContestBtn = document.getElementById('user-create-contest-btn');
       if (userCreateContestBtn) {
         userCreateContestBtn.addEventListener('click', () => {
-          // Перенаправляем на admin.html с параметрами пользователя
-          const params = new URLSearchParams(window.location.search);
-          const tgId = params.get('tg_id');
-          if (tgId) {
-            window.location.href = `admin.html?tg_id=${tgId}&role=user`;
+          // Показываем модалку выбора типа конкурса
+          const contestTypeModal = document.getElementById('user-contest-type-selection-modal');
+          if (contestTypeModal) {
+            contestTypeModal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            // Обновляем цены для Pro пользователей
+            updateUserContestTypePrices();
           }
+        });
+      }
+
+      // Обработчики для модалки выбора типа конкурса пользователей
+      const userContestTypeModal = document.getElementById('user-contest-type-selection-modal');
+      const closeUserContestTypeModal = document.getElementById('close-user-contest-type-selection-modal');
+      
+      if (closeUserContestTypeModal && userContestTypeModal) {
+        closeUserContestTypeModal.addEventListener('click', () => {
+          userContestTypeModal.classList.add('hidden');
+          document.body.classList.remove('modal-open');
+        });
+      }
+
+      // Обработчики выбора типа конкурса - открываем соответствующие модалки
+      // (Модалки для создания конкурсов нужно будет добавить из admin.html)
+      const userSelectRandomContest = document.getElementById('user-select-random-comment-contest');
+      const userSelectDrawingContest = document.getElementById('user-select-drawing-contest');
+      const userSelectCollectionContest = document.getElementById('user-select-collection-contest');
+      
+      if (userSelectRandomContest) {
+        userSelectRandomContest.addEventListener('click', () => {
+          // Закрываем модалку выбора типа
+          if (userContestTypeModal) {
+            userContestTypeModal.classList.add('hidden');
+          }
+          // TODO: Открыть модалку создания конкурса рандом комментариев
+          // (Нужно скопировать модалку contest-modal из admin.html)
+          alert('Модалка создания конкурса будет добавлена');
+        });
+      }
+      
+      if (userSelectDrawingContest) {
+        userSelectDrawingContest.addEventListener('click', () => {
+          // Закрываем модалку выбора типа
+          if (userContestTypeModal) {
+            userContestTypeModal.classList.add('hidden');
+          }
+          // TODO: Открыть модалку создания конкурса рисунков
+          // (Нужно скопировать модалку drawing-contest-modal из admin.html)
+          alert('Модалка создания конкурса будет добавлена');
+        });
+      }
+      
+      if (userSelectCollectionContest) {
+        userSelectCollectionContest.addEventListener('click', () => {
+          // Закрываем модалку выбора типа
+          if (userContestTypeModal) {
+            userContestTypeModal.classList.add('hidden');
+          }
+          // TODO: Открыть модалку создания конкурса коллекций
+          // (Нужно скопировать модалку collection-contest-modal из admin.html)
+          alert('Модалка создания конкурса будет добавлена');
         });
       }
 
