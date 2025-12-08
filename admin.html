@@ -1667,7 +1667,26 @@
           const data = await fetchJSON(`/api/auth?tg_id=${tgId}`);
           clearTimeout(fallbackTimeout);
 
-          if (!data.authorized || (data.role !== "admin" && data.role !== "creator")) {
+          // Разрешаем доступ админам, создателям и пользователям с Pro подпиской
+          if (!data.authorized) {
+            window.location.href = "index.html";
+            return;
+          }
+          
+          // Проверяем Pro подписку для обычных пользователей
+          if (data.role === "user") {
+            try {
+              const subscription = await fetchJSON(`/api/profile/pro-subscription?tg_id=${tgId}`);
+              if (!subscription.active) {
+                window.location.href = "user.html?tg_id=" + tgId;
+                return;
+              }
+            } catch (e) {
+              console.error('Ошибка проверки подписки:', e);
+              window.location.href = "user.html?tg_id=" + tgId;
+              return;
+            }
+          } else if (data.role !== "admin" && data.role !== "creator") {
             window.location.href = "index.html";
             return;
           }
@@ -5399,8 +5418,22 @@
       // Обновление цен конкурсов в модалке выбора типа
       async function updateContestTypePrices() {
         try {
-          // Проверяем, является ли пользователь админом (не создателем)
+          // Проверяем, является ли пользователь админом или пользователем с Pro подпиской
           const isAdmin = currentUserRole === 'admin';
+          const isProUser = currentUserRole === 'user';
+          
+          // Для пользователей проверяем активность подписки
+          let proActive = false;
+          if (isProUser) {
+            try {
+              const subscription = await window.fetchJSON(`/api/profile/pro-subscription?tg_id=${currentUserId}`);
+              proActive = subscription.active || false;
+            } catch (e) {
+              console.error('Ошибка проверки подписки:', e);
+            }
+          }
+          
+          const shouldShowPrices = isAdmin || (isProUser && proActive);
           
           const balanceEl = document.getElementById('contest-type-selection-balance');
           const balanceValueEl = document.getElementById('contest-type-selection-balance-value');
@@ -5408,7 +5441,7 @@
           const drawingPriceEl = document.getElementById('drawing-contest-price');
           const collectionPriceEl = document.getElementById('collection-contest-price');
           
-          if (isAdmin) {
+          if (shouldShowPrices) {
             // Показываем цены и баланс для админов
             if (balanceEl) balanceEl.classList.remove('hidden');
             if (randomPriceEl) randomPriceEl.classList.remove('hidden');
