@@ -1408,6 +1408,9 @@ async def create_giveaway(request: Request):
         if submission_end_date_db >= end_date_db:
             return {"success": False, "message": "❌ Дата окончания приема работ должна быть раньше даты окончания голосования"}
     
+    # Переменная для хранения информации о списанной плате
+    admin_fee_deducted = None
+    
     async with async_session() as session:
         # Проверяем, не существует ли уже конкурс для этого поста (только для рандом комментариев)
         # Для конкурса рисунков post_link может быть пустым, поэтому проверяем только для random_comment
@@ -1465,6 +1468,35 @@ async def create_giveaway(request: Request):
                         channel_link = creator_user.channel_link
                     if not final_discussion_group_link:
                         final_discussion_group_link = creator_user.chat_link or discussion_group_link
+                    
+                    # Списываем плату за создание конкурса для админа
+                    # Определяем стоимость в зависимости от типа конкурса
+                    contest_fees = {
+                        "random_comment": 10,
+                        "drawing": 20,
+                        "collection": 15
+                    }
+                    
+                    fee = contest_fees.get(contest_type, 0)
+                    
+                    if fee > 0:
+                        # Получаем текущий баланс Monkey Coins
+                        current_balance = getattr(creator_user, 'monkey_coins', 0) or 0
+                        
+                        if current_balance < fee:
+                            return {
+                                "success": False,
+                                "message": f"❌ Недостаточно Monkey Coins для создания конкурса!\n\nУ вас: {current_balance}\nНужно: {fee}\n\nПополните баланс через кнопку \"+\" в правом верхнем углу."
+                            }
+                        
+                        # Списываем плату (будет закоммичено вместе с созданием конкурса)
+                        creator_user.monkey_coins = current_balance - fee
+                        # Сохраняем информацию для логирования
+                        admin_fee_deducted = {
+                            "admin_id": created_by,
+                            "fee": fee,
+                            "new_balance": current_balance - fee
+                        }
         
         # Если discussion_group_link был передан явно, используем его (приоритет)
         if discussion_group_link:
@@ -1502,6 +1534,10 @@ async def create_giveaway(request: Request):
         session.add(new_giveaway)
         await session.commit()
         await session.refresh(new_giveaway)
+        
+        # Логируем списание платы для админа (если была списана)
+        if admin_fee_deducted:
+            logger.info(f"✅ С админа {admin_fee_deducted['admin_id']} списано {admin_fee_deducted['fee']} Monkey Coins за создание конкурса типа '{contest_type}' (ID: {new_giveaway.id}). Остаток: {admin_fee_deducted['new_balance']}")
         
         # Если это конкурс рисунков, создаем начальную запись в drawing_contests.json
         if contest_type == "drawing":
