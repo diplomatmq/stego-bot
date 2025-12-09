@@ -57,6 +57,7 @@ class Giveaway(Base):
     contest_type = Column(String, default="random_comment")  # Тип конкурса: "random_comment" или "drawing"
     submission_end_date = Column(DateTime, nullable=True)  # Дата окончания приема работ (для конкурса рисунков, МСК)
     jury = Column(JSON, nullable=True)  # Данные жюри: {"enabled": true/false, "members": [{"user_id": 123, "channel_link": "t.me/..."}, ...]}
+    audience_voting = Column(JSON, nullable=True)  # Настройки зрительских симпатий: {"enabled": true/false, "participants_can_vote": true/false}
 
 class Winner(Base):
     __tablename__ = "winners"
