@@ -1498,6 +1498,28 @@
             <p class="text-xs text-gray-500">Данные членов жюри (ID и канал) нужно будет ввести после создания конкурса</p>
           </div>
         </div>
+        
+        <!-- Секция зрительских симпатий -->
+        <div class="border-t border-violet-500/30 pt-3 mt-3">
+          <div class="flex items-center justify-between mb-3">
+            <label class="block text-sm text-gray-400">👥 Зрительские симпатии</label>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="drawing-contest-audience-voting-enabled" class="sr-only peer" />
+              <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-violet-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+            </label>
+          </div>
+          
+          <div id="drawing-contest-audience-voting-settings" class="hidden space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="block text-sm text-gray-400">Участники могут голосовать</label>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="drawing-contest-participants-can-vote" class="sr-only peer" />
+                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-violet-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
+              </label>
+            </div>
+            <p class="text-xs text-gray-500">Если включены и жюри, и зрительские симпатии, оценки будут считаться отдельно</p>
+          </div>
+        </div>
       </div>
       <button id="submit-drawing-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить данные</button>
       <button id="update-drawing-contest" class="neon-button w-full mt-4 py-3 rounded-lg hidden">Сохранить изменения</button>
@@ -3860,6 +3882,48 @@
       // Инициализируем количество жюри при загрузке
       updateJuryMembers(currentJuryCount);
       
+      // Обработчики для зрительских симпатий
+      const audienceVotingCheckbox = document.getElementById('drawing-contest-audience-voting-enabled');
+      const audienceVotingSettingsDiv = document.getElementById('drawing-contest-audience-voting-settings');
+      const participantsCanVoteCheckbox = document.getElementById('drawing-contest-participants-can-vote');
+      
+      if (audienceVotingCheckbox && audienceVotingSettingsDiv) {
+        audienceVotingCheckbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            audienceVotingSettingsDiv.classList.remove('hidden');
+          } else {
+            audienceVotingSettingsDiv.classList.add('hidden');
+            // При отключении сбрасываем чекбокс "участники могут голосовать"
+            if (participantsCanVoteCheckbox) {
+              participantsCanVoteCheckbox.checked = false;
+            }
+          }
+        });
+      }
+      
+      // Логика: зрительские симпатии можно отключить только если включены жюри
+      // Если жюри отключено, зрительские симпатии автоматически включены (нельзя отключить)
+      if (juryEnabledCheckbox && audienceVotingCheckbox) {
+        const updateAudienceVotingState = () => {
+          const juryEnabled = juryEnabledCheckbox.checked;
+          if (!juryEnabled) {
+            // Если жюри отключено, зрительские симпатии включены и заблокированы
+            audienceVotingCheckbox.checked = true;
+            audienceVotingCheckbox.disabled = true;
+            if (audienceVotingSettingsDiv) {
+              audienceVotingSettingsDiv.classList.remove('hidden');
+            }
+          } else {
+            // Если жюри включено, зрительские симпатии можно включать/выключать
+            audienceVotingCheckbox.disabled = false;
+          }
+        };
+        
+        juryEnabledCheckbox.addEventListener('change', updateAudienceVotingState);
+        // Вызываем при загрузке страницы
+        updateAudienceVotingState();
+      }
+      
       // Кнопки изменения количества членов жюри
       if (juryCountDecrease) {
         juryCountDecrease.addEventListener('click', () => {
@@ -3887,6 +3951,19 @@
           if (jurySettingsDiv) jurySettingsDiv.classList.add('hidden');
           currentJuryCount = 1;
           updateJuryMembers(1);
+          
+          // Сбрасываем состояние зрительских симпатий
+          if (audienceVotingCheckbox) {
+            audienceVotingCheckbox.checked = true; // По умолчанию включено (если жюри отключено)
+            audienceVotingCheckbox.disabled = false;
+          }
+          if (audienceVotingSettingsDiv) {
+            audienceVotingSettingsDiv.classList.add('hidden');
+          }
+          if (participantsCanVoteCheckbox) {
+            participantsCanVoteCheckbox.checked = false;
+          }
+          
           pendingContestData = null; // Очищаем временные данные при закрытии
           closeModal(drawingContestModal);
         });
@@ -3945,6 +4022,10 @@
           const juryEnabled = juryEnabledCheckbox && juryEnabledCheckbox.checked;
           const juryCount = parseInt(document.getElementById('drawing-contest-jury-count')?.value) || 1;
           
+          // Собираем данные зрительских симпатий
+          const audienceVotingEnabled = audienceVotingCheckbox && audienceVotingCheckbox.checked;
+          const participantsCanVote = participantsCanVoteCheckbox && participantsCanVoteCheckbox.checked;
+          
           // Сохраняем информацию о жюри для модалки призов
           window.currentJuryEnabled = juryEnabled;
           window.currentJuryCount = juryCount;
@@ -3968,6 +4049,10 @@
               enabled: juryEnabled,
               members_count: juryEnabled ? juryCount : 0,
               members: [] // Данные будут введены в модалке призов
+            },
+            audience_voting: {
+              enabled: audienceVotingEnabled,
+              participants_can_vote: participantsCanVote
             }
           };
           
