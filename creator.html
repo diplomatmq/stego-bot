@@ -1039,13 +1039,6 @@
           </div>
           
           <div id="drawing-contest-audience-voting-settings" class="hidden space-y-3">
-            <div class="flex items-center justify-between">
-              <label class="block text-sm text-gray-400">Участники могут голосовать</label>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="drawing-contest-participants-can-vote" class="sr-only peer" />
-                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-violet-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
-              </label>
-            </div>
             <p class="text-xs text-gray-500">Если включены и жюри, и зрительские симпатии, оценки будут считаться отдельно</p>
           </div>
         </div>
@@ -1781,16 +1774,12 @@
             // Сбрасываем состояние зрительских симпатий
             const audienceVotingCheckbox = document.getElementById('drawing-contest-audience-voting-enabled');
             const audienceVotingSettingsDiv = document.getElementById('drawing-contest-audience-voting-settings');
-            const participantsCanVoteCheckbox = document.getElementById('drawing-contest-participants-can-vote');
             if (audienceVotingCheckbox) {
               audienceVotingCheckbox.checked = true; // По умолчанию включено (если жюри отключено)
               audienceVotingCheckbox.disabled = false;
             }
             if (audienceVotingSettingsDiv) {
               audienceVotingSettingsDiv.classList.add('hidden');
-            }
-            if (participantsCanVoteCheckbox) {
-              participantsCanVoteCheckbox.checked = false;
             }
             
             closeModal(drawingContestModal);
@@ -1894,7 +1883,6 @@
         // Обработчики для зрительских симпатий
         const audienceVotingCheckbox = document.getElementById('drawing-contest-audience-voting-enabled');
         const audienceVotingSettingsDiv = document.getElementById('drawing-contest-audience-voting-settings');
-        const participantsCanVoteCheckbox = document.getElementById('drawing-contest-participants-can-vote');
         
         if (audienceVotingCheckbox && audienceVotingSettingsDiv) {
           audienceVotingCheckbox.addEventListener('change', (e) => {
@@ -1902,10 +1890,6 @@
               audienceVotingSettingsDiv.classList.remove('hidden');
             } else {
               audienceVotingSettingsDiv.classList.add('hidden');
-              // При отключении сбрасываем чекбокс "участники могут голосовать"
-              if (participantsCanVoteCheckbox) {
-                participantsCanVoteCheckbox.checked = false;
-              }
             }
           });
         }
@@ -2080,8 +2064,10 @@
             }
             
             // Собираем данные зрительских симпатий
+            const audienceVotingCheckbox = document.getElementById('drawing-contest-audience-voting-enabled');
             const audienceVotingEnabled = audienceVotingCheckbox && audienceVotingCheckbox.checked;
-            const participantsCanVote = participantsCanVoteCheckbox && participantsCanVoteCheckbox.checked;
+            // Если зрительские симпатии включены, участники автоматически могут голосовать
+            const participantsCanVote = audienceVotingEnabled;
             
             // Сохраняем информацию о жюри для модалки призов
             window.currentJuryEnabled = juryEnabled;
