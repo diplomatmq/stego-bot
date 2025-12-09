@@ -2428,6 +2428,7 @@ async def upload_photo_for_drawing_contest(
     """Загрузка фотографии для конкурса рисунков"""
     try:
         # Читаем multipart/form-data напрямую из запроса
+        # ВАЖНО: читаем только один раз, чтобы избежать ошибки "body stream already read"
         form = await request.form()
         
         # Получаем файл и параметры из формы
@@ -2790,8 +2791,13 @@ async def upload_photo_for_drawing_contest(
     except HTTPException:
         raise
     except Exception as e:
+        error_msg = str(e)
+        # Проверяем, не связана ли ошибка с чтением тела запроса
+        if "body" in error_msg.lower() or "stream" in error_msg.lower() or "locked" in error_msg.lower() or "disturbed" in error_msg.lower():
+            logger.error(f"Ошибка чтения тела запроса при загрузке фотографии: {e}", exc_info=True)
+            raise HTTPException(status_code=400, detail="Ошибка обработки запроса. Попробуйте загрузить фотографию еще раз.")
         logger.error(f"Ошибка при загрузке фотографии: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Ошибка при загрузке фотографии: {error_msg}")
 
 @app.post("/api/contests/{contest_id}/submit-collection")
 async def submit_collection_for_contest(
