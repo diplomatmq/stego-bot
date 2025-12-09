@@ -3516,13 +3516,31 @@
                           console.log(`[DEBUG] Получен ответ: status=${response.status}, ok=${response.ok}`);
                           
                           let result;
+                          // Клонируем response перед чтением, чтобы можно было прочитать при ошибке
+                          const responseClone = response.clone();
+                          
+                          if (!response.ok) {
+                            // Если статус не OK, читаем текст ошибки из клона
+                            try {
+                              const errorText = await responseClone.text();
+                              throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}. ${errorText}`);
+                            } catch (textError) {
+                              throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
+                            }
+                          }
+                          
                           try {
                             result = await response.json();
                             console.log(`[DEBUG] Результат:`, result);
                           } catch (jsonError) {
                             console.error('Ошибка парсинга JSON:', jsonError);
-                            const text = await response.text();
-                            throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}. ${text}`);
+                            // Если не удалось распарсить JSON, пробуем прочитать текст из клона
+                            try {
+                              const text = await responseClone.text();
+                              throw new Error(`Ошибка парсинга ответа: ${text}`);
+                            } catch (textError) {
+                              throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
+                            }
                           }
                           
                           if (response.ok && result.success) {
