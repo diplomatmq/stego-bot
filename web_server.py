@@ -4260,16 +4260,33 @@ async def get_drawing_contest_results(contest_id: int):
                 await update_usernames_and_prizes(jury_results)
                 await update_usernames_and_prizes(audience_results)
                 
-                return {
+                # Всегда возвращаем результаты, если режимы включены, даже если они пустые
+                return_result = {
                     "results_calculated": True,
                     "jury_enabled": jury_enabled,
                     "audience_voting_enabled": audience_voting_enabled,
-                    "jury_results": jury_results if jury_enabled else [],
-                    "audience_results": audience_results if audience_voting_enabled else [],
-                    # Для обратной совместимости сохраняем также results (главные результаты - жюри, если включено)
-                    "results": jury_results if jury_enabled else audience_results,
                     "prize_links": prize_links
                 }
+                
+                # Всегда возвращаем jury_results, если жюри включено
+                if jury_enabled:
+                    return_result["jury_results"] = jury_results
+                else:
+                    return_result["jury_results"] = []
+                
+                # Всегда возвращаем audience_results, если зрительские симпатии включены
+                if audience_voting_enabled:
+                    return_result["audience_results"] = audience_results
+                else:
+                    return_result["audience_results"] = []
+                
+                # Для обратной совместимости сохраняем также results (главные результаты - жюри, если включено)
+                return_result["results"] = jury_results if jury_enabled else audience_results
+                
+                print(f"DEBUG return: jury_enabled={jury_enabled}, audience_voting_enabled={audience_voting_enabled}")
+                print(f"DEBUG return: jury_results length={len(return_result.get('jury_results', []))}, audience_results length={len(return_result.get('audience_results', []))}")
+                
+                return return_result
     except HTTPException:
         raise
     except Exception as e:
