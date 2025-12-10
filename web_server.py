@@ -3517,16 +3517,33 @@ async def submit_vote(contest_id: int, request: Request):
 
         # Определяем тип голосующего: жюри/создатель или участник (зритель)
         is_jury_or_creator = is_creator or is_jury_member
-        # Голос участника сохраняется в audience_votes только если зрительские симпатии включены
-        # ВАЖНО: Если audience_voting_enabled равно True, то все, кто не жюри/создатель, являются зрителями
-        is_audience = not is_jury_or_creator and audience_voting_enabled
-        print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
+        
+        # ВАЖНО: Проверяем, является ли пользователь участником конкурса
+        # Если пользователь видит кнопку "Голосовать" и нажал "Участвовать", значит он участник
+        from models import Participant
+        participant_result = await session.execute(
+            select(Participant).where(
+                Participant.giveaway_id == contest_id,
+                Participant.user_id == user_id
+            )
+        )
+        participant = participant_result.scalars().first()
+        is_participant = participant is not None
+        
+        # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
+        # иначе в старую структуру votes (для обратной совместимости)
+        # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
+        is_audience = not is_jury_or_creator and (audience_voting_enabled or is_participant)
+        
+        print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, is_participant={is_participant}, audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         
         # Инициализируем структуру голосов, если её нет
         if "jury_votes" not in work:
             work["jury_votes"] = {}
         if "audience_votes" not in work:
             work["audience_votes"] = {}
+        if "votes" not in work:
+            work["votes"] = {}
         
         # Сохраняем голос в соответствующую категорию
         if is_jury_or_creator:
@@ -3537,11 +3554,20 @@ async def submit_vote(contest_id: int, request: Request):
             jury_votes[str(user_id)] = score
         elif is_audience:
             # Голос участника (зрителя)
-            audience_votes = work["audience_votes"]
-            if str(user_id) in audience_votes:
-                raise HTTPException(status_code=400, detail="Вы уже оценили эту работу как зритель. Повторная оценка не разрешена.")
-            audience_votes[str(user_id)] = score
-            print(f"DEBUG submit_vote: Голос участника сохранен - user_id={user_id}, work_number={work_number}, score={score}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
+            if audience_voting_enabled:
+                # Если зрительские симпатии включены, сохраняем в audience_votes
+                audience_votes = work["audience_votes"]
+                if str(user_id) in audience_votes:
+                    raise HTTPException(status_code=400, detail="Вы уже оценили эту работу как зритель. Повторная оценка не разрешена.")
+                audience_votes[str(user_id)] = score
+                print(f"DEBUG submit_vote: Голос участника сохранен в audience_votes - user_id={user_id}, work_number={work_number}, score={score}")
+            else:
+                # Если зрительские симпатии не включены, но пользователь участник, сохраняем в старую структуру votes
+                votes = work["votes"]
+                if str(user_id) in votes:
+                    raise HTTPException(status_code=400, detail="Вы уже оценили эту работу. Повторная оценка не разрешена.")
+                votes[str(user_id)] = score
+                print(f"DEBUG submit_vote: Голос участника сохранен в votes - user_id={user_id}, work_number={work_number}, score={score}")
         else:
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
@@ -3554,8 +3580,14 @@ async def submit_vote(contest_id: int, request: Request):
                 if str(user_id) not in (w.get("jury_votes") or {}):
                     remaining += 1
             elif is_audience:
-                if str(user_id) not in (w.get("audience_votes") or {}):
-                    remaining += 1
+                if audience_voting_enabled:
+                    # Если зрительские симпатии включены, проверяем audience_votes
+                    if str(user_id) not in (w.get("audience_votes") or {}):
+                        remaining += 1
+                else:
+                    # Если зрительские симпатии не включены, проверяем старую структуру votes
+                    if str(user_id) not in (w.get("votes") or {}):
+                        remaining += 1
 
         save_drawing_data(drawing_data)
 
