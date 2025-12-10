@@ -3260,15 +3260,6 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         if contest_type != 'drawing':
             raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
 
-        # Сначала проверяем время голосования
-        now_msk = datetime.now()
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
-
         # Проверяем права доступа для оценивания (для жюри и зрительских симпатий)
         jury = getattr(giveaway, 'jury', None)
         audience_voting = getattr(giveaway, 'audience_voting', None)
@@ -3325,6 +3316,28 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             participant = participant_result.scalars().first()
             if not participant:
                 raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
+
+        # Проверяем время голосования (только если время приема работ указано)
+        # ВАЖНО: Проверяем время ПОСЛЕ проверки прав доступа
+        now_msk = datetime.now()
+        submission_end_date = getattr(giveaway, 'submission_end_date', None)
+        submission_end = None
+        if submission_end_date:
+            submission_end = normalize_datetime_to_msk(submission_end_date)
+            # Если время приема работ еще не истекло - блокируем голосование
+            # Используем < вместо <=, чтобы голосование начиналось сразу после окончания приема работ
+            if submission_end and now_msk < submission_end:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Голосование еще не началось. Время приема работ истекает: {submission_end.strftime('%d.%m.%Y %H:%M')}"
+                )
+        
+        voting_end_date = getattr(giveaway, 'end_date', None)
+        voting_end = None
+        if voting_end_date:
+            voting_end = normalize_datetime_to_msk(voting_end_date)
+            if voting_end and now_msk > voting_end:
+                raise HTTPException(status_code=400, detail="Голосование завершено")
 
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
@@ -3457,13 +3470,25 @@ async def submit_vote(contest_id: int, request: Request):
             if not participant:
                 raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
 
+        # Проверяем время голосования (только если время приема работ указано)
         now_msk = datetime.now()
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
+        submission_end_date = getattr(giveaway, 'submission_end_date', None)
+        submission_end = None
+        if submission_end_date:
+            submission_end = normalize_datetime_to_msk(submission_end_date)
+            # Если время приема работ еще не истекло - блокируем голосование
+            if submission_end and now_msk <= submission_end:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Голосование еще не началось. Время приема работ истекает: {submission_end.strftime('%d.%m.%Y %H:%M')}"
+                )
+        
+        voting_end_date = getattr(giveaway, 'end_date', None)
+        voting_end = None
+        if voting_end_date:
+            voting_end = normalize_datetime_to_msk(voting_end_date)
+            if voting_end and now_msk > voting_end:
+                raise HTTPException(status_code=400, detail="Голосование завершено")
 
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
