@@ -3204,39 +3204,42 @@ async def can_user_vote(contest_id: int, user_id: int = Query(...)):
         if contest_type != 'drawing':
             raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
 
-        # Проверяем права доступа для оценивания (для жюри и зрительских симпатий)
+        # Проверяем права доступа для оценивания
+        # Все могут голосовать: создатель, жюри и участники вместе
+        from models import Participant
+        
         jury = getattr(giveaway, 'jury', None)
         audience_voting = getattr(giveaway, 'audience_voting', None)
         is_creator = giveaway.created_by == user_id
         
-        can_vote = False
+        # Проверяем жюри
+        jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
+        is_jury_member = False
+        if jury_enabled:
+            jury_members = jury.get('members', [])
+            is_jury_member = any(
+                member.get('user_id') == user_id or 
+                str(member.get('user_id')) == str(user_id) or
+                (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
+                for member in jury_members
+            )
         
-        # Создатель всегда может голосовать
-        if is_creator:
-            can_vote = True
-        else:
-            # Проверяем жюри
-            jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
-            is_jury_member = False
-            if jury_enabled:
-                jury_members = jury.get('members', [])
-                is_jury_member = any(
-                    member.get('user_id') == user_id or 
-                    str(member.get('user_id')) == str(user_id) or
-                    (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
-                    for member in jury_members
+        # Проверяем зрительские симпатии
+        audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+        
+        # Все могут голосовать: создатель, жюри, участники и зрители (если включены зрительские симпатии)
+        can_vote = is_creator or is_jury_member or audience_voting_enabled
+        
+        # Если ни создатель, ни жюри, ни зрительские симпатии не включены - проверяем участие
+        if not can_vote:
+            participant_result = await session.execute(
+                select(Participant).where(
+                    Participant.giveaway_id == contest_id,
+                    Participant.user_id == user_id
                 )
-                if is_jury_member:
-                    can_vote = True
-            
-            # Проверяем зрительские симпатии
-            audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
-            
-            if audience_voting_enabled:
-                # Если зрительские симпатии включены, все могут голосовать
-                can_vote = True
-            elif not jury_enabled:
-                # Если жюри выключено и зрительские симпатии выключены, все могут голосовать (по умолчанию)
+            )
+            participant = participant_result.scalars().first()
+            if participant:
                 can_vote = True
         
         return {
