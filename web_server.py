@@ -4200,37 +4200,37 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                         })
                         jury_results.append(jury_result)
                     
-                    # Подсчитываем голоса зрителей (если включены зрительские симпатии)
-                    # ВАЖНО: Добавляем работу в audience_results всегда, если зрительские симпатии включены,
-                    # даже если голосов нет (для отображения всех работ)
+                    # Подсчитываем голоса участников (зрителей)
+                    # ВАЖНО: Всегда добавляем работу в audience_results, если есть голоса участников
+                    # (в audience_votes или в старой структуре votes)
+                    audience_scores = []
+                    
+                    # Проверяем голоса в audience_votes (если зрительские симпатии включены)
                     if audience_voting_enabled:
                         audience_scores = [int(score) for score in audience_votes.values() if score]
-                        if audience_scores:
-                            audience_average = sum(audience_scores) / len(audience_scores)
-                        else:
-                            audience_average = 0.0
-                        
+                    
+                    # Также проверяем старую структуру votes (для обратной совместимости)
+                    # Это нужно, если зрительские симпатии не включены, но участники голосовали
+                    if not audience_scores:
+                        votes = work.get("votes", {}) or {}
+                        audience_scores = [int(score) for score in votes.values() if score]
+                    
+                    # Если есть голоса участников, добавляем работу в audience_results
+                    if audience_scores:
+                        audience_average = sum(audience_scores) / len(audience_scores)
                         audience_result = work_data.copy()
                         audience_result.update({
                             "average_score": round(audience_average, 2),
                             "votes_count": len(audience_scores)
                         })
                         audience_results.append(audience_result)
-                        print(f"DEBUG calculate_results: Работа {work_number} добавлена в audience_results: average={audience_average}, votes_count={len(audience_scores)}, audience_votes={audience_votes}")
-                    
-                    # Для обратной совместимости: если жюри не включено и зрительские симпатии не включены,
-                    # используем старую структуру votes
-                    if not jury_enabled and not audience_voting_enabled:
-                        votes = work.get("votes", {}) or {}
-                        scores = [int(score) for score in votes.values() if score]
-                        if scores:
-                            average_score = sum(scores) / len(scores)
-                        else:
-                            average_score = 0.0
-                        
+                        print(f"DEBUG calculate_results: Работа {work_number} добавлена в audience_results: average={audience_average}, votes_count={len(audience_scores)}, audience_votes={audience_votes}, votes={work.get('votes', {})}")
+                    elif not jury_enabled and not audience_voting_enabled:
+                        # Для обратной совместимости: если жюри не включено и зрительские симпатии не включены,
+                        # и нет голосов, все равно добавляем работу (для отображения всех работ)
                         work_data.update({
-                            "average_score": round(average_score, 2),
-                            "votes_count": len(scores)
+                            "average_score": 0.0,
+                            "votes_count": 0
                         })
                         audience_results.append(work_data)
                 
@@ -4249,8 +4249,9 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                 contest_entry["results_calculated"] = True
                 contest_entry["results_calculated_at"] = now_msk.isoformat()
                 contest_entry["jury_results"] = jury_results if jury_enabled else []
-                # ВАЖНО: audience_results сохраняем всегда, если зрительские симпатии включены
-                contest_entry["audience_results"] = audience_results if audience_voting_enabled else []
+                # ВАЖНО: audience_results сохраняем всегда, если есть голоса участников
+                # (независимо от того, включены ли зрительские симпатии)
+                contest_entry["audience_results"] = audience_results
                 # Для обратной совместимости сохраняем также в results (главные результаты - жюри, если включено)
                 contest_entry["results"] = jury_results if jury_enabled else audience_results
                 
@@ -4383,11 +4384,9 @@ async def get_drawing_contest_results(contest_id: int):
                 else:
                     return_result["jury_results"] = []
                 
-                # Всегда возвращаем audience_results, если зрительские симпатии включены
-                if audience_voting_enabled:
-                    return_result["audience_results"] = audience_results
-                else:
-                    return_result["audience_results"] = []
+                # ВАЖНО: Всегда возвращаем audience_results, если есть голоса участников
+                # (независимо от того, включены ли зрительские симпатии)
+                return_result["audience_results"] = audience_results
                 
                 # Для обратной совместимости сохраняем также results (главные результаты - жюри, если включено)
                 return_result["results"] = jury_results if jury_enabled else audience_results
