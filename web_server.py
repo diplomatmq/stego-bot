@@ -3473,7 +3473,9 @@ async def submit_vote(contest_id: int, request: Request):
 
         # Определяем тип голосующего: жюри/создатель или участник (зритель)
         is_jury_or_creator = is_creator or is_jury_member
-        is_audience = not is_jury_or_creator and (audience_voting_enabled or can_vote)
+        # Голос участника сохраняется в audience_votes только если зрительские симпатии включены
+        is_audience = not is_jury_or_creator and audience_voting_enabled
+        print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         
         # Инициализируем структуру голосов, если её нет
         if "jury_votes" not in work:
@@ -3494,6 +3496,7 @@ async def submit_vote(contest_id: int, request: Request):
             if str(user_id) in audience_votes:
                 raise HTTPException(status_code=400, detail="Вы уже оценили эту работу как зритель. Повторная оценка не разрешена.")
             audience_votes[str(user_id)] = score
+            print(f"DEBUG submit_vote: Голос участника сохранен - user_id={user_id}, work_number={work_number}, score={score}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         else:
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
@@ -4110,7 +4113,8 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                         jury_results.append(jury_result)
                     
                     # Подсчитываем голоса зрителей (если включены зрительские симпатии)
-                    # Добавляем работу в audience_results даже если голосов нет (для отображения всех работ)
+                    # ВАЖНО: Добавляем работу в audience_results всегда, если зрительские симпатии включены,
+                    # даже если голосов нет (для отображения всех работ)
                     if audience_voting_enabled:
                         audience_scores = [int(score) for score in audience_votes.values() if score]
                         if audience_scores:
@@ -4124,6 +4128,7 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                             "votes_count": len(audience_scores)
                         })
                         audience_results.append(audience_result)
+                        print(f"DEBUG calculate_results: Работа {work_number} добавлена в audience_results: average={audience_average}, votes_count={len(audience_scores)}, audience_votes={audience_votes}")
                     
                     # Для обратной совместимости: если жюри не включено и зрительские симпатии не включены,
                     # используем старую структуру votes
@@ -4156,9 +4161,13 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                 contest_entry["results_calculated"] = True
                 contest_entry["results_calculated_at"] = now_msk.isoformat()
                 contest_entry["jury_results"] = jury_results if jury_enabled else []
-                contest_entry["audience_results"] = audience_results
+                # ВАЖНО: audience_results сохраняем всегда, если зрительские симпатии включены
+                contest_entry["audience_results"] = audience_results if audience_voting_enabled else []
                 # Для обратной совместимости сохраняем также в results (главные результаты - жюри, если включено)
                 contest_entry["results"] = jury_results if jury_enabled else audience_results
+                
+                print(f"DEBUG calculate_results: Сохранено - jury_enabled={jury_enabled}, audience_voting_enabled={audience_voting_enabled}")
+                print(f"DEBUG calculate_results: jury_results count={len(contest_entry['jury_results'])}, audience_results count={len(contest_entry['audience_results'])}")
                 
                 save_drawing_data(drawing_data)
             
@@ -4237,7 +4246,8 @@ async def get_drawing_contest_results(contest_id: int):
                     else:
                         audience_results = results
                 
-                print(f"DEBUG: jury_results count={len(jury_results)}, audience_results count={len(audience_results)}")
+                print(f"DEBUG get_drawing_contest_results: jury_results count={len(jury_results)}, audience_results count={len(audience_results)}")
+                print(f"DEBUG get_drawing_contest_results: jury_enabled={jury_enabled}, audience_voting_enabled={audience_voting_enabled}")
                 
                 # Обновляем username из таблицы User для каждого результата
                 async def update_usernames_and_prizes(results_list):
