@@ -3156,9 +3156,10 @@
                   timeMessage = '⏰ Дата окончания приема работ не указана';
                 }
                 
+                // Определяем период голосования
+                const afterSubmission = submissionEnd ? now.getTime() > submissionEnd.getTime() : true;
                 if (votingEnd) {
                   const votingDisplay = toMoscowDateTime(votingEnd);
-                  const afterSubmission = submissionEnd ? now.getTime() > submissionEnd.getTime() : true;
                   if (!afterSubmission) {
                     votingMessage = `🗳️ Голосование до: ${votingDisplay}`;
                   } else if (now.getTime() <= votingEnd.getTime()) {
@@ -3168,6 +3169,10 @@
                     hasVotingEnded = true;
                     votingMessage = `🗳️ Голосование завершено: ${votingDisplay}`;
                   }
+                } else if (afterSubmission) {
+                  // Если время приема работ истекло, но время голосования не указано, считаем голосование активным
+                  isVotingPeriodActive = true;
+                  votingMessage = `🗳️ Голосование активно`;
                 }
                 
                 if (!submissionEnd) {
@@ -3186,7 +3191,7 @@
                 // 3. Время приема работ еще не истекло
                 const hasSubmitted = isDrawingContest ? hasPhoto : hasCollection;
                 
-                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}`);
+                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}, canVote=${canVote}, submissionEnd=${submissionEndDate}, votingEnd=${votingEndDate}`);
                 
                 let photoHtml = '';
                 
@@ -3197,25 +3202,21 @@
                     <div class="text-sm text-green-400 mb-2">${submittedText}</div>
                     ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
                   `;
-                } else if (hasSubmitted && !isSubmissionPeriodActive && isParticipating === true) {
-                  // Работа загружена, время приема работ истекло, пользователь участвует
-                  const submittedText = isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена';
-                  if (isVotingPeriodActive && canVote) {
-                    photoHtml = `
-                      <div class="text-sm text-green-400 mb-2">${submittedText}</div>
-                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                      <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
-                        🗳️ Голосовать
-                      </button>
-                    `;
-                  } else {
-                    photoHtml = `
-                      <div class="text-sm text-green-400 mb-2">${submittedText}</div>
-                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                    `;
-                  }
+                } else if (!isSubmissionPeriodActive && isVotingPeriodActive && canVote) {
+                  // Время приема работ истекло, идет голосование, пользователь может голосовать
+                  // Показываем кнопку голосовать для всех, кто может голосовать (создатель, жюри, обычные пользователи)
+                  // Независимо от того, участвует ли пользователь или нет
+                  const submittedText = (isParticipating && hasSubmitted) 
+                    ? (isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена')
+                    : '';
+                  photoHtml = `
+                    ${submittedText ? `<div class="text-sm text-green-400 mb-2">${submittedText}</div>` : ''}
+                    <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                      🗳️ Голосовать
+                    </button>
+                  `;
                 } else if (isParticipating === true && canUpload && isSubmissionPeriodActive && !hasSubmitted) {
                   // Пользователь участвует, но еще не загрузил работу, и время приема работ еще не истекло
                   if (isDrawingContest) {
