@@ -46,6 +46,9 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+# ВАЖНО: Для загрузки больших файлов нужно запускать uvicorn с параметром:
+# uvicorn web_server:app --limit-request-size 104857600  (100 МБ)
+# Или в systemd/service файле добавить: --limit-request-size 104857600
 
 ROOT_DIR = os.path.dirname(__file__)
 
@@ -2515,7 +2518,7 @@ async def upload_photo_for_drawing_contest(
                 from PIL import Image
                 import io as io_module  # Используем явный импорт, чтобы избежать конфликта
                 max_dimension = 10000  # Максимальный размер для Telegram API
-                max_file_size = 10 * 1024 * 1024  # 10 МБ
+                max_file_size = 50 * 1024 * 1024  # 50 МБ (увеличено для больших фотографий)
                 
                 # Открываем изображение из байтов
                 img = Image.open(io_module.BytesIO(file_content))
@@ -2562,9 +2565,11 @@ async def upload_photo_for_drawing_contest(
                     format_ext = 'JPEG'  # По умолчанию JPEG
                 
                 # Пробуем сохранить с разным качеством, если файл слишком большой
-                quality = 95
-                max_quality_iterations = 10  # Максимум 10 итераций
+                # Начинаем с более низкого качества для лучшего сжатия
+                quality = 85
+                max_quality_iterations = 20  # Увеличено количество итераций
                 iteration = 0
+                min_quality = 30  # Минимальное качество (не ниже 30 для читаемости)
                 
                 while iteration < max_quality_iterations:
                     output.seek(0)
@@ -2572,13 +2577,46 @@ async def upload_photo_for_drawing_contest(
                     if format_ext == 'JPEG':
                         img.save(output, format='JPEG', quality=quality, optimize=True)
                     else:
-                        img.save(output, format=format_ext, optimize=True)
+                        # Для PNG также пробуем сжать, если возможно
+                        if format_ext == 'PNG':
+                            # Пробуем сохранить PNG с оптимизацией
+                            img.save(output, format='PNG', optimize=True)
+                        else:
+                            img.save(output, format=format_ext, optimize=True)
                     
                     file_size = len(output.getvalue())
-                    if file_size <= max_file_size or quality <= 50:
+                    # Если файл помещается в лимит или достигли минимального качества - останавливаемся
+                    if file_size <= max_file_size or quality <= min_quality:
                         break
-                    quality -= 5
+                    # Более агрессивное снижение качества для больших файлов
+                    if file_size > max_file_size * 2:
+                        quality -= 10  # Снижаем на 10 для очень больших файлов
+                    else:
+                        quality -= 5  # Обычное снижение на 5
                     iteration += 1
+                
+                # Если файл все еще слишком большой, пробуем уменьшить размер изображения
+                final_file_size = len(output.getvalue())
+                if final_file_size > max_file_size:
+                    logger.warning(f"⚠️ Файл все еще слишком большой ({final_file_size} байт), уменьшаем размер изображения")
+                    # Уменьшаем размер изображения на 20%
+                    new_width = int(img.width * 0.8)
+                    new_height = int(img.height * 0.8)
+                    try:
+                        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    except AttributeError:
+                        img = img.resize((new_width, new_height), Image.LANCZOS)
+                    
+                    # Пробуем сохранить снова с минимальным качеством
+                    output.seek(0)
+                    output.truncate(0)
+                    if format_ext == 'JPEG':
+                        img.save(output, format='JPEG', quality=min_quality, optimize=True)
+                    else:
+                        img.save(output, format=format_ext, optimize=True)
+                    
+                    final_file_size = len(output.getvalue())
+                    logger.info(f"📦 Размер файла после уменьшения изображения: {final_file_size} байт")
                 
                 file_content = output.getvalue()
                 logger.info(f"📦 Размер файла после обработки: {len(file_content)} байт (качество: {quality}, формат: {format_ext})")
