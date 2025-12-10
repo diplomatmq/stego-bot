@@ -3225,7 +3225,18 @@ async def can_user_vote(contest_id: int, user_id: int = Query(...)):
             )
         
         # Проверяем зрительские симпатии
-        audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+        # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
+        audience_voting_enabled = False
+        if audience_voting:
+            if isinstance(audience_voting, dict):
+                audience_voting_enabled = bool(audience_voting.get('enabled', False))
+            elif isinstance(audience_voting, str):
+                try:
+                    import json
+                    audience_voting_dict = json.loads(audience_voting)
+                    audience_voting_enabled = bool(audience_voting_dict.get('enabled', False))
+                except:
+                    audience_voting_enabled = False
         
         print(f"DEBUG can_user_vote: contest_id={contest_id}, user_id={user_id}, is_creator={is_creator}, is_jury_member={is_jury_member}")
         print(f"DEBUG can_user_vote: audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}")
@@ -3288,7 +3299,20 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             )
         
         # Проверяем зрительские симпатии
-        audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+        # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
+        audience_voting_enabled = False
+        if audience_voting:
+            if isinstance(audience_voting, dict):
+                audience_voting_enabled = bool(audience_voting.get('enabled', False))
+            elif isinstance(audience_voting, str):
+                try:
+                    import json
+                    audience_voting_dict = json.loads(audience_voting)
+                    audience_voting_enabled = bool(audience_voting_dict.get('enabled', False))
+                except:
+                    audience_voting_enabled = False
+        
+        print(f"DEBUG get_voting_queue: audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}")
         
         # Все могут голосовать: создатель, жюри, участники и зрители (если включены зрительские симпатии)
         can_vote = is_creator or is_jury_member or audience_voting_enabled
@@ -3430,7 +3454,21 @@ async def submit_vote(contest_id: int, request: Request):
             )
         
         # Проверяем зрительские симпатии
-        audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+        # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
+        audience_voting_enabled = False
+        if audience_voting:
+            if isinstance(audience_voting, dict):
+                audience_voting_enabled = bool(audience_voting.get('enabled', False))
+            elif isinstance(audience_voting, str):
+                # Если это строка JSON, пытаемся распарсить
+                try:
+                    import json
+                    audience_voting_dict = json.loads(audience_voting)
+                    audience_voting_enabled = bool(audience_voting_dict.get('enabled', False))
+                except:
+                    audience_voting_enabled = False
+        
+        print(f"DEBUG submit_vote: audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}")
         
         # Все могут голосовать: создатель, жюри, участники и зрители (если включены зрительские симпатии)
         can_vote = is_creator or is_jury_member or audience_voting_enabled
@@ -3480,8 +3518,9 @@ async def submit_vote(contest_id: int, request: Request):
         # Определяем тип голосующего: жюри/создатель или участник (зритель)
         is_jury_or_creator = is_creator or is_jury_member
         # Голос участника сохраняется в audience_votes только если зрительские симпатии включены
+        # ВАЖНО: Если audience_voting_enabled равно True, то все, кто не жюри/создатель, являются зрителями
         is_audience = not is_jury_or_creator and audience_voting_enabled
-        print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
+        print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         
         # Инициализируем структуру голосов, если её нет
         if "jury_votes" not in work:
@@ -4073,7 +4112,18 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                     
                     # Проверяем зрительские симпатии один раз перед циклом
                     audience_voting = getattr(giveaway, 'audience_voting', None)
-                    audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+                    # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
+                    audience_voting_enabled = False
+                    if audience_voting:
+                        if isinstance(audience_voting, dict):
+                            audience_voting_enabled = bool(audience_voting.get('enabled', False))
+                        elif isinstance(audience_voting, str):
+                            try:
+                                import json
+                                audience_voting_dict = json.loads(audience_voting)
+                                audience_voting_enabled = bool(audience_voting_dict.get('enabled', False))
+                            except:
+                                audience_voting_enabled = False
                     
                     # Миграция старых голосов: если есть старые votes, но нет jury_votes/audience_votes,
                     # пытаемся определить, кто голосовал (для существующих конкурсов)
@@ -4234,7 +4284,18 @@ async def get_drawing_contest_results(contest_id: int):
                 jury = getattr(giveaway, 'jury', None)
                 jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
                 audience_voting = getattr(giveaway, 'audience_voting', None)
-                audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+                # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
+                audience_voting_enabled = False
+                if audience_voting:
+                    if isinstance(audience_voting, dict):
+                        audience_voting_enabled = bool(audience_voting.get('enabled', False))
+                    elif isinstance(audience_voting, str):
+                        try:
+                            import json
+                            audience_voting_dict = json.loads(audience_voting)
+                            audience_voting_enabled = bool(audience_voting_dict.get('enabled', False))
+                        except:
+                            audience_voting_enabled = False
                 
                 # Логируем для отладки
                 print(f"DEBUG get_drawing_contest_results: contest_id={contest_id}, jury_enabled={jury_enabled}, audience_voting_enabled={audience_voting_enabled}")
