@@ -3071,6 +3071,15 @@
           const juryResults = response.jury_results || [];
           const audienceResults = response.audience_results || [];
           
+          // Логируем для отладки
+          console.log('DEBUG showDrawingResults (admin):', {
+            contestId,
+            juryEnabled,
+            audienceVotingEnabled,
+            juryResultsCount: juryResults.length,
+            audienceResultsCount: audienceResults.length
+          });
+          
           // Сохраняем данные для переключения
           currentResultsDataAdmin = {
             contestId: contestId,
@@ -3082,7 +3091,8 @@
           
           // Формируем кнопки-табы
           let tabsHtml = '';
-          if (juryEnabled && audienceVotingEnabled) {
+          const shouldShowTabs = juryEnabled && audienceVotingEnabled;
+          if (shouldShowTabs) {
             // Если включены и жюри, и зрительские симпатии - показываем обе кнопки
             tabsHtml = `
               <div class="flex gap-2 mb-4">
@@ -3108,11 +3118,16 @@
           }
           
           // Устанавливаем HTML
-          if (resultsTabs) {
-            resultsTabs.innerHTML = tabsHtml;
+          const resultsTabsContainer = document.getElementById('drawing-results-tabs');
+          console.log('DEBUG (admin): resultsTabsContainer найден:', !!resultsTabsContainer);
+          
+          if (resultsTabsContainer) {
+            resultsTabsContainer.innerHTML = tabsHtml;
             resultsContent.innerHTML = defaultTable;
+            console.log('DEBUG (admin): HTML установлен в контейнеры');
           } else {
             // Если контейнер для табов не найден, добавляем табы перед контентом
+            console.log('DEBUG (admin): Контейнер для табов не найден, добавляем табы в контент');
             resultsContent.innerHTML = tabsHtml + defaultTable;
           }
           
