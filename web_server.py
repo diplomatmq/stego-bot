@@ -3918,8 +3918,11 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                     raise HTTPException(status_code=403, detail="Только создатель конкурса может подсчитывать итоги")
             
             # Проверяем, что время голосования истекло
-            # Используем naive datetime для согласованности с normalize_datetime_to_msk
-            now_msk = datetime.now()
+            # Используем московское время для сравнения
+            msk_tz = pytz.timezone('Europe/Moscow')
+            now_msk_aware = datetime.now(msk_tz)
+            # Преобразуем в naive datetime для сравнения с voting_end (который тоже naive)
+            now_msk = now_msk_aware.replace(tzinfo=None)
             end_date_raw = getattr(giveaway, 'end_date', None)
             
             # Обрабатываем end_date - может быть datetime объектом или строкой
@@ -4134,8 +4137,11 @@ async def calculate_collection_contest_results(contest_id: int, current_user_id:
                 raise HTTPException(status_code=403, detail="Только создатель конкурса может подсчитывать итоги")
             
             # Проверяем, что время голосования истекло
-            # Используем naive datetime для согласованности с normalize_datetime_to_msk
-            now_msk = datetime.now()
+            # Используем московское время для сравнения
+            msk_tz = pytz.timezone('Europe/Moscow')
+            now_msk_aware = datetime.now(msk_tz)
+            # Преобразуем в naive datetime для сравнения с voting_end (который тоже naive)
+            now_msk = now_msk_aware.replace(tzinfo=None)
             voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
             if voting_end and now_msk <= voting_end:
                 raise HTTPException(status_code=400, detail="Время голосования еще не истекло")
