@@ -46,9 +46,11 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
-# ВАЖНО: Для загрузки больших файлов нужно запускать uvicorn с параметром:
-# uvicorn web_server:app --limit-request-size 104857600  (100 МБ)
-# Или в systemd/service файле добавить: --limit-request-size 104857600
+# ВАЖНО: Для загрузки больших файлов нужно:
+# 1. В bot.py уже добавлен limit_request_size=104857600 (100 МБ) в uvicorn.Config
+# 2. Если используете nginx, добавьте в конфиг: client_max_body_size 100M;
+#    Пример конфигурации: nginx_config_example.conf
+# 3. Если запускаете uvicorn напрямую: uvicorn web_server:app --limit-request-size 104857600
 
 ROOT_DIR = os.path.dirname(__file__)
 
