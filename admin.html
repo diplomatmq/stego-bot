@@ -2973,7 +2973,6 @@
             return;
           }
           
-          const results = response.results || [];
           const resultsModal = document.getElementById('drawing-results-modal');
           const resultsContent = document.getElementById('drawing-results-content');
           
@@ -2982,39 +2981,79 @@
             return;
           }
           
-          // Формируем HTML с итогами
-          let resultsHtml = '<div class="space-y-4">';
+          const juryEnabled = response.jury_enabled || false;
+          const audienceVotingEnabled = response.audience_voting_enabled || false;
+          const juryResults = response.jury_results || [];
+          const audienceResults = response.audience_results || [];
           
-          for (const result of results) {
-            const place = result.place;
-            const username = result.username || '';
-            const userId = result.participant_user_id;
-            const userDisplay = username ? `${username} (ID: ${userId})` : `ID: ${userId}`;
-            const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
-            const prizeLink = result.prize_link;
-            const averageScore = result.average_score || 0;
-            const votesCount = result.votes_count || 0;
+          // Формируем HTML с итогами
+          let resultsHtml = '<div class="space-y-6">';
+          
+          // Функция для отображения таблицы результатов
+          function renderResultsTable(results, title, isJury = false) {
+            if (!results || results.length === 0) {
+              return '';
+            }
             
-            resultsHtml += `
-              <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
-                <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
-                <div class="text-sm text-gray-300 mb-3">
-                  ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
-                  <span class="text-gray-400">(ID: ${userId})</span>
-                </div>
-                <div class="mb-3">
-                  <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
-                </div>
-                <div class="text-sm text-gray-400 mb-3">
-                  Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
-                </div>
-                ${prizeLink ? `
-                  <div class="text-sm">
-                    <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+            let tableHtml = `
+              <div class="mb-6">
+                <h3 class="text-xl font-bold text-violet-400 mb-4">${title}</h3>
+                <div class="space-y-4">
+            `;
+            
+            for (const result of results) {
+              const place = result.place;
+              const username = result.username || '';
+              const userId = result.participant_user_id;
+              const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
+              const prizeLink = result.prize_link;
+              const averageScore = result.average_score || 0;
+              const votesCount = result.votes_count || 0;
+              
+              tableHtml += `
+                <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
+                  <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
+                  <div class="text-sm text-gray-300 mb-3">
+                    ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
+                    <span class="text-gray-400">(ID: ${userId})</span>
                   </div>
-                ` : ''}
+                  <div class="mb-3">
+                    <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
+                  </div>
+                  <div class="text-sm text-gray-400 mb-3">
+                    Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
+                  </div>
+                  ${prizeLink ? `
+                    <div class="text-sm">
+                      <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }
+            
+            tableHtml += `
+                </div>
               </div>
             `;
+            
+            return tableHtml;
+          }
+          
+          // Показываем главную таблицу (жюри), если включено жюри
+          if (juryEnabled && juryResults.length > 0) {
+            resultsHtml += renderResultsTable(juryResults, '🏆 Главная таблица (Голоса жюри и создателя)', true);
+          }
+          
+          // Показываем приз зрителей, если включены зрительские симпатии
+          if (audienceVotingEnabled && audienceResults.length > 0) {
+            resultsHtml += renderResultsTable(audienceResults, '👥 Приз зрителей', false);
+          }
+          
+          // Если жюри не включено, показываем обычную таблицу
+          if (!juryEnabled && !audienceVotingEnabled) {
+            const results = response.results || [];
+            resultsHtml += renderResultsTable(results, '🏆 Итоги конкурса', false);
           }
           
           resultsHtml += '</div>';
