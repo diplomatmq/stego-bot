@@ -432,6 +432,7 @@ async def start_web_server():
             log_level="info",
             ssl_keyfile=ssl_keyfile,
             ssl_certfile=ssl_certfile,
+            limit_request_size=104857600,  # 100 МБ для загрузки больших файлов
         )
     else:
         print("⚠️  SSL сертификаты не найдены. WebApp доступен на http://0.0.0.0:8000")
@@ -441,6 +442,7 @@ async def start_web_server():
             host="0.0.0.0",
             port=8000,
             log_level="info",
+            limit_request_size=104857600,  # 100 МБ для загрузки больших файлов
         )
     
     server = uvicorn.Server(config)
