@@ -3119,15 +3119,16 @@
                 const submissionEndDate = c.submission_end_date;
                 const votingEndDate = c.end_at || c.end_date || c.voting_end_date;
                 
-                // Проверяем права доступа для оценивания (для жюри)
-                const jury = c.jury;
-                let canVote = true; // По умолчанию все могут оценивать (если жюри выключено)
-                if (jury && typeof jury === 'object' && jury.enabled === true) {
-                  // Жюри включено - проверяем, является ли пользователь членом жюри или создателем
-                  const isCreator = c.created_by === currentUserId;
-                  const juryMembers = jury.members || [];
-                  const isJuryMember = juryMembers.some(member => member.user_id === currentUserId);
-                  canVote = isCreator || isJuryMember;
+                // Получаем права доступа для оценивания с сервера
+                let canVote = false;
+                if (isDrawingContest) {
+                  try {
+                    const canVoteResponse = await window.fetchJSON(`/api/contests/${c.id}/can-vote?user_id=${currentUserId}`);
+                    canVote = canVoteResponse?.can_vote || false;
+                  } catch (error) {
+                    console.error(`❌ Ошибка при получении прав голосования для конкурса ${c.id}:`, error);
+                    canVote = false;
+                  }
                 }
                 
                 const now = new Date();
@@ -3244,31 +3245,31 @@
                       ✨ Участвовать
                     </button>
                   `;
+                } else if (!isSubmissionPeriodActive && isVotingPeriodActive && canVote) {
+                  // Время приема работ истекло, идет голосование, пользователь может голосовать
+                  // Показываем кнопку голосовать для всех, кто может голосовать (создатель, жюри, обычные пользователи)
+                  // Независимо от того, участвует ли пользователь или нет
+                  const submittedText = (isParticipating && hasSubmitted) 
+                    ? (isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена')
+                    : '';
+                  photoHtml = `
+                    ${submittedText ? `<div class="text-sm text-green-400 mb-2">${submittedText}</div>` : ''}
+                    <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                      🗳️ Голосовать
+                    </button>
+                  `;
                 } else if (!isSubmissionPeriodActive) {
-                  // Время приема работ истекло
-                  if (isParticipating === true) {
-                    // Пользователь участвует - показываем кнопку "Голосовать" если период голосования активен и есть права доступа
-                    if (isVotingPeriodActive && canVote) {
-                      photoHtml = `
-                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                        <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
-                          🗳️ Голосовать
-                        </button>
-                      `;
-                    } else {
-                      photoHtml = `
-                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                      `;
-                    }
-                  } else {
-                    // Пользователь НЕ участвует - не показываем кнопку "Участвовать", только сообщение
-                    photoHtml = `
-                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                    `;
-                  }
+                  // Время приема работ истекло, но голосование еще не началось или пользователь не может голосовать
+                  const submittedText = (isParticipating && hasSubmitted) 
+                    ? (isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена')
+                    : '';
+                  photoHtml = `
+                    ${submittedText ? `<div class="text-sm text-green-400 mb-2">${submittedText}</div>` : ''}
+                    <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                  `;
                 } else {
                   // Другие случаи (например, пользователь участвует, но время истекло)
                   photoHtml = `
@@ -3284,11 +3285,16 @@
                 }
                 
                 // Добавляем обработчик кнопки "Голосовать" только если есть права доступа
+                // Кнопка показывается для всех, кто может голосовать (создатель, жюри, обычные пользователи при включенных зрительских симпатиях)
                 if (canVote && isVotingPeriodActive && !isSubmissionPeriodActive) {
                   setTimeout(() => {
                     const voteBtn = document.getElementById(`vote-btn-${c.id}`);
                     if (voteBtn) {
-                      voteBtn.addEventListener('click', () => {
+                      // Удаляем старый обработчик, если есть
+                      const newBtn = voteBtn.cloneNode(true);
+                      voteBtn.parentNode.replaceChild(newBtn, voteBtn);
+                      // Добавляем новый обработчик
+                      newBtn.addEventListener('click', () => {
                         window.openVotingModal(c.id);
                       });
                     }
