@@ -3334,12 +3334,32 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             if participant_user_id == user_id:
                 continue
             
-            votes = work.get("votes", {}) or {}
+            # Определяем тип голосующего для правильного отображения уже оцененных работ
+            is_jury_or_creator_local = is_creator or is_jury_member
+            is_audience_local = not is_jury_or_creator_local and audience_voting_enabled
+            
+            # Проверяем голоса в соответствующей категории
+            already_rated = False
+            rating = None
+            if is_jury_or_creator_local:
+                jury_votes = work.get("jury_votes", {}) or {}
+                already_rated = str(user_id) in jury_votes
+                rating = jury_votes.get(str(user_id))
+            elif is_audience_local:
+                audience_votes = work.get("audience_votes", {}) or {}
+                already_rated = str(user_id) in audience_votes
+                rating = audience_votes.get(str(user_id))
+            else:
+                # Для обратной совместимости проверяем старую структуру votes
+                votes = work.get("votes", {}) or {}
+                already_rated = str(user_id) in votes
+                rating = votes.get(str(user_id))
+            
             sanitized.append({
                 "work_number": work_number,
                 "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image",
-                "already_rated": str(user_id) in votes,
-                "rating": votes.get(str(user_id)),
+                "already_rated": already_rated,
+                "rating": rating,
                 "is_own": False  # Все работы здесь уже не свои, так как мы их отфильтровали
             })
 
@@ -3451,19 +3471,43 @@ async def submit_vote(contest_id: int, request: Request):
         if work.get("participant_user_id") == user_id:
             raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
 
-        votes = work.setdefault("votes", {})
-        # Проверяем, не оценил ли пользователь уже эту работу
-        if str(user_id) in votes:
-            raise HTTPException(status_code=400, detail="Вы уже оценили эту работу. Повторная оценка не разрешена.")
+        # Определяем тип голосующего: жюри/создатель или участник (зритель)
+        is_jury_or_creator = is_creator or is_jury_member
+        is_audience = not is_jury_or_creator and (audience_voting_enabled or can_vote)
         
-        votes[str(user_id)] = score
+        # Инициализируем структуру голосов, если её нет
+        if "jury_votes" not in work:
+            work["jury_votes"] = {}
+        if "audience_votes" not in work:
+            work["audience_votes"] = {}
+        
+        # Сохраняем голос в соответствующую категорию
+        if is_jury_or_creator:
+            # Голос жюри или создателя
+            jury_votes = work["jury_votes"]
+            if str(user_id) in jury_votes:
+                raise HTTPException(status_code=400, detail="Вы уже оценили эту работу как жюри/создатель. Повторная оценка не разрешена.")
+            jury_votes[str(user_id)] = score
+        elif is_audience:
+            # Голос участника (зрителя)
+            audience_votes = work["audience_votes"]
+            if str(user_id) in audience_votes:
+                raise HTTPException(status_code=400, detail="Вы уже оценили эту работу как зритель. Повторная оценка не разрешена.")
+            audience_votes[str(user_id)] = score
+        else:
+            raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
-        remaining = sum(
-            1
-            for w in works
-            if w.get("participant_user_id") != user_id 
-            and str(user_id) not in (w.get("votes") or {})
-        )
+        # Подсчитываем оставшиеся работы для голосования
+        remaining = 0
+        for w in works:
+            if w.get("participant_user_id") == user_id:
+                continue
+            if is_jury_or_creator:
+                if str(user_id) not in (w.get("jury_votes") or {}):
+                    remaining += 1
+            elif is_audience:
+                if str(user_id) not in (w.get("audience_votes") or {}):
+                    remaining += 1
 
         save_drawing_data(drawing_data)
 
@@ -3973,14 +4017,18 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                 if not works:
                     raise HTTPException(status_code=400, detail="Нет работ для подсчета")
                 
+                # Проверяем, включено ли жюри
+                jury = getattr(giveaway, 'jury', None)
+                jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
+                
                 # Подсчитываем среднее арифметическое для каждой работы
-                results = []
+                jury_results = []
+                audience_results = []
                 from models import Participant
                 
                 for work in works:
                     work_number = work.get("work_number")
                     participant_user_id = work.get("participant_user_id")
-                    votes = work.get("votes", {}) or {}
                     
                     if not work_number or not participant_user_id:
                         continue
@@ -4005,42 +4053,94 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                         if participant:
                             username = participant.username
                     
-                    # Подсчитываем среднее арифметическое
-                    scores = [int(score) for score in votes.values() if score]
-                    if scores:
-                        average_score = sum(scores) / len(scores)
-                    else:
-                        average_score = 0.0
-                    
-                    results.append({
+                    # Базовые данные работы
+                    work_data = {
                         "work_number": work_number,
                         "participant_user_id": participant_user_id,
                         "username": username,
-                        "average_score": round(average_score, 2),
-                        "votes_count": len(scores),
                         "photo_link": work.get("photo_link"),
                         "local_path": work.get("local_path")
-                    })
+                    }
+                    
+                    # Подсчитываем голоса жюри/создателя
+                    if jury_enabled:
+                        jury_votes = work.get("jury_votes", {}) or {}
+                        jury_scores = [int(score) for score in jury_votes.values() if score]
+                        if jury_scores:
+                            jury_average = sum(jury_scores) / len(jury_scores)
+                        else:
+                            jury_average = 0.0
+                        
+                        jury_result = work_data.copy()
+                        jury_result.update({
+                            "average_score": round(jury_average, 2),
+                            "votes_count": len(jury_scores)
+                        })
+                        jury_results.append(jury_result)
+                    
+                    # Подсчитываем голоса зрителей (если включены зрительские симпатии)
+                    audience_voting = getattr(giveaway, 'audience_voting', None)
+                    audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+                    
+                    if audience_voting_enabled:
+                        audience_votes = work.get("audience_votes", {}) or {}
+                        audience_scores = [int(score) for score in audience_votes.values() if score]
+                        if audience_scores:
+                            audience_average = sum(audience_scores) / len(audience_scores)
+                        else:
+                            audience_average = 0.0
+                        
+                        audience_result = work_data.copy()
+                        audience_result.update({
+                            "average_score": round(audience_average, 2),
+                            "votes_count": len(audience_scores)
+                        })
+                        audience_results.append(audience_result)
+                    
+                    # Для обратной совместимости: если жюри не включено и зрительские симпатии не включены,
+                    # используем старую структуру votes
+                    if not jury_enabled and not audience_voting_enabled:
+                        votes = work.get("votes", {}) or {}
+                        scores = [int(score) for score in votes.values() if score]
+                        if scores:
+                            average_score = sum(scores) / len(scores)
+                        else:
+                            average_score = 0.0
+                        
+                        work_data.update({
+                            "average_score": round(average_score, 2),
+                            "votes_count": len(scores)
+                        })
+                        audience_results.append(work_data)
                 
-                # Сортируем по среднему баллу (по убыванию)
-                results.sort(key=lambda x: x["average_score"], reverse=True)
+                # Сортируем результаты по среднему баллу (по убыванию)
+                jury_results.sort(key=lambda x: x["average_score"], reverse=True)
+                audience_results.sort(key=lambda x: x["average_score"], reverse=True)
                 
                 # Добавляем место (place) для каждой работы
-                for idx, result in enumerate(results):
+                for idx, result in enumerate(jury_results):
+                    result["place"] = idx + 1
+                for idx, result in enumerate(audience_results):
                     result["place"] = idx + 1
                 
                 # Сохраняем результаты в drawing_data
                 now_msk = datetime.now()
                 contest_entry["results_calculated"] = True
                 contest_entry["results_calculated_at"] = now_msk.isoformat()
-                contest_entry["results"] = results
+                contest_entry["jury_results"] = jury_results if jury_enabled else []
+                contest_entry["audience_results"] = audience_results
+                # Для обратной совместимости сохраняем также в results (главные результаты - жюри, если включено)
+                contest_entry["results"] = jury_results if jury_enabled else audience_results
                 
                 save_drawing_data(drawing_data)
             
+            total_results_count = len(jury_results) + len(audience_results)
             return {
                 "success": True,
                 "message": "Итоги успешно подсчитаны",
-                "results_count": len(results)
+                "jury_results_count": len(jury_results),
+                "audience_results_count": len(audience_results),
+                "results_count": total_results_count
             }
     except HTTPException:
         raise
@@ -4087,28 +4187,53 @@ async def get_drawing_contest_results(contest_id: int):
                         "message": "Итоги еще не подсчитаны"
                     }
                 
-                results = contest_entry.get("results", [])
+                # Проверяем, включено ли жюри
+                jury = getattr(giveaway, 'jury', None)
+                jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
+                audience_voting = getattr(giveaway, 'audience_voting', None)
+                audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+                
+                # Получаем результаты жюри и зрителей
+                jury_results = contest_entry.get("jury_results", [])
+                audience_results = contest_entry.get("audience_results", [])
+                
+                # Для обратной совместимости: если нет раздельных результатов, используем старую структуру
+                if not jury_results and not audience_results:
+                    results = contest_entry.get("results", [])
+                    if jury_enabled:
+                        jury_results = results
+                    else:
+                        audience_results = results
                 
                 # Обновляем username из таблицы User для каждого результата
-                for result in results:
-                    participant_user_id = result.get("participant_user_id")
-                    if participant_user_id:
-                        user_result = await session.execute(
-                            select(User).where(User.telegram_id == participant_user_id)
-                        )
-                        user = user_result.scalars().first()
-                        if user and user.username:
-                            result["username"] = user.username
-                    
-                    place = result.get("place", 0)
-                    if place > 0 and place <= len(prize_links):
-                        result["prize_link"] = prize_links[place - 1]
-                    else:
-                        result["prize_link"] = None
+                def update_usernames_and_prizes(results_list):
+                    for result in results_list:
+                        participant_user_id = result.get("participant_user_id")
+                        if participant_user_id:
+                            user_result = await session.execute(
+                                select(User).where(User.telegram_id == participant_user_id)
+                            )
+                            user = user_result.scalars().first()
+                            if user and user.username:
+                                result["username"] = user.username
+                        
+                        place = result.get("place", 0)
+                        if place > 0 and place <= len(prize_links):
+                            result["prize_link"] = prize_links[place - 1]
+                        else:
+                            result["prize_link"] = None
+                
+                update_usernames_and_prizes(jury_results)
+                update_usernames_and_prizes(audience_results)
                 
                 return {
                     "results_calculated": True,
-                    "results": results,
+                    "jury_enabled": jury_enabled,
+                    "audience_voting_enabled": audience_voting_enabled,
+                    "jury_results": jury_results if jury_enabled else [],
+                    "audience_results": audience_results if audience_voting_enabled else [],
+                    # Для обратной совместимости сохраняем также results (главные результаты - жюри, если включено)
+                    "results": jury_results if jury_enabled else audience_results,
                     "prize_links": prize_links
                 }
     except HTTPException:
