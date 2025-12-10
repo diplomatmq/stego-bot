@@ -2250,18 +2250,38 @@
         
         if (!resultsContent) return;
         
+        // Проверяем, не заблокирована ли кнопка
+        if (type === 'jury' && !currentResultsData.juryEnabled) {
+          return; // Не переключаем, если жюри не включено
+        }
+        if (type === 'audience' && !currentResultsData.audienceVotingEnabled) {
+          return; // Не переключаем, если зрительские симпатии не включены
+        }
+        
         // Обновляем активную кнопку
         if (juryTabBtn && audienceTabBtn) {
           if (type === 'jury') {
-            juryTabBtn.classList.add('bg-violet-600', 'text-white');
-            juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300');
-            audienceTabBtn.classList.remove('bg-violet-600', 'text-white');
-            audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            // Активируем кнопку жюри (если она не disabled)
+            if (!juryTabBtn.disabled) {
+              juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              juryTabBtn.classList.add('bg-violet-600', 'text-white');
+            }
+            // Деактивируем кнопку участников (если она не disabled)
+            if (!audienceTabBtn.disabled) {
+              audienceTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            }
           } else {
-            audienceTabBtn.classList.add('bg-violet-600', 'text-white');
-            audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300');
-            juryTabBtn.classList.remove('bg-violet-600', 'text-white');
-            juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            // Активируем кнопку участников (если она не disabled)
+            if (!audienceTabBtn.disabled) {
+              audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              audienceTabBtn.classList.add('bg-violet-600', 'text-white');
+            }
+            // Деактивируем кнопку жюри (если она не disabled)
+            if (!juryTabBtn.disabled) {
+              juryTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            }
           }
         }
         
@@ -2316,43 +2336,64 @@
             audienceVotingEnabled: audienceVotingEnabled
           };
           
-          // Формируем кнопки-табы
-          // Показываем кнопки, если включены и жюри, и зрительские симпатии
-          let tabsHtml = '';
-          const shouldShowTabs = juryEnabled && audienceVotingEnabled;
-          console.log('DEBUG: shouldShowTabs =', shouldShowTabs, 'juryEnabled =', juryEnabled, 'audienceVotingEnabled =', audienceVotingEnabled);
-          
-          if (shouldShowTabs) {
-            // Если включены и жюри, и зрительские симпатии - показываем обе кнопки
-            tabsHtml = `
-              <div class="flex gap-2 mb-4">
-                <button id="results-jury-tab" onclick="switchResultsTable('jury')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50">
-                  🏆 Таблица жюри
-                </button>
-                <button id="results-audience-tab" onclick="switchResultsTable('audience')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30">
-                  👥 Таблица участников
-                </button>
-              </div>
-            `;
-            console.log('DEBUG: Кнопки-табы сформированы, длина HTML:', tabsHtml.length);
-          } else {
-            console.log('DEBUG: Кнопки-табы НЕ показываются, потому что:', {
-              juryEnabled,
-              audienceVotingEnabled,
-              condition: juryEnabled && audienceVotingEnabled
-            });
-          }
-          
           // Определяем, какую таблицу показывать по умолчанию
+          // Приоритет: жюри, затем зрительские симпатии, затем старая структура
           let defaultTable = '';
-          if (juryEnabled) {
+          let defaultTab = null;
+          
+          if (juryEnabled && juryResults.length > 0) {
             defaultTable = renderResultsTable(juryResults, contestId);
-          } else if (audienceVotingEnabled) {
+            defaultTab = 'jury';
+          } else if (audienceVotingEnabled && audienceResults.length > 0) {
             defaultTable = renderResultsTable(audienceResults, contestId);
+            defaultTab = 'audience';
+          } else if (juryEnabled) {
+            // Жюри включено, но результатов нет
+            defaultTable = renderResultsTable(juryResults, contestId);
+            defaultTab = 'jury';
+          } else if (audienceVotingEnabled) {
+            // Зрительские симпатии включены, но результатов нет
+            defaultTable = renderResultsTable(audienceResults, contestId);
+            defaultTab = 'audience';
           } else {
             const results = response.results || [];
             defaultTable = renderResultsTable(results, contestId);
           }
+          
+          // Формируем кнопки-табы - всегда показываем обе кнопки
+          // Кнопки будут неактивными (disabled), если соответствующий режим не включен
+          const juryTabDisabled = !juryEnabled;
+          const audienceTabDisabled = !audienceVotingEnabled;
+          
+          // Определяем классы для кнопок
+          let juryTabClass, audienceTabClass;
+          
+          if (juryTabDisabled) {
+            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
+          } else if (defaultTab === 'jury') {
+            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
+          } else {
+            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
+          }
+          
+          if (audienceTabDisabled) {
+            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
+          } else if (defaultTab === 'audience') {
+            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
+          } else {
+            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
+          }
+          
+          let tabsHtml = `
+            <div class="flex gap-2 mb-4">
+              <button id="results-jury-tab" ${juryTabDisabled ? 'disabled' : `onclick="switchResultsTable('jury')"`} class="${juryTabClass}">
+                🏆 Таблица жюри
+              </button>
+              <button id="results-audience-tab" ${audienceTabDisabled ? 'disabled' : `onclick="switchResultsTable('audience')"`} class="${audienceTabClass}">
+                👥 Таблица участников
+              </button>
+            </div>
+          `;
           
           // Устанавливаем HTML
           const resultsTabsContainer = document.getElementById('drawing-results-tabs');
