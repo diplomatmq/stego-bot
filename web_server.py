@@ -3227,6 +3227,10 @@ async def can_user_vote(contest_id: int, user_id: int = Query(...)):
         # Проверяем зрительские симпатии
         audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
         
+        print(f"DEBUG can_user_vote: contest_id={contest_id}, user_id={user_id}, is_creator={is_creator}, is_jury_member={is_jury_member}")
+        print(f"DEBUG can_user_vote: audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}")
+        
+        # ВАЖНО: Если зрительские симпатии включены, ВСЕ могут голосовать (не только участники)
         # Все могут голосовать: создатель, жюри, участники и зрители (если включены зрительские симпатии)
         can_vote = is_creator or is_jury_member or audience_voting_enabled
         
@@ -3241,7 +3245,9 @@ async def can_user_vote(contest_id: int, user_id: int = Query(...)):
             participant = participant_result.scalars().first()
             if participant:
                 can_vote = True
+                print(f"DEBUG can_user_vote: Пользователь является участником, can_vote={can_vote}")
         
+        print(f"DEBUG can_user_vote: Финальный can_vote={can_vote}")
         return {
             "success": True,
             "can_vote": can_vote
