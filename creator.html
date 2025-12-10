@@ -3264,10 +3264,23 @@
                 console.log(`📊 Конкурс ${c.id}: isEnded=${isEnded}, resultsCalculated=${drawingResultsCalculated}, isCreator=${drawingIsCreator}, currentUserId=${currentUserIdNum}, created_by=${createdByIdNum} (raw: ${c.created_by}, type: ${typeof c.created_by})`);
                 console.log(`📋 Полные данные конкурса ${c.id}:`, JSON.stringify(c, null, 2));
                 
-                // Проверяем, идет ли время приема работ
+                // Проверяем, идет ли время приема работ и период голосования
                 const submissionEndDate = c.submission_end_date ? new Date(c.submission_end_date) : null;
+                const votingEndDate = c.end_at || c.end_date || c.voting_end_date ? new Date(c.end_at || c.end_date || c.voting_end_date) : null;
                 const now = new Date();
                 const isSubmissionPeriodActive = submissionEndDate && now <= submissionEndDate;
+                const afterSubmission = submissionEndDate ? now > submissionEndDate : true;
+                const isVotingPeriodActive = afterSubmission && (votingEndDate ? now <= votingEndDate : true);
+                
+                // Получаем права доступа для оценивания с сервера
+                let canVote = false;
+                try {
+                  const canVoteResponse = await fetchJSON(`/api/contests/${c.id}/can-vote?user_id=${currentUserIdNum}`);
+                  canVote = canVoteResponse?.can_vote || false;
+                } catch (error) {
+                  console.error(`❌ Ошибка при получении прав голосования для конкурса ${c.id}:`, error);
+                  canVote = false;
+                }
                 
                 if (isSubmissionPeriodActive && drawingIsCreator) {
                   // Показываем кнопку "Проверить работы" во время приема работ
@@ -3278,6 +3291,17 @@
                       id="check-works-btn-${c.id}"
                     >
                       🔍 Проверить работы
+                    </button>
+                  </div>`;
+                } else if (!isSubmissionPeriodActive && isVotingPeriodActive && canVote) {
+                  // Показываем кнопку "Голосовать" когда время приема работ истекло и идет период голосования
+                  drawingResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
+                    <button 
+                      onclick="window.openVotingModal && window.openVotingModal(${c.id})" 
+                      class="neon-button w-full py-2 rounded-lg text-sm"
+                      id="vote-btn-${c.id}"
+                    >
+                      🗳️ Голосовать
                     </button>
                   </div>`;
                 } else if (isEnded && !drawingResultsCalculated) {
@@ -5082,6 +5106,303 @@
       }
     });
 
+    // Функции для голосования (скопировано из user.html)
+    const votingState = {
+      contestId: null,
+      works: [],
+      currentIndex: 0
+    };
+    let votingModal;
+    let votingModalImage;
+    let votingModalProgress;
+    let votingModalLoader;
+    let votingModalInfo;
+    let votingModalCloseBtn;
+    let votingScoreButtons = [];
+
+    function resetVotingState() {
+      votingState.contestId = null;
+      votingState.works = [];
+      votingState.currentIndex = 0;
+    }
+
+    function closeVotingModal() {
+      if (votingModal) {
+        votingModal.classList.add('hidden');
+      }
+      resetVotingState();
+    }
+
+    function initVotingModalElements() {
+      if (votingModal) {
+        return;
+      }
+
+      votingModal = document.getElementById('voting-modal');
+      votingModalImage = document.getElementById('voting-modal-image');
+      votingModalProgress = document.getElementById('voting-modal-progress');
+      votingModalLoader = document.getElementById('voting-modal-loader');
+      votingModalInfo = document.getElementById('voting-modal-info');
+      votingModalCloseBtn = document.getElementById('voting-modal-close');
+      votingScoreButtons = Array.from(document.querySelectorAll('.voting-score-btn'));
+
+      if (votingModalCloseBtn) {
+        votingModalCloseBtn.addEventListener('click', closeVotingModal);
+      }
+
+      if (votingModal) {
+        votingModal.addEventListener('click', (event) => {
+          if (event.target === votingModal) {
+            closeVotingModal();
+          }
+        });
+      }
+
+      votingScoreButtons.forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const score = parseInt(btn.dataset.score, 10);
+          if (!Number.isNaN(score)) {
+            await handleVoteClick(score);
+          }
+        });
+      });
+    }
+
+    function showVotingLoader(show) {
+      initVotingModalElements();
+      if (votingModalLoader) {
+        votingModalLoader.classList.toggle('hidden', !show);
+      }
+      if (votingModalImage && show) {
+        votingModalImage.classList.add('hidden');
+      }
+      votingScoreButtons.forEach((btn) => {
+        btn.disabled = show;
+      });
+    }
+
+    function renderVotingWork() {
+      initVotingModalElements();
+      if (!votingState.works.length) {
+        if (votingModalInfo) {
+          votingModalInfo.textContent = 'Нет работ для оценки';
+        }
+        votingScoreButtons.forEach((btn) => {
+          btn.disabled = true;
+        });
+        if (votingModalImage) {
+          votingModalImage.src = '';
+          votingModalImage.classList.add('hidden');
+        }
+        return;
+      }
+
+      const work = votingState.works[votingState.currentIndex];
+      if (!work) {
+        goToNextWork();
+        return;
+      }
+
+      if (votingModalProgress) {
+        votingModalProgress.textContent = `Работа ${votingState.currentIndex + 1} из ${votingState.works.length}`;
+      }
+      if (votingModalInfo) {
+        votingModalInfo.textContent = 'Выберите оценку от 1 до 5';
+      }
+
+      if (votingModalImage) {
+        votingModalImage.classList.add('hidden');
+        votingModalImage.onload = () => votingModalImage.classList.remove('hidden');
+        votingModalImage.onerror = () => {
+          if (votingModalInfo) {
+            votingModalInfo.textContent = 'Не удалось загрузить изображение';
+          }
+        };
+        votingModalImage.src = `${work.image_url}?t=${Date.now()}`;
+      }
+
+      votingScoreButtons.forEach((btn) => {
+        const btnScore = Number(btn.dataset.score);
+        const isSelected = work.rating === btnScore;
+        if (isSelected) {
+          btn.classList.add('bg-violet-600');
+          btn.classList.remove('bg-violet-500/40');
+        } else {
+          btn.classList.remove('bg-violet-600');
+          btn.classList.add('bg-violet-500/40');
+        }
+        btn.disabled = false;
+      });
+    }
+
+    function goToNextWork() {
+      const works = votingState.works;
+      if (!works.length) {
+        closeVotingModal();
+        return;
+      }
+
+      const nextIndex = works.findIndex((work, index) => index > votingState.currentIndex && !work.already_rated);
+      if (nextIndex !== -1) {
+        votingState.currentIndex = nextIndex;
+        renderVotingWork();
+        return;
+      }
+
+      const firstUnrated = works.findIndex((work) => !work.already_rated);
+      if (firstUnrated !== -1) {
+        votingState.currentIndex = firstUnrated;
+        renderVotingWork();
+        return;
+      }
+
+      alert('Спасибо! Вы оценили все доступные работы.');
+      closeVotingModal();
+      if (typeof window.loadContests === 'function') {
+        window.loadContests(true);
+      }
+    }
+
+    async function handleVoteClick(score) {
+      initVotingModalElements();
+      if (!votingState.contestId || !votingState.works.length) {
+        return;
+      }
+
+      const currentWork = votingState.works[votingState.currentIndex];
+      if (!currentWork || currentWork.already_rated) {
+        goToNextWork();
+        return;
+      }
+
+      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+
+      showVotingLoader(true);
+      if (votingModalInfo) {
+        votingModalInfo.textContent = 'Сохраняем вашу оценку...';
+      }
+
+      try {
+        await fetchJSON(`/api/contests/${votingState.contestId}/vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUserId,
+            work_number: currentWork.work_number,
+            score: score
+          })
+        });
+
+        currentWork.already_rated = true;
+        currentWork.rating = score;
+        showVotingLoader(false);
+        goToNextWork();
+      } catch (error) {
+        showVotingLoader(false);
+        let message = 'Не удалось сохранить оценку';
+        if (error.response) {
+          try {
+            const errData = await error.response.clone().json();
+            message = errData.detail || errData.message || message;
+          } catch (e) {
+            // ignore JSON parse errors
+          }
+        } else if (error.message) {
+          message = error.message;
+        }
+        alert('❌ ' + message);
+      }
+    }
+
+    async function openVotingModal(contestId) {
+      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
+      if (!currentUserId) {
+        alert('Не удалось определить ваш идентификатор. Попробуйте перезапустить приложение.');
+        return;
+      }
+
+      initVotingModalElements();
+      resetVotingState();
+      votingState.contestId = contestId;
+
+      if (votingModal) {
+        votingModal.classList.remove('hidden');
+      }
+
+      showVotingLoader(true);
+      if (votingModalInfo) {
+        votingModalInfo.textContent = 'Загружаем работы для голосования...';
+      }
+
+      try {
+        const response = await fetchJSON(`/api/contests/${contestId}/voting-queue?user_id=${currentUserId}`);
+        const works = response?.works || [];
+        const canVote = response?.can_vote !== false;
+
+        if (!canVote) {
+          alert('Оценивать работы могут только члены жюри и создатель конкурса.');
+          closeVotingModal();
+          return;
+        }
+
+        if (!works.length) {
+          alert('Нет работ для оценки или все работы принадлежат вам.');
+          closeVotingModal();
+          return;
+        }
+
+        const firstUnratedIndex = works.findIndex((work) => !work.already_rated);
+        if (firstUnratedIndex === -1) {
+          alert('Вы уже оценили все доступные работы. Спасибо!');
+          closeVotingModal();
+          return;
+        }
+
+        votingState.works = works;
+        votingState.currentIndex = firstUnratedIndex;
+        showVotingLoader(false);
+        renderVotingWork();
+      } catch (error) {
+        showVotingLoader(false);
+        let message = 'Не удалось загрузить список работ';
+        if (error.response) {
+          try {
+            const errData = await error.response.clone().json();
+            message = errData.detail || errData.message || message;
+          } catch (e) {
+            // ignore JSON parse errors
+          }
+        } else if (error.message) {
+          message = error.message;
+        }
+        alert('❌ ' + message);
+        closeVotingModal();
+      }
+    }
+
+    window.openVotingModal = openVotingModal;
+    window.closeVotingModal = closeVotingModal;
+
   </script>
-</body>
+  <!-- 🗳️ Модальное окно голосования за работы -->
+  <div id="voting-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="relative w-full max-w-xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6">
+      <button id="voting-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
+      <div id="voting-modal-progress" class="text-sm text-gray-300 text-center mb-3"></div>
+      <div class="w-full rounded-xl overflow-hidden bg-black/40 mb-4 flex items-center justify-center min-h-[260px]">
+        <img id="voting-modal-image" src="" alt="Работа конкурса" class="max-h-[360px] object-contain w-full transition-opacity duration-300 hidden" />
+        <div id="voting-modal-loader" class="text-gray-400 text-sm">⏳ Загрузка...</div>
+      </div>
+      <div id="voting-modal-info" class="text-sm text-gray-400 text-center mb-4"></div>
+      <div class="flex justify-center gap-2 flex-wrap">
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="1">1</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="2">2</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="3">3</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="4">4</button>
+        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="5">5</button>
+      </div>
+    </div>
+  </div>
+
+  </body>
 </html>
