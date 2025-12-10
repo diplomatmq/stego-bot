@@ -3025,11 +3025,11 @@
         if (!resultsContent) return;
         
         // Проверяем, не заблокирована ли кнопка
-        if (type === 'jury' && !currentResultsDataAdmin.juryEnabled) {
-          return;
+        if (type === 'jury' && (!currentResultsDataAdmin.juryEnabled || currentResultsDataAdmin.juryResults.length === 0)) {
+          return; // Не переключаем, если жюри не включено или нет результатов
         }
-        if (type === 'audience' && !currentResultsDataAdmin.audienceVotingEnabled) {
-          return;
+        if (type === 'audience' && currentResultsDataAdmin.audienceResults.length === 0) {
+          return; // Не переключаем, если нет результатов участников
         }
         
         // Обновляем активную кнопку
@@ -3112,23 +3112,23 @@
           if (juryEnabled && juryResults.length > 0) {
             defaultTable = renderResultsTableAdmin(juryResults, contestId);
             defaultTab = 'jury';
-          } else if (audienceVotingEnabled && audienceResults.length > 0) {
+          } else if (audienceResults.length > 0) {
+            // Показываем таблицу участников, если есть результаты (независимо от audienceVotingEnabled)
             defaultTable = renderResultsTableAdmin(audienceResults, contestId);
             defaultTab = 'audience';
           } else if (juryEnabled) {
             defaultTable = renderResultsTableAdmin(juryResults, contestId);
             defaultTab = 'jury';
-          } else if (audienceVotingEnabled) {
-            defaultTable = renderResultsTableAdmin(audienceResults, contestId);
-            defaultTab = 'audience';
           } else {
             const results = response.results || [];
             defaultTable = renderResultsTableAdmin(results, contestId);
           }
           
           // Формируем кнопки-табы - всегда показываем обе кнопки
-          const juryTabDisabled = !juryEnabled;
-          const audienceTabDisabled = !audienceVotingEnabled;
+          // Кнопки будут неактивными (disabled), если соответствующий режим не включен или нет результатов
+          const juryTabDisabled = !juryEnabled || juryResults.length === 0;
+          // Таблица участников доступна, если есть результаты участников (независимо от audience_voting_enabled)
+          const audienceTabDisabled = audienceResults.length === 0;
           
           let juryTabClass, audienceTabClass;
           if (juryTabDisabled) {
