@@ -2267,16 +2267,24 @@
           }
           
           // Показываем главную таблицу (жюри), если включено жюри
-          if (juryEnabled && juryResults.length > 0) {
-            resultsHtml += renderResultsTable(juryResults, '🏆 Главная таблица (Голоса жюри и создателя)', true);
+          if (juryEnabled) {
+            if (juryResults.length > 0) {
+              resultsHtml += renderResultsTable(juryResults, '🏆 Главная таблица (Голоса жюри и создателя)', true);
+            } else {
+              resultsHtml += '<div class="mb-6"><h3 class="text-xl font-bold text-violet-400 mb-4">🏆 Главная таблица (Голоса жюри и создателя)</h3><p class="text-gray-400">Нет оценок от жюри</p></div>';
+            }
           }
           
           // Показываем приз зрителей, если включены зрительские симпатии
-          if (audienceVotingEnabled && audienceResults.length > 0) {
-            resultsHtml += renderResultsTable(audienceResults, '👥 Приз зрителей', false);
+          if (audienceVotingEnabled) {
+            if (audienceResults.length > 0) {
+              resultsHtml += renderResultsTable(audienceResults, '👥 Приз зрителей', false);
+            } else {
+              resultsHtml += '<div class="mb-6"><h3 class="text-xl font-bold text-violet-400 mb-4">👥 Приз зрителей</h3><p class="text-gray-400">Нет оценок от участников</p></div>';
+            }
           }
           
-          // Если жюри не включено, показываем обычную таблицу
+          // Если жюри не включено и зрительские симпатии не включены, показываем обычную таблицу
           if (!juryEnabled && !audienceVotingEnabled) {
             const results = response.results || [];
             resultsHtml += renderResultsTable(results, '🏆 Итоги конкурса', false);
