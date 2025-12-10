@@ -3024,18 +3024,34 @@
         
         if (!resultsContent) return;
         
+        // Проверяем, не заблокирована ли кнопка
+        if (type === 'jury' && !currentResultsDataAdmin.juryEnabled) {
+          return;
+        }
+        if (type === 'audience' && !currentResultsDataAdmin.audienceVotingEnabled) {
+          return;
+        }
+        
         // Обновляем активную кнопку
         if (juryTabBtn && audienceTabBtn) {
           if (type === 'jury') {
-            juryTabBtn.classList.add('bg-violet-600', 'text-white');
-            juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300');
-            audienceTabBtn.classList.remove('bg-violet-600', 'text-white');
-            audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            if (!juryTabBtn.disabled) {
+              juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              juryTabBtn.classList.add('bg-violet-600', 'text-white');
+            }
+            if (!audienceTabBtn.disabled) {
+              audienceTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            }
           } else {
-            audienceTabBtn.classList.add('bg-violet-600', 'text-white');
-            audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300');
-            juryTabBtn.classList.remove('bg-violet-600', 'text-white');
-            juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            if (!audienceTabBtn.disabled) {
+              audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              audienceTabBtn.classList.add('bg-violet-600', 'text-white');
+            }
+            if (!juryTabBtn.disabled) {
+              juryTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
+              juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+            }
           }
         }
         
@@ -3089,33 +3105,58 @@
             audienceVotingEnabled: audienceVotingEnabled
           };
           
-          // Формируем кнопки-табы
-          let tabsHtml = '';
-          const shouldShowTabs = juryEnabled && audienceVotingEnabled;
-          if (shouldShowTabs) {
-            // Если включены и жюри, и зрительские симпатии - показываем обе кнопки
-            tabsHtml = `
-              <div class="flex gap-2 mb-4">
-                <button id="results-jury-tab" onclick="switchResultsTableAdmin('jury')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50">
-                  🏆 Таблица жюри
-                </button>
-                <button id="results-audience-tab" onclick="switchResultsTableAdmin('audience')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30">
-                  👥 Таблица участников
-                </button>
-              </div>
-            `;
-          }
-          
           // Определяем, какую таблицу показывать по умолчанию
           let defaultTable = '';
-          if (juryEnabled) {
+          let defaultTab = null;
+          
+          if (juryEnabled && juryResults.length > 0) {
             defaultTable = renderResultsTableAdmin(juryResults, contestId);
+            defaultTab = 'jury';
+          } else if (audienceVotingEnabled && audienceResults.length > 0) {
+            defaultTable = renderResultsTableAdmin(audienceResults, contestId);
+            defaultTab = 'audience';
+          } else if (juryEnabled) {
+            defaultTable = renderResultsTableAdmin(juryResults, contestId);
+            defaultTab = 'jury';
           } else if (audienceVotingEnabled) {
             defaultTable = renderResultsTableAdmin(audienceResults, contestId);
+            defaultTab = 'audience';
           } else {
             const results = response.results || [];
             defaultTable = renderResultsTableAdmin(results, contestId);
           }
+          
+          // Формируем кнопки-табы - всегда показываем обе кнопки
+          const juryTabDisabled = !juryEnabled;
+          const audienceTabDisabled = !audienceVotingEnabled;
+          
+          let juryTabClass, audienceTabClass;
+          if (juryTabDisabled) {
+            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
+          } else if (defaultTab === 'jury') {
+            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
+          } else {
+            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
+          }
+          
+          if (audienceTabDisabled) {
+            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
+          } else if (defaultTab === 'audience') {
+            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
+          } else {
+            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
+          }
+          
+          let tabsHtml = `
+            <div class="flex gap-2 mb-4">
+              <button id="results-jury-tab" ${juryTabDisabled ? 'disabled' : `onclick="switchResultsTableAdmin('jury')"`} class="${juryTabClass}">
+                🏆 Таблица жюри
+              </button>
+              <button id="results-audience-tab" ${audienceTabDisabled ? 'disabled' : `onclick="switchResultsTableAdmin('audience')"`} class="${audienceTabClass}">
+                👥 Таблица участников
+              </button>
+            </div>
+          `;
           
           // Устанавливаем HTML
           const resultsTabsContainer = document.getElementById('drawing-results-tabs');
