@@ -3195,7 +3195,7 @@
                 // 3. Время приема работ еще не истекло
                 const hasSubmitted = isDrawingContest ? hasPhoto : hasCollection;
                 
-                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}, canVote=${canVote}, submissionEnd=${submissionEndDate}, votingEnd=${votingEndDate}`);
+                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}, canVote=${canVote}, submissionEnd=${submissionEndDate}, votingEnd=${votingEndDate}, audienceVoting=${c.audience_voting ? JSON.stringify(c.audience_voting) : 'null'}`);
                 
                 let photoHtml = '';
                 
