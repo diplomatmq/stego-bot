@@ -2311,24 +2311,15 @@
           if (juryEnabled && audienceVotingEnabled) {
             // Если включены и жюри, и зрительские симпатии - показываем обе кнопки
             tabsHtml = `
-              <div class="flex gap-2 mb-4" id="drawing-results-tabs">
-                <button id="results-jury-tab" onclick="switchResultsTable('jury')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button">
+              <div class="flex gap-2 mb-4">
+                <button id="results-jury-tab" onclick="switchResultsTable('jury')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50">
                   🏆 Таблица жюри
                 </button>
-                <button id="results-audience-tab" onclick="switchResultsTable('audience')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button">
+                <button id="results-audience-tab" onclick="switchResultsTable('audience')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30">
                   👥 Таблица участников
                 </button>
               </div>
             `;
-          } else if (juryEnabled) {
-            // Только жюри
-            tabsHtml = '';
-          } else if (audienceVotingEnabled) {
-            // Только зрительские симпатии
-            tabsHtml = '';
-          } else {
-            // Обычная таблица (обратная совместимость)
-            tabsHtml = '';
           }
           
           // Определяем, какую таблицу показывать по умолчанию
