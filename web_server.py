@@ -3260,6 +3260,15 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         if contest_type != 'drawing':
             raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
 
+        # Сначала проверяем время голосования
+        now_msk = datetime.now()
+        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
+        if submission_end and now_msk <= submission_end:
+            raise HTTPException(status_code=400, detail="Голосование еще не началось")
+        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
+        if voting_end and now_msk > voting_end:
+            raise HTTPException(status_code=400, detail="Голосование завершено")
+
         # Проверяем права доступа для оценивания (для жюри и зрительских симпатий)
         jury = getattr(giveaway, 'jury', None)
         audience_voting = getattr(giveaway, 'audience_voting', None)
@@ -3268,7 +3277,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         can_vote = False
         requires_participation = True
         
-        # Создатель всегда может голосовать
+        # Создатель всегда может голосовать, независимо от участия
         if is_creator:
             can_vote = True
             requires_participation = False
@@ -3285,6 +3294,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
                     for member in jury_members
                 )
                 if is_jury_member:
+                    # Члены жюри могут голосовать, независимо от участия
                     can_vote = True
                     requires_participation = False
             
@@ -3292,7 +3302,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
             
             if audience_voting_enabled:
-                # Если зрительские симпатии включены, все могут голосовать
+                # Если зрительские симпатии включены, все могут голосовать, независимо от участия
                 can_vote = True
                 requires_participation = False
             elif not jury_enabled:
@@ -3304,7 +3314,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         if not can_vote:
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
         
-        # Проверяем участие только если требуется
+        # Проверяем участие только если требуется (для обычных пользователей без жюри и зрительских симпатий)
         if requires_participation:
             participant_result = await session.execute(
                 select(Participant).where(
@@ -3315,14 +3325,6 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             participant = participant_result.scalars().first()
             if not participant:
                 raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
-
-        now_msk = datetime.now()
-        submission_end = normalize_datetime_to_msk(getattr(giveaway, 'submission_end_date', None))
-        if submission_end and now_msk <= submission_end:
-            raise HTTPException(status_code=400, detail="Голосование еще не началось")
-        voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
 
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
