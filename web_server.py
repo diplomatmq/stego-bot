@@ -3920,9 +3920,44 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
             # Проверяем, что время голосования истекло
             # Используем naive datetime для согласованности с normalize_datetime_to_msk
             now_msk = datetime.now()
-            voting_end = normalize_datetime_to_msk(getattr(giveaway, 'end_date', None))
-            if voting_end and now_msk <= voting_end:
-                raise HTTPException(status_code=400, detail="Время голосования еще не истекло")
+            end_date_raw = getattr(giveaway, 'end_date', None)
+            
+            # Обрабатываем end_date - может быть datetime объектом или строкой
+            voting_end = None
+            if end_date_raw:
+                if isinstance(end_date_raw, str):
+                    # Если это строка, парсим её
+                    try:
+                        end_date_clean = end_date_raw.strip().replace('Z', '').replace('+00:00', '').replace('+03:00', '')
+                        if 'T' in end_date_clean:
+                            voting_end = datetime.fromisoformat(end_date_clean)
+                        elif ' ' in end_date_clean:
+                            # Формат "YYYY-MM-DD HH:MM:SS" или "YYYY-MM-DD HH:MM:SS.microseconds"
+                            if '.' in end_date_clean:
+                                voting_end = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S.%f')
+                            else:
+                                voting_end = datetime.strptime(end_date_clean, '%Y-%m-%d %H:%M:%S')
+                        else:
+                            voting_end = datetime.fromisoformat(f"{end_date_clean}T00:00:00")
+                        # Убираем timezone, если есть
+                        if voting_end.tzinfo is not None:
+                            voting_end = voting_end.replace(tzinfo=None)
+                    except Exception as e:
+                        print(f"Ошибка парсинга end_date '{end_date_raw}': {e}")
+                        voting_end = None
+                else:
+                    # Если это datetime объект, используем normalize_datetime_to_msk
+                    voting_end = normalize_datetime_to_msk(end_date_raw)
+            
+            # Логируем для отладки
+            print(f"DEBUG calculate_drawing_contest_results: now_msk={now_msk}, voting_end={voting_end}, end_date_raw={end_date_raw}")
+            
+            if voting_end:
+                time_diff = (now_msk - voting_end).total_seconds()
+                print(f"DEBUG: Разница времени: {time_diff} секунд (положительное значение = время истекло)")
+                # Используем строгое сравнение: если текущее время меньше или равно времени окончания, блокируем
+                if now_msk <= voting_end:
+                    raise HTTPException(status_code=400, detail=f"Время голосования еще не истекло. Текущее время: {now_msk.strftime('%Y-%m-%d %H:%M:%S')}, Окончание голосования: {voting_end.strftime('%Y-%m-%d %H:%M:%S')}")
             
             # Загружаем данные о работах
             async with drawing_data_lock:
