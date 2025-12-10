@@ -2297,6 +2297,16 @@
           const juryResults = response.jury_results || [];
           const audienceResults = response.audience_results || [];
           
+          // Логируем для отладки
+          console.log('DEBUG showDrawingResults:', {
+            contestId,
+            juryEnabled,
+            audienceVotingEnabled,
+            juryResultsCount: juryResults.length,
+            audienceResultsCount: audienceResults.length,
+            response: response
+          });
+          
           // Сохраняем данные для переключения
           currentResultsData = {
             contestId: contestId,
@@ -2307,8 +2317,12 @@
           };
           
           // Формируем кнопки-табы
+          // Показываем кнопки, если включены и жюри, и зрительские симпатии
           let tabsHtml = '';
-          if (juryEnabled && audienceVotingEnabled) {
+          const shouldShowTabs = juryEnabled && audienceVotingEnabled;
+          console.log('DEBUG: shouldShowTabs =', shouldShowTabs, 'juryEnabled =', juryEnabled, 'audienceVotingEnabled =', audienceVotingEnabled);
+          
+          if (shouldShowTabs) {
             // Если включены и жюри, и зрительские симпатии - показываем обе кнопки
             tabsHtml = `
               <div class="flex gap-2 mb-4">
@@ -2320,6 +2334,13 @@
                 </button>
               </div>
             `;
+            console.log('DEBUG: Кнопки-табы сформированы, длина HTML:', tabsHtml.length);
+          } else {
+            console.log('DEBUG: Кнопки-табы НЕ показываются, потому что:', {
+              juryEnabled,
+              audienceVotingEnabled,
+              condition: juryEnabled && audienceVotingEnabled
+            });
           }
           
           // Определяем, какую таблицу показывать по умолчанию
@@ -2335,11 +2356,15 @@
           
           // Устанавливаем HTML
           const resultsTabsContainer = document.getElementById('drawing-results-tabs');
+          console.log('DEBUG: resultsTabsContainer найден:', !!resultsTabsContainer);
+          
           if (resultsTabsContainer) {
             resultsTabsContainer.innerHTML = tabsHtml;
             resultsContent.innerHTML = defaultTable;
+            console.log('DEBUG: HTML установлен в контейнеры');
           } else {
             // Если контейнер для табов не найден, добавляем табы перед контентом
+            console.log('DEBUG: Контейнер для табов не найден, добавляем табы в контент');
             resultsContent.innerHTML = tabsHtml + defaultTable;
           }
           
