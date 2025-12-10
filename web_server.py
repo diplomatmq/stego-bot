@@ -3260,12 +3260,13 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         if contest_type != 'drawing':
             raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
 
-        # Проверяем права доступа для оценивания (для жюри и зрительских симпатий)
+        # Проверяем права доступа для оценивания
+        # Все могут голосовать: создатель, жюри и участники вместе
         jury = getattr(giveaway, 'jury', None)
         audience_voting = getattr(giveaway, 'audience_voting', None)
         is_creator = giveaway.created_by == user_id
         
-        # Определяем переменные для проверки жюри (нужны для проверки времени)
+        # Проверяем жюри
         jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
         is_jury_member = False
         if jury_enabled:
@@ -3277,37 +3278,14 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
                 for member in jury_members
             )
         
-        can_vote = False
-        requires_participation = True
+        # Проверяем зрительские симпатии
+        audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
         
-        # Создатель всегда может голосовать, независимо от участия
-        if is_creator:
-            can_vote = True
-            requires_participation = False
-        else:
-            if is_jury_member:
-                # Члены жюри могут голосовать, независимо от участия
-                can_vote = True
-                requires_participation = False
-            
-            # Проверяем зрительские симпатии
-            audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
-            
-            if audience_voting_enabled:
-                # Если зрительские симпатии включены, все могут голосовать, независимо от участия
-                can_vote = True
-                requires_participation = False
-            elif not jury_enabled:
-                # Если жюри выключено и зрительские симпатии выключены, все могут голосовать (по умолчанию)
-                can_vote = True
-                # Но требуется участие в конкурсе
-                requires_participation = True
+        # Все могут голосовать: создатель, жюри, участники и зрители (если включены зрительские симпатии)
+        can_vote = is_creator or is_jury_member or audience_voting_enabled
         
+        # Если ни создатель, ни жюри, ни зрительские симпатии не включены - проверяем участие
         if not can_vote:
-            raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
-        
-        # Проверяем участие только если требуется (для обычных пользователей без жюри и зрительских симпатий)
-        if requires_participation:
             participant_result = await session.execute(
                 select(Participant).where(
                     Participant.giveaway_id == contest_id,
@@ -3315,28 +3293,15 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
                 )
             )
             participant = participant_result.scalars().first()
-            if not participant:
-                raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
-
-        # Проверяем время голосования (только если время приема работ указано)
-        # ВАЖНО: Проверяем время ПОСЛЕ проверки прав доступа
-        # Для создателя и жюри разрешаем голосовать даже если время приема работ еще не истекло
-        now_msk = datetime.now()
-        submission_end_date = getattr(giveaway, 'submission_end_date', None)
-        submission_end = None
-        if submission_end_date:
-            submission_end = normalize_datetime_to_msk(submission_end_date)
-            # Если время приема работ еще не истекло - блокируем голосование только для обычных пользователей
-            # Создатель и жюри могут голосовать в любое время после начала конкурса
-            if submission_end and now_msk < submission_end:
-                # Разрешаем голосовать только создателю и жюри, если время приема работ еще не истекло
-                # Для обычных пользователей (не создатель и не жюри) блокируем голосование до окончания приема работ
-                if not is_creator and not is_jury_member:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Голосование еще не началось. Время приема работ истекает: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                    )
+            if participant:
+                can_vote = True
         
+        if not can_vote:
+            raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
+
+        # Проверяем только окончание голосования (не проверяем время приема работ)
+        # Все, кто может голосовать (создатель, жюри, участники), могут голосовать в любое время после начала конкурса
+        now_msk = datetime.now()
         voting_end_date = getattr(giveaway, 'end_date', None)
         voting_end = None
         if voting_end_date:
@@ -3417,54 +3382,32 @@ async def submit_vote(contest_id: int, request: Request):
         if contest_type != 'drawing':
             raise HTTPException(status_code=400, detail="Голосование доступно только для конкурса рисунков")
 
-        # Проверяем права доступа для оценивания (для жюри и зрительских симпатий)
+        # Проверяем права доступа для оценивания
+        # Все могут голосовать: создатель, жюри и участники вместе
         jury = getattr(giveaway, 'jury', None)
         audience_voting = getattr(giveaway, 'audience_voting', None)
         is_creator = giveaway.created_by == user_id
         
-        can_vote = False
-        requires_participation = True
-        
-        # Создатель всегда может голосовать
-        if is_creator:
-            can_vote = True
-            requires_participation = False
-        else:
-            # Проверяем жюри
-            jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
-            is_jury_member = False
-            if jury_enabled:
-                jury_members = jury.get('members', [])
-                is_jury_member = any(
-                    member.get('user_id') == user_id or 
-                    str(member.get('user_id')) == str(user_id)
-                    for member in jury_members
-                )
-                if is_jury_member:
-                    can_vote = True
-                    requires_participation = False
-            
-            # Проверяем зрительские симпатии
-            audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
-            
-            if audience_voting_enabled:
-                # Если зрительские симпатии включены, все могут голосовать
-                can_vote = True
-                requires_participation = False
-            elif not jury_enabled:
-                # Если жюри выключено и зрительские симпатии выключены, все могут голосовать (по умолчанию)
-                can_vote = True
-                # Но требуется участие в конкурсе
-                requires_participation = True
-        
-        if not can_vote:
-            raise HTTPException(
-                status_code=403, 
-                detail="У вас нет прав для голосования в этом конкурсе"
+        # Проверяем жюри
+        jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
+        is_jury_member = False
+        if jury_enabled:
+            jury_members = jury.get('members', [])
+            is_jury_member = any(
+                member.get('user_id') == user_id or 
+                str(member.get('user_id')) == str(user_id) or
+                (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
+                for member in jury_members
             )
         
-        # Проверяем участие только если требуется
-        if requires_participation:
+        # Проверяем зрительские симпатии
+        audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+        
+        # Все могут голосовать: создатель, жюри, участники и зрители (если включены зрительские симпатии)
+        can_vote = is_creator or is_jury_member or audience_voting_enabled
+        
+        # Если ни создатель, ни жюри, ни зрительские симпатии не включены - проверяем участие
+        if not can_vote:
             participant_result = await session.execute(
                 select(Participant).where(
                     Participant.giveaway_id == contest_id,
@@ -3472,22 +3415,18 @@ async def submit_vote(contest_id: int, request: Request):
                 )
             )
             participant = participant_result.scalars().first()
-            if not participant:
-                raise HTTPException(status_code=403, detail="Вы не участвуете в этом конкурсе")
-
-        # Проверяем время голосования (только если время приема работ указано)
-        now_msk = datetime.now()
-        submission_end_date = getattr(giveaway, 'submission_end_date', None)
-        submission_end = None
-        if submission_end_date:
-            submission_end = normalize_datetime_to_msk(submission_end_date)
-            # Если время приема работ еще не истекло - блокируем голосование
-            if submission_end and now_msk <= submission_end:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Голосование еще не началось. Время приема работ истекает: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                )
+            if participant:
+                can_vote = True
         
+        if not can_vote:
+            raise HTTPException(
+                status_code=403, 
+                detail="У вас нет прав для голосования в этом конкурсе"
+            )
+
+        # Проверяем только окончание голосования (не блокируем по времени приема работ)
+        # Все, кто может голосовать (создатель, жюри, участники), могут голосовать в любое время после начала конкурса
+        now_msk = datetime.now()
         voting_end_date = getattr(giveaway, 'end_date', None)
         voting_end = None
         if voting_end_date:
