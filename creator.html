@@ -5283,7 +5283,7 @@
       }
 
       try {
-        await fetchJSON(`/api/contests/${votingState.contestId}/vote`, {
+        await window.fetchJSON(`/api/contests/${votingState.contestId}/vote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -5335,7 +5335,7 @@
       }
 
       try {
-        const response = await fetchJSON(`/api/contests/${contestId}/voting-queue?user_id=${currentUserId}`);
+        const response = await window.fetchJSON(`/api/contests/${contestId}/voting-queue?user_id=${currentUserId}`);
         const works = response?.works || [];
         const canVote = response?.can_vote !== false;
 
