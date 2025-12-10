@@ -1734,6 +1734,7 @@
         <h2 class="text-2xl font-bold text-white">🏆 Итоги конкурса</h2>
         <button onclick="document.getElementById('drawing-results-modal').classList.add('hidden')" class="bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
       </div>
+      <div id="drawing-results-tabs" class="mb-4"></div>
       <div id="drawing-results-content" class="space-y-4">
         <!-- Содержимое будет добавлено динамически -->
       </div>
@@ -2189,6 +2190,89 @@
         }
       };
       
+      // Глобальные переменные для хранения результатов
+      let currentResultsData = {
+        contestId: null,
+        juryResults: [],
+        audienceResults: [],
+        juryEnabled: false,
+        audienceVotingEnabled: false
+      };
+      
+      // Функция для отображения таблицы результатов
+      function renderResultsTable(results, contestId) {
+        if (!results || results.length === 0) {
+          return '<div class="text-center text-gray-400 py-8">Нет данных для отображения</div>';
+        }
+        
+        let tableHtml = '<div class="space-y-4">';
+        
+        for (const result of results) {
+          const place = result.place;
+          const username = result.username || '';
+          const userId = result.participant_user_id;
+          const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
+          const prizeLink = result.prize_link;
+          const averageScore = result.average_score || 0;
+          const votesCount = result.votes_count || 0;
+          
+          tableHtml += `
+            <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
+              <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
+              <div class="text-sm text-gray-300 mb-3">
+                ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
+                <span class="text-gray-400">(ID: ${userId})</span>
+              </div>
+              <div class="mb-3">
+                <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
+              </div>
+              <div class="text-sm text-gray-400 mb-3">
+                Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
+              </div>
+              ${prizeLink ? `
+                <div class="text-sm">
+                  <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+        
+        tableHtml += '</div>';
+        return tableHtml;
+      }
+      
+      // Функция переключения между таблицами (глобальная)
+      window.switchResultsTable = function(type) {
+        const resultsContent = document.getElementById('drawing-results-content');
+        const juryTabBtn = document.getElementById('results-jury-tab');
+        const audienceTabBtn = document.getElementById('results-audience-tab');
+        
+        if (!resultsContent) return;
+        
+        // Обновляем активную кнопку
+        if (juryTabBtn && audienceTabBtn) {
+          if (type === 'jury') {
+            juryTabBtn.classList.add('bg-violet-600', 'text-white');
+            juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300');
+            audienceTabBtn.classList.remove('bg-violet-600', 'text-white');
+            audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+          } else {
+            audienceTabBtn.classList.add('bg-violet-600', 'text-white');
+            audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300');
+            juryTabBtn.classList.remove('bg-violet-600', 'text-white');
+            juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
+          }
+        }
+        
+        // Отображаем соответствующую таблицу
+        if (type === 'jury') {
+          resultsContent.innerHTML = renderResultsTable(currentResultsData.juryResults, currentResultsData.contestId);
+        } else {
+          resultsContent.innerHTML = renderResultsTable(currentResultsData.audienceResults, currentResultsData.contestId);
+        }
+      }
+      
       // Функция для отображения итогов конкурса рисунков
       window.showDrawingResults = async function(contestId) {
         try {
@@ -2201,6 +2285,7 @@
           
           const resultsModal = document.getElementById('drawing-results-modal');
           const resultsContent = document.getElementById('drawing-results-content');
+          const resultsTabs = document.getElementById('drawing-results-tabs');
           
           if (!resultsModal || !resultsContent) {
             alert('Модальное окно не найдено');
@@ -2212,86 +2297,60 @@
           const juryResults = response.jury_results || [];
           const audienceResults = response.audience_results || [];
           
-          // Формируем HTML с итогами
-          let resultsHtml = '<div class="space-y-6">';
+          // Сохраняем данные для переключения
+          currentResultsData = {
+            contestId: contestId,
+            juryResults: juryResults,
+            audienceResults: audienceResults,
+            juryEnabled: juryEnabled,
+            audienceVotingEnabled: audienceVotingEnabled
+          };
           
-          // Функция для отображения таблицы результатов
-          function renderResultsTable(results, title, isJury = false) {
-            if (!results || results.length === 0) {
-              return '';
-            }
-            
-            let tableHtml = `
-              <div class="mb-6">
-                <h3 class="text-xl font-bold text-violet-400 mb-4">${title}</h3>
-                <div class="space-y-4">
-            `;
-            
-            for (const result of results) {
-              const place = result.place;
-              const username = result.username || '';
-              const userId = result.participant_user_id;
-              const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
-              const prizeLink = result.prize_link;
-              const averageScore = result.average_score || 0;
-              const votesCount = result.votes_count || 0;
-              
-              tableHtml += `
-                <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
-                  <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
-                  <div class="text-sm text-gray-300 mb-3">
-                    ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
-                    <span class="text-gray-400">(ID: ${userId})</span>
-                  </div>
-                  <div class="mb-3">
-                    <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
-                  </div>
-                  <div class="text-sm text-gray-400 mb-3">
-                    Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
-                  </div>
-                  ${prizeLink ? `
-                    <div class="text-sm">
-                      <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
-                    </div>
-                  ` : ''}
-                </div>
-              `;
-            }
-            
-            tableHtml += `
-                </div>
+          // Формируем кнопки-табы
+          let tabsHtml = '';
+          if (juryEnabled && audienceVotingEnabled) {
+            // Если включены и жюри, и зрительские симпатии - показываем обе кнопки
+            tabsHtml = `
+              <div class="flex gap-2 mb-4" id="drawing-results-tabs">
+                <button id="results-jury-tab" onclick="switchResultsTable('jury')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button">
+                  🏆 Таблица жюри
+                </button>
+                <button id="results-audience-tab" onclick="switchResultsTable('audience')" class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button">
+                  👥 Таблица участников
+                </button>
               </div>
             `;
-            
-            return tableHtml;
+          } else if (juryEnabled) {
+            // Только жюри
+            tabsHtml = '';
+          } else if (audienceVotingEnabled) {
+            // Только зрительские симпатии
+            tabsHtml = '';
+          } else {
+            // Обычная таблица (обратная совместимость)
+            tabsHtml = '';
           }
           
-          // Показываем главную таблицу (жюри), если включено жюри
+          // Определяем, какую таблицу показывать по умолчанию
+          let defaultTable = '';
           if (juryEnabled) {
-            if (juryResults.length > 0) {
-              resultsHtml += renderResultsTable(juryResults, '🏆 Главная таблица (Голоса жюри и создателя)', true);
-            } else {
-              resultsHtml += '<div class="mb-6"><h3 class="text-xl font-bold text-violet-400 mb-4">🏆 Главная таблица (Голоса жюри и создателя)</h3><p class="text-gray-400">Нет оценок от жюри</p></div>';
-            }
-          }
-          
-          // Показываем приз зрителей, если включены зрительские симпатии
-          if (audienceVotingEnabled) {
-            if (audienceResults.length > 0) {
-              resultsHtml += renderResultsTable(audienceResults, '👥 Приз зрителей', false);
-            } else {
-              resultsHtml += '<div class="mb-6"><h3 class="text-xl font-bold text-violet-400 mb-4">👥 Приз зрителей</h3><p class="text-gray-400">Нет оценок от участников</p></div>';
-            }
-          }
-          
-          // Если жюри не включено и зрительские симпатии не включены, показываем обычную таблицу
-          if (!juryEnabled && !audienceVotingEnabled) {
+            defaultTable = renderResultsTable(juryResults, contestId);
+          } else if (audienceVotingEnabled) {
+            defaultTable = renderResultsTable(audienceResults, contestId);
+          } else {
             const results = response.results || [];
-            resultsHtml += renderResultsTable(results, '🏆 Итоги конкурса', false);
+            defaultTable = renderResultsTable(results, contestId);
           }
           
-          resultsHtml += '</div>';
-          resultsContent.innerHTML = resultsHtml;
+          // Устанавливаем HTML
+          const resultsTabsContainer = document.getElementById('drawing-results-tabs');
+          if (resultsTabsContainer) {
+            resultsTabsContainer.innerHTML = tabsHtml;
+            resultsContent.innerHTML = defaultTable;
+          } else {
+            // Если контейнер для табов не найден, добавляем табы перед контентом
+            resultsContent.innerHTML = tabsHtml + defaultTable;
+          }
           
           // Открываем модальное окно
           resultsModal.classList.remove('hidden');
