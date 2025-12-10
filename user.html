@@ -2251,11 +2251,11 @@
         if (!resultsContent) return;
         
         // Проверяем, не заблокирована ли кнопка
-        if (type === 'jury' && !currentResultsData.juryEnabled) {
-          return; // Не переключаем, если жюри не включено
+        if (type === 'jury' && (!currentResultsData.juryEnabled || currentResultsData.juryResults.length === 0)) {
+          return; // Не переключаем, если жюри не включено или нет результатов
         }
-        if (type === 'audience' && !currentResultsData.audienceVotingEnabled) {
-          return; // Не переключаем, если зрительские симпатии не включены
+        if (type === 'audience' && currentResultsData.audienceResults.length === 0) {
+          return; // Не переключаем, если нет результатов участников
         }
         
         // Обновляем активную кнопку
@@ -2344,26 +2344,24 @@
           if (juryEnabled && juryResults.length > 0) {
             defaultTable = renderResultsTable(juryResults, contestId);
             defaultTab = 'jury';
-          } else if (audienceVotingEnabled && audienceResults.length > 0) {
+          } else if (audienceResults.length > 0) {
+            // Показываем таблицу участников, если есть результаты (независимо от audienceVotingEnabled)
             defaultTable = renderResultsTable(audienceResults, contestId);
             defaultTab = 'audience';
           } else if (juryEnabled) {
             // Жюри включено, но результатов нет
             defaultTable = renderResultsTable(juryResults, contestId);
             defaultTab = 'jury';
-          } else if (audienceVotingEnabled) {
-            // Зрительские симпатии включены, но результатов нет
-            defaultTable = renderResultsTable(audienceResults, contestId);
-            defaultTab = 'audience';
           } else {
             const results = response.results || [];
             defaultTable = renderResultsTable(results, contestId);
           }
           
           // Формируем кнопки-табы - всегда показываем обе кнопки
-          // Кнопки будут неактивными (disabled), если соответствующий режим не включен
-          const juryTabDisabled = !juryEnabled;
-          const audienceTabDisabled = !audienceVotingEnabled;
+          // Кнопки будут неактивными (disabled), если соответствующий режим не включен или нет результатов
+          const juryTabDisabled = !juryEnabled || juryResults.length === 0;
+          // Таблица участников доступна, если есть результаты участников (независимо от audience_voting_enabled)
+          const audienceTabDisabled = audienceResults.length === 0;
           
           // Определяем классы для кнопок
           let juryTabClass, audienceTabClass;
