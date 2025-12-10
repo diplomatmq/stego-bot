@@ -4062,6 +4062,10 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                         "local_path": work.get("local_path")
                     }
                     
+                    # Проверяем зрительские симпатии один раз перед циклом
+                    audience_voting = getattr(giveaway, 'audience_voting', None)
+                    audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
+                    
                     # Подсчитываем голоса жюри/создателя
                     if jury_enabled:
                         jury_votes = work.get("jury_votes", {}) or {}
@@ -4079,9 +4083,7 @@ async def calculate_drawing_contest_results(contest_id: int, current_user_id: in
                         jury_results.append(jury_result)
                     
                     # Подсчитываем голоса зрителей (если включены зрительские симпатии)
-                    audience_voting = getattr(giveaway, 'audience_voting', None)
-                    audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
-                    
+                    # Добавляем работу в audience_results даже если голосов нет (для отображения всех работ)
                     if audience_voting_enabled:
                         audience_votes = work.get("audience_votes", {}) or {}
                         audience_scores = [int(score) for score in audience_votes.values() if score]
