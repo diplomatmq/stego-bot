@@ -4206,7 +4206,7 @@ async def get_drawing_contest_results(contest_id: int):
                         audience_results = results
                 
                 # Обновляем username из таблицы User для каждого результата
-                def update_usernames_and_prizes(results_list):
+                async def update_usernames_and_prizes(results_list):
                     for result in results_list:
                         participant_user_id = result.get("participant_user_id")
                         if participant_user_id:
@@ -4223,8 +4223,8 @@ async def get_drawing_contest_results(contest_id: int):
                         else:
                             result["prize_link"] = None
                 
-                update_usernames_and_prizes(jury_results)
-                update_usernames_and_prizes(audience_results)
+                await update_usernames_and_prizes(jury_results)
+                await update_usernames_and_prizes(audience_results)
                 
                 return {
                     "results_calculated": True,
