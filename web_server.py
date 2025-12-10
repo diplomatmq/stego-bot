@@ -3265,6 +3265,18 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         audience_voting = getattr(giveaway, 'audience_voting', None)
         is_creator = giveaway.created_by == user_id
         
+        # Определяем переменные для проверки жюри (нужны для проверки времени)
+        jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
+        is_jury_member = False
+        if jury_enabled:
+            jury_members = jury.get('members', [])
+            is_jury_member = any(
+                member.get('user_id') == user_id or 
+                str(member.get('user_id')) == str(user_id) or
+                (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
+                for member in jury_members
+            )
+        
         can_vote = False
         requires_participation = True
         
@@ -3273,21 +3285,10 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             can_vote = True
             requires_participation = False
         else:
-            # Проверяем жюри
-            jury_enabled = jury and isinstance(jury, dict) and jury.get('enabled', False)
-            is_jury_member = False
-            if jury_enabled:
-                jury_members = jury.get('members', [])
-                is_jury_member = any(
-                    member.get('user_id') == user_id or 
-                    str(member.get('user_id')) == str(user_id) or
-                    (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
-                    for member in jury_members
-                )
-                if is_jury_member:
-                    # Члены жюри могут голосовать, независимо от участия
-                    can_vote = True
-                    requires_participation = False
+            if is_jury_member:
+                # Члены жюри могут голосовать, независимо от участия
+                can_vote = True
+                requires_participation = False
             
             # Проверяем зрительские симпатии
             audience_voting_enabled = audience_voting and isinstance(audience_voting, dict) and audience_voting.get('enabled', False)
@@ -3319,18 +3320,22 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
 
         # Проверяем время голосования (только если время приема работ указано)
         # ВАЖНО: Проверяем время ПОСЛЕ проверки прав доступа
+        # Для создателя и жюри разрешаем голосовать даже если время приема работ еще не истекло
         now_msk = datetime.now()
         submission_end_date = getattr(giveaway, 'submission_end_date', None)
         submission_end = None
         if submission_end_date:
             submission_end = normalize_datetime_to_msk(submission_end_date)
-            # Если время приема работ еще не истекло - блокируем голосование
-            # Используем < вместо <=, чтобы голосование начиналось сразу после окончания приема работ
+            # Если время приема работ еще не истекло - блокируем голосование только для обычных пользователей
+            # Создатель и жюри могут голосовать в любое время после начала конкурса
             if submission_end and now_msk < submission_end:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Голосование еще не началось. Время приема работ истекает: {submission_end.strftime('%d.%m.%Y %H:%M')}"
-                )
+                # Разрешаем голосовать только создателю и жюри, если время приема работ еще не истекло
+                # Для обычных пользователей (не создатель и не жюри) блокируем голосование до окончания приема работ
+                if not is_creator and not is_jury_member:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Голосование еще не началось. Время приема работ истекает: {submission_end.strftime('%d.%m.%Y %H:%M')}"
+                    )
         
         voting_end_date = getattr(giveaway, 'end_date', None)
         voting_end = None
