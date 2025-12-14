@@ -3784,21 +3784,27 @@ async def get_drawing_work_image(contest_id: int, work_number: int, user_id: int
                         uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
                         if full_path.startswith(uploads_root) and os.path.exists(full_path):
                             media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
+                            logger.debug(f"Используем локальный файл для работы {work_number}: {full_path}")
                             return FileResponse(full_path, media_type=media_type)
+                        else:
+                            logger.warning(f"Локальный файл не найден или путь некорректен: {full_path}, exists={os.path.exists(full_path) if local_path else False}")
         
-        # Если локального файла нет, но есть photo_link - используем его
-        # Для ссылок на Telegram делаем редирект (они должны работать в Telegram WebApp)
-        if photo_link:
-            if photo_link.startswith('http'):
-                # Это прямая ссылка на Telegram - делаем редирект
-                # В Telegram WebApp такие ссылки должны работать
-                return RedirectResponse(url=photo_link, status_code=302)
-            elif photo_link.startswith('tg://'):
-                # Это tg:// ссылка - нельзя использовать в браузере
-                # Пытаемся найти альтернативу или возвращаем ошибку
-                logger.warning(f"Не удалось получить изображение для работы {work_number}: tg:// ссылка не поддерживается в браузере")
-                raise HTTPException(status_code=404, detail="Файл не найден. Локальный файл отсутствует.")
+        # Если локального файла нет, используем photo_link из БД
+        if not photo_link:
+            logger.error(f"Нет photo_link для участника {target_participant.user_id} в конкурсе {contest_id}")
+            raise HTTPException(status_code=404, detail="Файл не найден. Фотография не загружена.")
         
+        # Для ссылок на Telegram делаем редирект
+        # В Telegram WebApp прямые ссылки на t.me должны работать
+        if photo_link.startswith('http'):
+            logger.debug(f"Используем редирект на Telegram ссылку для работы {work_number}: {photo_link}")
+            return RedirectResponse(url=photo_link, status_code=302)
+        elif photo_link.startswith('tg://'):
+            # Это tg:// ссылка - нельзя использовать напрямую в браузере
+            logger.warning(f"tg:// ссылка не поддерживается для работы {work_number}, participant_id={target_participant.user_id}")
+            raise HTTPException(status_code=404, detail="Файл не найден. Локальный файл отсутствует, а tg:// ссылка не поддерживается в браузере.")
+        
+        logger.error(f"Неизвестный формат photo_link для работы {work_number}: {photo_link}")
         raise HTTPException(status_code=404, detail="Файл не найден")
 
 @app.get("/api/contests/{contest_id}/works")
