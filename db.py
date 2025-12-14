@@ -17,8 +17,8 @@ Base = declarative_base()
 pool_kwargs = {}
 if not DATABASE_URL.startswith("sqlite"):
     pool_kwargs = {
-        "pool_size": 2,          # Минимальное количество соединений (уменьшено с 5)
-        "max_overflow": 2,        # Дополнительные соединения (уменьшено с 5)
+        "pool_size": 5,          # Базовое количество соединений
+        "max_overflow": 5,        # Дополнительные соединения
         "pool_pre_ping": True,   # Проверка соединений перед использованием
         "pool_recycle": 3600,     # Переиспользование соединений через 1 час
     }
