@@ -1548,7 +1548,36 @@ async def create_giveaway(request: Request):
     admin_fee_deducted = None
     
     async with async_session() as session:
-        # Убрана проверка уникальности post_link - теперь одну ссылку можно использовать несколько раз
+        # Проверяем, не существует ли уже конкурс для этого поста (только для рандом комментариев)
+        # Для конкурса рисунков post_link может быть пустым, поэтому проверяем только для random_comment
+        if post_link and post_link.strip() and contest_type == "random_comment":
+            try:
+                # Проверяем наличие колонки post_link
+                if IS_SQLITE:
+                    result = await session.execute(text("PRAGMA table_info(giveaways)"))
+                    columns_info = result.fetchall()
+                    existing_columns = {row[1]: row for row in columns_info}
+                else:
+                    result = await session.execute(text("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'giveaways'
+                    """))
+                    columns_info = result.fetchall()
+                    existing_columns = {row[0]: row for row in columns_info}
+                
+                if 'post_link' in existing_columns:
+                    # Используем прямой SQL запрос для проверки
+                    check_result = await session.execute(
+                        text("SELECT id FROM giveaways WHERE post_link = :post_link AND post_link IS NOT NULL AND post_link != ''"),
+                        {"post_link": post_link}
+                    )
+                    existing_row = check_result.fetchone()
+                    if existing_row:
+                        return {"success": False, "message": f"❌ Для этого поста уже существует конкурс (ID: {existing_row[0]}). Один пост может иметь только один конкурс."}
+            except Exception as e:
+                # Если что-то пошло не так с проверкой, просто логируем и продолжаем
+                logger.warning(f"Ошибка при проверке существующего конкурса: {e}")
         
         # Определяем канал и группу обсуждения
         channel_link = data.get("channel_link")  # Берем из запроса
@@ -2712,24 +2741,7 @@ async def upload_photo_for_drawing_contest(
                     if existing_work and existing_work.get("work_number"):
                         work_number = existing_work["work_number"]
                     else:
-                        # Находим максимальный существующий номер работы, чтобы избежать конфликтов
-                        existing_numbers = {w.get("work_number") for w in works if w.get("work_number")}
-                        if existing_numbers:
-                            work_number = max(existing_numbers) + 1
-                        else:
-                            work_number = 1
-                        
-                        # Проверяем, что номер уникален (на случай, если есть пропуски или конфликты)
-                        while work_number in existing_numbers:
-                            work_number += 1
-                        
-                        # Дополнительная проверка: убеждаемся, что нет другой работы с таким же номером
-                        conflicting_work = next((w for w in works if w.get("work_number") == work_number), None)
-                        if conflicting_work:
-                            # Если нашли конфликт, находим следующий свободный номер
-                            while conflicting_work:
-                                work_number += 1
-                                conflicting_work = next((w for w in works if w.get("work_number") == work_number), None)
+                        work_number = len(works) + 1
 
                     file_ext = os.path.splitext(original_filename or "")[1].lower()
                     if not file_ext or len(file_ext) > 5:
@@ -2786,7 +2798,6 @@ async def upload_photo_for_drawing_contest(
                     }
                     now_msk = datetime.now()
                     work_record.update({
-                        "work_number": work_number,  # Убеждаемся, что номер правильный
                         "photo_link": photo_link,
                         "photo_message_id": photo_message_id,
                         "photo_file_id": photo_file_id,
@@ -3357,7 +3368,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             participant = participant_result.scalars().first()
             if participant:
                 can_vote = True
-
+        
         if not can_vote:
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
@@ -3368,109 +3379,67 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         voting_end = None
         if voting_end_date:
             voting_end = normalize_datetime_to_msk(voting_end_date)
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
+            if voting_end and now_msk > voting_end:
+                raise HTTPException(status_code=400, detail="Голосование завершено")
 
-        # ВАЖНО: Проверяем, является ли пользователь участником конкурса
-        # Делаем это ДО входа в блок drawing_data_lock, чтобы сессия БД была активна
-        participant_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.user_id == user_id
-            )
-        )
-        participant = participant_result.scalars().first()
-        is_participant = participant is not None
-
-    # Определяем тип голосующего: жюри/создатель или участник (зритель)
-    is_jury_or_creator_local = is_creator or is_jury_member
-    
-    # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
-    # иначе в старую структуру votes (для обратной совместимости)
-    # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
-    is_audience_local = not is_jury_or_creator_local and (audience_voting_enabled or is_participant)
-
-    # Получаем участников с фотографиями из базы данных, отсортированных по порядку
-    participants_result = await session.execute(
-        select(Participant).where(
-            Participant.giveaway_id == contest_id,
-            Participant.photo_link.isnot(None),
-            Participant.photo_link != ''
-        ).order_by(Participant.id)  # Сортируем по id для сохранения порядка
-    )
-    participants = participants_result.scalars().all()
-    
-    if not participants:
-        return {"success": True, "works": [], "total": 0, "can_vote": can_vote}
-    
-    # Загружаем данные о голосах из JSON файла
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
         contest_entry = drawing_data.get(str(contest_id))
-        works_data = contest_entry.get("works", []) if contest_entry else []
-        # Создаем словарь для быстрого поиска данных о работе по participant_user_id
-        works_by_user = {w.get("participant_user_id"): w for w in works_data}
-    
-    sanitized = []
-    work_number = 1  # Начинаем с номера 1
-    
-    for participant in participants:
-        participant_user_id = participant.user_id
-        photo_link = participant.photo_link
-        
-        # Пропускаем собственную работу пользователя
-        if participant_user_id == user_id:
-            continue
-        
-        # Пропускаем участников без фотографии
-        if not photo_link:
-            continue
-        
-        # Получаем данные о голосах из JSON (если есть)
-        work_data = works_by_user.get(participant_user_id, {})
-        
-        # Проверяем голоса в соответствующей категории
-        already_rated = False
-        rating = None
-        if is_jury_or_creator_local:
-            jury_votes = work_data.get("jury_votes", {}) or {}
-            already_rated = str(user_id) in jury_votes
-            rating = jury_votes.get(str(user_id))
-        elif is_audience_local:
-            if audience_voting_enabled:
-                # Если зрительские симпатии включены, проверяем audience_votes
-                audience_votes = work_data.get("audience_votes", {}) or {}
+        if not contest_entry:
+            return {"success": True, "works": [], "total": 0}
+
+        works_raw = contest_entry.get("works", [])
+        works_sorted = sorted(works_raw, key=lambda w: w.get("work_number", 0))
+        sanitized = []
+        for work in works_sorted:
+            work_number = work.get("work_number")
+            local_path = work.get("local_path")
+            participant_user_id = work.get("participant_user_id")
+            
+            # Пропускаем работы без необходимых данных
+            if not work_number or not local_path or not participant_user_id:
+                continue
+            
+            # Пропускаем собственную работу пользователя
+            if participant_user_id == user_id:
+                continue
+            
+            # Определяем тип голосующего для правильного отображения уже оцененных работ
+            is_jury_or_creator_local = is_creator or is_jury_member
+            is_audience_local = not is_jury_or_creator_local and audience_voting_enabled
+            
+            # Проверяем голоса в соответствующей категории
+            already_rated = False
+            rating = None
+            if is_jury_or_creator_local:
+                jury_votes = work.get("jury_votes", {}) or {}
+                already_rated = str(user_id) in jury_votes
+                rating = jury_votes.get(str(user_id))
+            elif is_audience_local:
+                audience_votes = work.get("audience_votes", {}) or {}
                 already_rated = str(user_id) in audience_votes
                 rating = audience_votes.get(str(user_id))
             else:
-                # Если зрительские симпатии не включены, но пользователь участник, проверяем старую структуру votes
-                votes = work_data.get("votes", {}) or {}
+                # Для обратной совместимости проверяем старую структуру votes
+                votes = work.get("votes", {}) or {}
                 already_rated = str(user_id) in votes
                 rating = votes.get(str(user_id))
-        else:
-            # Для обратной совместимости проверяем старую структуру votes
-            votes = work_data.get("votes", {}) or {}
-            already_rated = str(user_id) in votes
-            rating = votes.get(str(user_id))
-        
-        # Используем photo_link напрямую из БД
-        sanitized.append({
-            "work_number": work_number,
-            "image_url": photo_link,  # Используем photo_link напрямую из БД
-            "already_rated": already_rated,
-            "rating": rating,
-            "is_own": False,
-            "participant_user_id": participant_user_id
-        })
-        work_number += 1
+            
+            sanitized.append({
+                "work_number": work_number,
+                "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image",
+                "already_rated": already_rated,
+                "rating": rating,
+                "is_own": False  # Все работы здесь уже не свои, так как мы их отфильтровали
+            })
 
-    # can_vote уже определен выше при проверке прав доступа
-    return {
-        "success": True,
-        "works": sanitized,
-        "total": len(sanitized),
-        "can_vote": can_vote  # Информация о правах доступа для оценивания
-    }
+        # can_vote уже определен выше при проверке прав доступа
+        return {
+            "success": True,
+            "works": sanitized,
+            "total": len(sanitized),
+            "can_vote": can_vote  # Информация о правах доступа для оценивания
+        }
 
 @app.post("/api/contests/{contest_id}/vote")
 async def submit_vote(contest_id: int, request: Request):
@@ -3523,7 +3492,7 @@ async def submit_vote(contest_id: int, request: Request):
                 (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
                 for member in jury_members
             )
-            
+        
         # Проверяем зрительские симпатии
         # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
         audience_voting_enabled = False
@@ -3569,11 +3538,28 @@ async def submit_vote(contest_id: int, request: Request):
         voting_end = None
         if voting_end_date:
             voting_end = normalize_datetime_to_msk(voting_end_date)
-        if voting_end and now_msk > voting_end:
-            raise HTTPException(status_code=400, detail="Голосование завершено")
+            if voting_end and now_msk > voting_end:
+                raise HTTPException(status_code=400, detail="Голосование завершено")
 
+    async with drawing_data_lock:
+        drawing_data = load_drawing_data()
+        contest_entry = drawing_data.get(str(contest_id))
+        if not contest_entry:
+            raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
+
+        works = contest_entry.get("works", [])
+        work = next((w for w in works if w.get("work_number") == work_number), None)
+        if not work:
+            raise HTTPException(status_code=404, detail="Работа не найдена")
+        
+        if work.get("participant_user_id") == user_id:
+            raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
+
+        # Определяем тип голосующего: жюри/создатель или участник (зритель)
+        is_jury_or_creator = is_creator or is_jury_member
+        
         # ВАЖНО: Проверяем, является ли пользователь участником конкурса
-        # Делаем это ДО входа в блок drawing_data_lock, чтобы сессия БД была активна
+        # Если пользователь видит кнопку "Голосовать" и нажал "Участвовать", значит он участник
         from models import Participant
         participant_result = await session.execute(
             select(Participant).where(
@@ -3583,78 +3569,11 @@ async def submit_vote(contest_id: int, request: Request):
         )
         participant = participant_result.scalars().first()
         is_participant = participant is not None
-
-    # Определяем тип голосующего: жюри/создатель или участник (зритель)
-    is_jury_or_creator = is_creator or is_jury_member
-    
-    # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
-    # иначе в старую структуру votes (для обратной совместимости)
-    # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
-    is_audience = not is_jury_or_creator and (audience_voting_enabled or is_participant)
-
-    # Получаем участников с фотографиями из базы данных в том же порядке, что и в get_voting_queue
-    participants_result = await session.execute(
-        select(Participant).where(
-            Participant.giveaway_id == contest_id,
-            Participant.photo_link.isnot(None),
-            Participant.photo_link != ''
-        ).order_by(Participant.id)  # Сортируем по id для сохранения порядка
-    )
-    participants = participants_result.scalars().all()
-    
-    if not participants:
-        raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
-    
-    # Исключаем собственную работу пользователя и участников без фотографий (как в get_voting_queue)
-    filtered_participants = []
-    for p in participants:
-        if p.user_id == user_id:
-            continue
-        if not p.photo_link:
-            continue
-        filtered_participants.append(p)
-    
-    if not filtered_participants:
-        raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
-    
-    if work_number < 1 or work_number > len(filtered_participants):
-        raise HTTPException(status_code=404, detail="Работа не найдена")
-    
-    target_participant = filtered_participants[work_number - 1]  # work_number начинается с 1
-    participant_user_id = target_participant.user_id
-
-    async with drawing_data_lock:
-        drawing_data = load_drawing_data()
-        contest_entry = drawing_data.get(str(contest_id))
-        if not contest_entry:
-            # Создаем запись конкурса, если её нет
-            contest_entry = {
-                "contest_id": contest_id,
-                "title": getattr(giveaway, 'name', '') or '',
-                "topic": getattr(giveaway, 'conditions', '') or '',
-                "created_by": giveaway.created_by,
-                "created_at": datetime.now().isoformat(),
-                "works": []
-            }
-            drawing_data[str(contest_id)] = contest_entry
-
-        works = contest_entry.get("works", [])
-        # Ищем или создаем запись о работе для этого участника
-        work = next((w for w in works if w.get("participant_user_id") == participant_user_id), None)
         
-        if not work:
-            # Создаем новую запись о работе
-            work = {
-                "work_number": work_number,
-                "participant_user_id": participant_user_id,
-                "jury_votes": {},
-                "audience_votes": {},
-                "votes": {}
-            }
-            works.append(work)
-        else:
-            # Обновляем номер работы, если он изменился
-            work["work_number"] = work_number
+        # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
+        # иначе в старую структуру votes (для обратной совместимости)
+        # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
+        is_audience = not is_jury_or_creator and (audience_voting_enabled or is_participant)
         
         print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, is_participant={is_participant}, audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         
@@ -3693,27 +3612,21 @@ async def submit_vote(contest_id: int, request: Request):
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
         # Подсчитываем оставшиеся работы для голосования
-        # Используем участников из БД для подсчета
         remaining = 0
-        for idx, p in enumerate(filtered_participants, start=1):
-            participant_id = p.user_id
-            # Находим данные о работе для этого участника
-            work_data = next((w for w in works if w.get("participant_user_id") == participant_id), {})
-            
+        for w in works:
+            if w.get("participant_user_id") == user_id:
+                continue
             if is_jury_or_creator:
-                jury_votes = work_data.get("jury_votes", {}) or {}
-                if str(user_id) not in jury_votes:
+                if str(user_id) not in (w.get("jury_votes") or {}):
                     remaining += 1
             elif is_audience:
                 if audience_voting_enabled:
                     # Если зрительские симпатии включены, проверяем audience_votes
-                    audience_votes = work_data.get("audience_votes", {}) or {}
-                    if str(user_id) not in audience_votes:
+                    if str(user_id) not in (w.get("audience_votes") or {}):
                         remaining += 1
                 else:
                     # Если зрительские симпатии не включены, проверяем старую структуру votes
-                    votes = work_data.get("votes", {}) or {}
-                    if str(user_id) not in votes:
+                    if str(user_id) not in (w.get("votes") or {}):
                         remaining += 1
 
         save_drawing_data(drawing_data)
@@ -3726,116 +3639,30 @@ async def submit_vote(contest_id: int, request: Request):
     }
 
 @app.get("/api/drawing-contests/{contest_id}/works/{work_number}/image")
-async def get_drawing_work_image(contest_id: int, work_number: int, user_id: int = Query(None)):
-    """Получить изображение работы по номеру. Работа определяется по порядку участников из БД.
-    Если передан user_id, исключаем его собственную работу из списка (как в get_voting_queue)."""
-    from models import Participant
-    from fastapi.responses import RedirectResponse
-    
-    async with async_session() as session:
-        # Получаем участников с фотографиями из БД в том же порядке, что и в get_voting_queue
-        participants_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.photo_link.isnot(None),
-                Participant.photo_link != ''
-            ).order_by(Participant.id)
-        )
-        participants = participants_result.scalars().all()
-        
-        if not participants:
-            raise HTTPException(status_code=404, detail="Работы не найдены")
-        
-        # Фильтруем участников так же, как в get_voting_queue (исключаем собственную работу пользователя)
-        filtered_participants = []
-        for participant in participants:
-            participant_user_id = participant.user_id
-            photo_link = participant.photo_link
-            
-            # Пропускаем собственную работу пользователя, если user_id передан
-            if user_id and participant_user_id == user_id:
-                continue
-            
-            # Пропускаем участников без фотографии
-            if not photo_link:
-                continue
-            
-            filtered_participants.append(participant)
-        
-        if not filtered_participants:
-            raise HTTPException(status_code=404, detail="Работы не найдены")
-        
-        if work_number < 1 or work_number > len(filtered_participants):
+async def get_drawing_work_image(contest_id: int, work_number: int):
+    async with drawing_data_lock:
+        drawing_data = load_drawing_data()
+        contest_entry = drawing_data.get(str(contest_id))
+        if not contest_entry:
+            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        work = next((w for w in contest_entry.get("works", []) if w.get("work_number") == work_number), None)
+        if not work:
             raise HTTPException(status_code=404, detail="Работа не найдена")
         
-        target_participant = filtered_participants[work_number - 1]  # work_number начинается с 1
-        photo_link = target_participant.photo_link
-        
-        # Пытаемся найти локальный файл из JSON
-        work_data = None
-        async with drawing_data_lock:
-            drawing_data = load_drawing_data()
-            contest_entry = drawing_data.get(str(contest_id))
-            if contest_entry:
-                works = contest_entry.get("works", [])
-                work_data = next((w for w in works if w.get("participant_user_id") == target_participant.user_id), None)
-                if work_data:
-                    local_path = work_data.get("local_path")
-                    if local_path:
-                        # Пробуем разные варианты пути
-                        full_path = os.path.abspath(os.path.join(ROOT_DIR, local_path))
-                        uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
-                        
-                        # Проверяем, существует ли файл
-                        if os.path.exists(full_path):
-                            if full_path.startswith(uploads_root):
-                                media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
-                                logger.debug(f"Используем локальный файл для работы {work_number}: {full_path}")
-                                return FileResponse(full_path, media_type=media_type)
-                            else:
-                                logger.warning(f"Путь к файлу вне uploads_root: {full_path}")
-                        else:
-                            logger.warning(f"Локальный файл не найден: {full_path}")
-                            # Пробуем найти файл по имени в директории конкурса
-                            work_dir = os.path.join(DRAWING_UPLOADS_DIR, f"contest_{contest_id}")
-                            if os.path.exists(work_dir):
-                                filename = os.path.basename(local_path)
-                                alt_path = os.path.join(work_dir, filename)
-                                if os.path.exists(alt_path):
-                                    media_type = mimetypes.guess_type(alt_path)[0] or "image/jpeg"
-                                    logger.debug(f"Используем альтернативный путь для работы {work_number}: {alt_path}")
-                                    return FileResponse(alt_path, media_type=media_type)
-        
-        # Если локального файла нет, используем photo_link из БД
-        if not photo_link:
-            logger.error(f"Нет photo_link для участника {target_participant.user_id} в конкурсе {contest_id}")
-            raise HTTPException(status_code=404, detail="Файл не найден. Фотография не загружена.")
-        
-        # Для ссылок на Telegram - возвращаем их напрямую
-        # В Telegram WebApp прямые ссылки на t.me должны работать через img src
-        if photo_link.startswith('http'):
-            logger.debug(f"Используем прямую ссылку на Telegram для работы {work_number}: {photo_link}")
-            # Возвращаем редирект, но также можно попробовать проксировать через сервер
-            return RedirectResponse(url=photo_link, status_code=302)
-        elif photo_link.startswith('tg://'):
-            # Это tg:// ссылка - нельзя использовать напрямую в браузере
-            # Пытаемся использовать photo_file_id из JSON, если есть
-            if work_data and work_data.get("photo_file_id"):
-                photo_file_id = work_data.get("photo_file_id")
-                logger.info(f"Пытаемся получить файл через Bot API по file_id для работы {work_number}")
-                try:
-                    from bot import bot
-                    file = await bot.get_file(photo_file_id)
-                    file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-                    return RedirectResponse(url=file_url, status_code=302)
-                except Exception as e:
-                    logger.error(f"Ошибка при получении файла через Bot API: {e}")
-            
-            logger.warning(f"tg:// ссылка не поддерживается для работы {work_number}, participant_id={target_participant.user_id}")
-            raise HTTPException(status_code=404, detail="Файл не найден. Локальный файл отсутствует, а tg:// ссылка не поддерживается в браузере.")
-        
-        logger.error(f"Неизвестный формат photo_link для работы {work_number}: {photo_link}")
+        local_path = work.get("local_path")
+
+    if not local_path:
         raise HTTPException(status_code=404, detail="Файл не найден")
+
+    full_path = os.path.abspath(os.path.join(ROOT_DIR, local_path))
+    uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
+    if not full_path.startswith(uploads_root):
+        raise HTTPException(status_code=400, detail="Некорректный путь к файлу")
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
+    return FileResponse(full_path, media_type=media_type)
 
 @app.get("/api/contests/{contest_id}/works")
 async def get_contest_works(contest_id: int, current_user_id: int = Query(...)):
@@ -5034,7 +4861,19 @@ async def update_contest(contest_id: int, request: Request):
                     if not new_post_link or not new_post_link.strip():
                         raise HTTPException(status_code=400, detail="❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)")
                     
-                    # Убрана проверка уникальности post_link - теперь одну ссылку можно использовать несколько раз
+                    # Проверяем уникальность post_link только для конкурсов рандом комментариев
+                    existing_contest = await session.execute(
+                        select(Giveaway).where(
+                            Giveaway.post_link == new_post_link,
+                            Giveaway.id != contest_id,  # Исключаем текущий конкурс
+                            Giveaway.post_link.isnot(None),
+                            Giveaway.post_link != ""
+                        )
+                    )
+                    existing = existing_contest.scalars().first()
+                    if existing:
+                        raise HTTPException(status_code=400, detail=f"❌ Этот пост уже используется в конкурсе (ID: {existing.id}). Один пост может иметь только один конкурс.")
+                    
                     contest.post_link = new_post_link
                 else:
                     # Для конкурсов рисунков post_link не требуется и может быть пустым
