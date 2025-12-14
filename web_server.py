@@ -1548,36 +1548,7 @@ async def create_giveaway(request: Request):
     admin_fee_deducted = None
     
     async with async_session() as session:
-        # Проверяем, не существует ли уже конкурс для этого поста (только для рандом комментариев)
-        # Для конкурса рисунков post_link может быть пустым, поэтому проверяем только для random_comment
-        if post_link and post_link.strip() and contest_type == "random_comment":
-            try:
-                # Проверяем наличие колонки post_link
-                if IS_SQLITE:
-                    result = await session.execute(text("PRAGMA table_info(giveaways)"))
-                    columns_info = result.fetchall()
-                    existing_columns = {row[1]: row for row in columns_info}
-                else:
-                    result = await session.execute(text("""
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = 'giveaways'
-                    """))
-                    columns_info = result.fetchall()
-                    existing_columns = {row[0]: row for row in columns_info}
-                
-                if 'post_link' in existing_columns:
-                    # Используем прямой SQL запрос для проверки
-                    check_result = await session.execute(
-                        text("SELECT id FROM giveaways WHERE post_link = :post_link AND post_link IS NOT NULL AND post_link != ''"),
-                        {"post_link": post_link}
-                    )
-                    existing_row = check_result.fetchone()
-                    if existing_row:
-                        return {"success": False, "message": f"❌ Для этого поста уже существует конкурс (ID: {existing_row[0]}). Один пост может иметь только один конкурс."}
-            except Exception as e:
-                # Если что-то пошло не так с проверкой, просто логируем и продолжаем
-                logger.warning(f"Ошибка при проверке существующего конкурса: {e}")
+        # Убрана проверка уникальности post_link - теперь одну ссылку можно использовать несколько раз
         
         # Определяем канал и группу обсуждения
         channel_link = data.get("channel_link")  # Берем из запроса
@@ -3368,7 +3339,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             participant = participant_result.scalars().first()
             if participant:
                 can_vote = True
-        
+
         if not can_vote:
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
@@ -3379,8 +3350,27 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         voting_end = None
         if voting_end_date:
             voting_end = normalize_datetime_to_msk(voting_end_date)
-            if voting_end and now_msk > voting_end:
-                raise HTTPException(status_code=400, detail="Голосование завершено")
+        if voting_end and now_msk > voting_end:
+            raise HTTPException(status_code=400, detail="Голосование завершено")
+
+        # ВАЖНО: Проверяем, является ли пользователь участником конкурса
+        # Делаем это ДО входа в блок drawing_data_lock, чтобы сессия БД была активна
+        participant_result = await session.execute(
+            select(Participant).where(
+                Participant.giveaway_id == contest_id,
+                Participant.user_id == user_id
+            )
+        )
+        participant = participant_result.scalars().first()
+        is_participant = participant is not None
+
+    # Определяем тип голосующего: жюри/создатель или участник (зритель)
+    is_jury_or_creator_local = is_creator or is_jury_member
+    
+    # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
+    # иначе в старую структуру votes (для обратной совместимости)
+    # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
+    is_audience_local = not is_jury_or_creator_local and (audience_voting_enabled or is_participant)
 
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
@@ -3404,10 +3394,6 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             if participant_user_id == user_id:
                 continue
             
-            # Определяем тип голосующего для правильного отображения уже оцененных работ
-            is_jury_or_creator_local = is_creator or is_jury_member
-            is_audience_local = not is_jury_or_creator_local and audience_voting_enabled
-            
             # Проверяем голоса в соответствующей категории
             already_rated = False
             rating = None
@@ -3416,9 +3402,16 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
                 already_rated = str(user_id) in jury_votes
                 rating = jury_votes.get(str(user_id))
             elif is_audience_local:
-                audience_votes = work.get("audience_votes", {}) or {}
-                already_rated = str(user_id) in audience_votes
-                rating = audience_votes.get(str(user_id))
+                if audience_voting_enabled:
+                    # Если зрительские симпатии включены, проверяем audience_votes
+                    audience_votes = work.get("audience_votes", {}) or {}
+                    already_rated = str(user_id) in audience_votes
+                    rating = audience_votes.get(str(user_id))
+                else:
+                    # Если зрительские симпатии не включены, но пользователь участник, проверяем старую структуру votes
+                    votes = work.get("votes", {}) or {}
+                    already_rated = str(user_id) in votes
+                    rating = votes.get(str(user_id))
             else:
                 # Для обратной совместимости проверяем старую структуру votes
                 votes = work.get("votes", {}) or {}
@@ -3492,7 +3485,7 @@ async def submit_vote(contest_id: int, request: Request):
                 (isinstance(member.get('user_id'), str) and member.get('user_id').startswith('@'))
                 for member in jury_members
             )
-        
+            
         # Проверяем зрительские симпатии
         # ВАЖНО: Правильно определяем audience_voting_enabled, чтобы всегда возвращать True или False
         audience_voting_enabled = False
@@ -3538,8 +3531,28 @@ async def submit_vote(contest_id: int, request: Request):
         voting_end = None
         if voting_end_date:
             voting_end = normalize_datetime_to_msk(voting_end_date)
-            if voting_end and now_msk > voting_end:
-                raise HTTPException(status_code=400, detail="Голосование завершено")
+        if voting_end and now_msk > voting_end:
+            raise HTTPException(status_code=400, detail="Голосование завершено")
+
+        # ВАЖНО: Проверяем, является ли пользователь участником конкурса
+        # Делаем это ДО входа в блок drawing_data_lock, чтобы сессия БД была активна
+        from models import Participant
+        participant_result = await session.execute(
+            select(Participant).where(
+                Participant.giveaway_id == contest_id,
+                Participant.user_id == user_id
+            )
+        )
+        participant = participant_result.scalars().first()
+        is_participant = participant is not None
+
+    # Определяем тип голосующего: жюри/создатель или участник (зритель)
+    is_jury_or_creator = is_creator or is_jury_member
+    
+    # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
+    # иначе в старую структуру votes (для обратной совместимости)
+    # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
+    is_audience = not is_jury_or_creator and (audience_voting_enabled or is_participant)
 
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
@@ -3554,26 +3567,6 @@ async def submit_vote(contest_id: int, request: Request):
         
         if work.get("participant_user_id") == user_id:
             raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
-
-        # Определяем тип голосующего: жюри/создатель или участник (зритель)
-        is_jury_or_creator = is_creator or is_jury_member
-        
-        # ВАЖНО: Проверяем, является ли пользователь участником конкурса
-        # Если пользователь видит кнопку "Голосовать" и нажал "Участвовать", значит он участник
-        from models import Participant
-        participant_result = await session.execute(
-            select(Participant).where(
-                Participant.giveaway_id == contest_id,
-                Participant.user_id == user_id
-            )
-        )
-        participant = participant_result.scalars().first()
-        is_participant = participant is not None
-        
-        # Голос участника сохраняется в audience_votes если зрительские симпатии включены,
-        # иначе в старую структуру votes (для обратной совместимости)
-        # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
-        is_audience = not is_jury_or_creator and (audience_voting_enabled or is_participant)
         
         print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, is_participant={is_participant}, audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         
@@ -4380,7 +4373,7 @@ async def get_drawing_contest_results(contest_id: int):
                 
                 # Для обратной совместимости: если нет раздельных результатов, используем старую структуру
                 if not jury_results and not audience_results:
-                    results = contest_entry.get("results", [])
+                results = contest_entry.get("results", [])
                     if jury_enabled:
                         jury_results = results
                     else:
@@ -4392,20 +4385,20 @@ async def get_drawing_contest_results(contest_id: int):
                 # Обновляем username из таблицы User для каждого результата
                 async def update_usernames_and_prizes(results_list):
                     for result in results_list:
-                        participant_user_id = result.get("participant_user_id")
-                        if participant_user_id:
-                            user_result = await session.execute(
-                                select(User).where(User.telegram_id == participant_user_id)
-                            )
-                            user = user_result.scalars().first()
-                            if user and user.username:
-                                result["username"] = user.username
-                        
-                        place = result.get("place", 0)
-                        if place > 0 and place <= len(prize_links):
-                            result["prize_link"] = prize_links[place - 1]
-                        else:
-                            result["prize_link"] = None
+                    participant_user_id = result.get("participant_user_id")
+                    if participant_user_id:
+                        user_result = await session.execute(
+                            select(User).where(User.telegram_id == participant_user_id)
+                        )
+                        user = user_result.scalars().first()
+                        if user and user.username:
+                            result["username"] = user.username
+                    
+                    place = result.get("place", 0)
+                    if place > 0 and place <= len(prize_links):
+                        result["prize_link"] = prize_links[place - 1]
+                    else:
+                        result["prize_link"] = None
                 
                 await update_usernames_and_prizes(jury_results)
                 await update_usernames_and_prizes(audience_results)
@@ -4861,19 +4854,7 @@ async def update_contest(contest_id: int, request: Request):
                     if not new_post_link or not new_post_link.strip():
                         raise HTTPException(status_code=400, detail="❌ Для конкурса рандом комментариев обязательна ссылка на пост (post_link)")
                     
-                    # Проверяем уникальность post_link только для конкурсов рандом комментариев
-                    existing_contest = await session.execute(
-                        select(Giveaway).where(
-                            Giveaway.post_link == new_post_link,
-                            Giveaway.id != contest_id,  # Исключаем текущий конкурс
-                            Giveaway.post_link.isnot(None),
-                            Giveaway.post_link != ""
-                        )
-                    )
-                    existing = existing_contest.scalars().first()
-                    if existing:
-                        raise HTTPException(status_code=400, detail=f"❌ Этот пост уже используется в конкурсе (ID: {existing.id}). Один пост может иметь только один конкурс.")
-                    
+                    # Убрана проверка уникальности post_link - теперь одну ссылку можно использовать несколько раз
                     contest.post_link = new_post_link
                 else:
                     # Для конкурсов рисунков post_link не требуется и может быть пустым
