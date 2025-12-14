@@ -2712,7 +2712,24 @@ async def upload_photo_for_drawing_contest(
                     if existing_work and existing_work.get("work_number"):
                         work_number = existing_work["work_number"]
                     else:
-                        work_number = len(works) + 1
+                        # Находим максимальный существующий номер работы, чтобы избежать конфликтов
+                        existing_numbers = {w.get("work_number") for w in works if w.get("work_number")}
+                        if existing_numbers:
+                            work_number = max(existing_numbers) + 1
+                        else:
+                            work_number = 1
+                        
+                        # Проверяем, что номер уникален (на случай, если есть пропуски или конфликты)
+                        while work_number in existing_numbers:
+                            work_number += 1
+                        
+                        # Дополнительная проверка: убеждаемся, что нет другой работы с таким же номером
+                        conflicting_work = next((w for w in works if w.get("work_number") == work_number), None)
+                        if conflicting_work:
+                            # Если нашли конфликт, находим следующий свободный номер
+                            while conflicting_work:
+                                work_number += 1
+                                conflicting_work = next((w for w in works if w.get("work_number") == work_number), None)
 
                     file_ext = os.path.splitext(original_filename or "")[1].lower()
                     if not file_ext or len(file_ext) > 5:
@@ -2769,6 +2786,7 @@ async def upload_photo_for_drawing_contest(
                     }
                     now_msk = datetime.now()
                     work_record.update({
+                        "work_number": work_number,  # Убеждаемся, что номер правильный
                         "photo_link": photo_link,
                         "photo_message_id": photo_message_id,
                         "photo_file_id": photo_file_id,
