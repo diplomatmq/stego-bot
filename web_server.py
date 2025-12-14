@@ -3771,6 +3771,7 @@ async def get_drawing_work_image(contest_id: int, work_number: int, user_id: int
         photo_link = target_participant.photo_link
         
         # Пытаемся найти локальный файл из JSON
+        work_data = None
         async with drawing_data_lock:
             drawing_data = load_drawing_data()
             contest_entry = drawing_data.get(str(contest_id))
@@ -3780,27 +3781,55 @@ async def get_drawing_work_image(contest_id: int, work_number: int, user_id: int
                 if work_data:
                     local_path = work_data.get("local_path")
                     if local_path:
+                        # Пробуем разные варианты пути
                         full_path = os.path.abspath(os.path.join(ROOT_DIR, local_path))
                         uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
-                        if full_path.startswith(uploads_root) and os.path.exists(full_path):
-                            media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
-                            logger.debug(f"Используем локальный файл для работы {work_number}: {full_path}")
-                            return FileResponse(full_path, media_type=media_type)
+                        
+                        # Проверяем, существует ли файл
+                        if os.path.exists(full_path):
+                            if full_path.startswith(uploads_root):
+                                media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
+                                logger.debug(f"Используем локальный файл для работы {work_number}: {full_path}")
+                                return FileResponse(full_path, media_type=media_type)
+                            else:
+                                logger.warning(f"Путь к файлу вне uploads_root: {full_path}")
                         else:
-                            logger.warning(f"Локальный файл не найден или путь некорректен: {full_path}, exists={os.path.exists(full_path) if local_path else False}")
+                            logger.warning(f"Локальный файл не найден: {full_path}")
+                            # Пробуем найти файл по имени в директории конкурса
+                            work_dir = os.path.join(DRAWING_UPLOADS_DIR, f"contest_{contest_id}")
+                            if os.path.exists(work_dir):
+                                filename = os.path.basename(local_path)
+                                alt_path = os.path.join(work_dir, filename)
+                                if os.path.exists(alt_path):
+                                    media_type = mimetypes.guess_type(alt_path)[0] or "image/jpeg"
+                                    logger.debug(f"Используем альтернативный путь для работы {work_number}: {alt_path}")
+                                    return FileResponse(alt_path, media_type=media_type)
         
         # Если локального файла нет, используем photo_link из БД
         if not photo_link:
             logger.error(f"Нет photo_link для участника {target_participant.user_id} в конкурсе {contest_id}")
             raise HTTPException(status_code=404, detail="Файл не найден. Фотография не загружена.")
         
-        # Для ссылок на Telegram делаем редирект
-        # В Telegram WebApp прямые ссылки на t.me должны работать
+        # Для ссылок на Telegram - возвращаем их напрямую
+        # В Telegram WebApp прямые ссылки на t.me должны работать через img src
         if photo_link.startswith('http'):
-            logger.debug(f"Используем редирект на Telegram ссылку для работы {work_number}: {photo_link}")
+            logger.debug(f"Используем прямую ссылку на Telegram для работы {work_number}: {photo_link}")
+            # Возвращаем редирект, но также можно попробовать проксировать через сервер
             return RedirectResponse(url=photo_link, status_code=302)
         elif photo_link.startswith('tg://'):
             # Это tg:// ссылка - нельзя использовать напрямую в браузере
+            # Пытаемся использовать photo_file_id из JSON, если есть
+            if work_data and work_data.get("photo_file_id"):
+                photo_file_id = work_data.get("photo_file_id")
+                logger.info(f"Пытаемся получить файл через Bot API по file_id для работы {work_number}")
+                try:
+                    from bot import bot
+                    file = await bot.get_file(photo_file_id)
+                    file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+                    return RedirectResponse(url=file_url, status_code=302)
+                except Exception as e:
+                    logger.error(f"Ошибка при получении файла через Bot API: {e}")
+            
             logger.warning(f"tg:// ссылка не поддерживается для работы {work_number}, participant_id={target_participant.user_id}")
             raise HTTPException(status_code=404, detail="Файл не найден. Локальный файл отсутствует, а tg:// ссылка не поддерживается в браузере.")
         
