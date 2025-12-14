@@ -4373,11 +4373,11 @@ async def get_drawing_contest_results(contest_id: int):
                 
                 # Для обратной совместимости: если нет раздельных результатов, используем старую структуру
                 if not jury_results and not audience_results:
-                results = contest_entry.get("results", [])
-                    if jury_enabled:
-                        jury_results = results
-                    else:
-                        audience_results = results
+                    results = contest_entry.get("results", [])
+                        if jury_enabled:
+                            jury_results = results
+                          else:
+                           audience_results = results
                 
                 print(f"DEBUG get_drawing_contest_results: jury_results count={len(jury_results)}, audience_results count={len(audience_results)}")
                 print(f"DEBUG get_drawing_contest_results: jury_enabled={jury_enabled}, audience_voting_enabled={audience_voting_enabled}")
@@ -4385,24 +4385,21 @@ async def get_drawing_contest_results(contest_id: int):
                 # Обновляем username из таблицы User для каждого результата
                 async def update_usernames_and_prizes(results_list):
                     for result in results_list:
-                    participant_user_id = result.get("participant_user_id")
-                    if participant_user_id:
-                        user_result = await session.execute(
+                        participant_user_id = result.get("participant_user_id")
+                        if participant_user_id:
+                          user_result = await session.execute(
                             select(User).where(User.telegram_id == participant_user_id)
-                        )
-                        user = user_result.scalars().first()
-                        if user and user.username:
-                            result["username"] = user.username
+                            )
+                            user = user_result.scalars().first()
+                            if user and user.username:
+                                result["username"] = user.username
                     
                     place = result.get("place", 0)
                     if place > 0 and place <= len(prize_links):
                         result["prize_link"] = prize_links[place - 1]
                     else:
-                        result["prize_link"] = None
-                
-                await update_usernames_and_prizes(jury_results)
-                await update_usernames_and_prizes(audience_results)
-                
+                    await update_usernames_and_prizes(jury_results)
+                    await update_usernames_and_prizes(audience_results)
                 # Всегда возвращаем результаты, если режимы включены, даже если они пустые
                 return_result = {
                     "results_calculated": True,
