@@ -3455,7 +3455,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         
         sanitized.append({
             "work_number": work_number,
-            "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image",  # Используем API endpoint
+            "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image?user_id={user_id}",  # Передаем user_id для правильной фильтрации
             "already_rated": already_rated,
             "rating": rating,
             "is_own": False,
@@ -3604,17 +3604,23 @@ async def submit_vote(contest_id: int, request: Request):
     if not participants:
         raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
     
-    # Исключаем собственную работу пользователя и получаем участника по номеру работы
-    filtered_participants = [p for p in participants if p.user_id != user_id]
+    # Исключаем собственную работу пользователя и участников без фотографий (как в get_voting_queue)
+    filtered_participants = []
+    for p in participants:
+        if p.user_id == user_id:
+            continue
+        if not p.photo_link:
+            continue
+        filtered_participants.append(p)
+    
+    if not filtered_participants:
+        raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
     
     if work_number < 1 or work_number > len(filtered_participants):
         raise HTTPException(status_code=404, detail="Работа не найдена")
     
     target_participant = filtered_participants[work_number - 1]  # work_number начинается с 1
     participant_user_id = target_participant.user_id
-    
-    if participant_user_id == user_id:
-        raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
 
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
@@ -3719,13 +3725,14 @@ async def submit_vote(contest_id: int, request: Request):
     }
 
 @app.get("/api/drawing-contests/{contest_id}/works/{work_number}/image")
-async def get_drawing_work_image(contest_id: int, work_number: int):
-    """Получить изображение работы по номеру. Работа определяется по порядку участников из БД."""
+async def get_drawing_work_image(contest_id: int, work_number: int, user_id: int = Query(None)):
+    """Получить изображение работы по номеру. Работа определяется по порядку участников из БД.
+    Если передан user_id, исключаем его собственную работу из списка (как в get_voting_queue)."""
     from models import Participant
     from fastapi.responses import RedirectResponse
     
     async with async_session() as session:
-        # Получаем участников с фотографиями из БД в том же порядке
+        # Получаем участников с фотографиями из БД в том же порядке, что и в get_voting_queue
         participants_result = await session.execute(
             select(Participant).where(
                 Participant.giveaway_id == contest_id,
@@ -3738,10 +3745,29 @@ async def get_drawing_work_image(contest_id: int, work_number: int):
         if not participants:
             raise HTTPException(status_code=404, detail="Работы не найдены")
         
-        if work_number < 1 or work_number > len(participants):
+        # Фильтруем участников так же, как в get_voting_queue (исключаем собственную работу пользователя)
+        filtered_participants = []
+        for participant in participants:
+            participant_user_id = participant.user_id
+            photo_link = participant.photo_link
+            
+            # Пропускаем собственную работу пользователя, если user_id передан
+            if user_id and participant_user_id == user_id:
+                continue
+            
+            # Пропускаем участников без фотографии
+            if not photo_link:
+                continue
+            
+            filtered_participants.append(participant)
+        
+        if not filtered_participants:
+            raise HTTPException(status_code=404, detail="Работы не найдены")
+        
+        if work_number < 1 or work_number > len(filtered_participants):
             raise HTTPException(status_code=404, detail="Работа не найдена")
         
-        target_participant = participants[work_number - 1]  # work_number начинается с 1
+        target_participant = filtered_participants[work_number - 1]  # work_number начинается с 1
         photo_link = target_participant.photo_link
         
         # Пытаемся найти локальный файл из JSON
