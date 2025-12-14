@@ -3390,59 +3390,78 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
     # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
     is_audience_local = not is_jury_or_creator_local and (audience_voting_enabled or is_participant)
 
+    # Получаем участников с фотографиями из базы данных, отсортированных по порядку
+    participants_result = await session.execute(
+        select(Participant).where(
+            Participant.giveaway_id == contest_id,
+            Participant.photo_link.isnot(None),
+            Participant.photo_link != ''
+        ).order_by(Participant.id)  # Сортируем по id для сохранения порядка
+    )
+    participants = participants_result.scalars().all()
+    
+    if not participants:
+        return {"success": True, "works": [], "total": 0, "can_vote": can_vote}
+    
+    # Загружаем данные о голосах из JSON файла
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
         contest_entry = drawing_data.get(str(contest_id))
-        if not contest_entry:
-            return {"success": True, "works": [], "total": 0}
-
-        works_raw = contest_entry.get("works", [])
-        works_sorted = sorted(works_raw, key=lambda w: w.get("work_number", 0))
-        sanitized = []
-        for work in works_sorted:
-            work_number = work.get("work_number")
-            local_path = work.get("local_path")
-            participant_user_id = work.get("participant_user_id")
-            
-            # Пропускаем работы без необходимых данных
-            if not work_number or not local_path or not participant_user_id:
-                continue
-            
-            # Пропускаем собственную работу пользователя
-            if participant_user_id == user_id:
-                continue
-            
-            # Проверяем голоса в соответствующей категории
-            already_rated = False
-            rating = None
-            if is_jury_or_creator_local:
-                jury_votes = work.get("jury_votes", {}) or {}
-                already_rated = str(user_id) in jury_votes
-                rating = jury_votes.get(str(user_id))
-            elif is_audience_local:
-                if audience_voting_enabled:
-                    # Если зрительские симпатии включены, проверяем audience_votes
-                    audience_votes = work.get("audience_votes", {}) or {}
-                    already_rated = str(user_id) in audience_votes
-                    rating = audience_votes.get(str(user_id))
-                else:
-                    # Если зрительские симпатии не включены, но пользователь участник, проверяем старую структуру votes
-                    votes = work.get("votes", {}) or {}
-                    already_rated = str(user_id) in votes
-                    rating = votes.get(str(user_id))
+        works_data = contest_entry.get("works", []) if contest_entry else []
+        # Создаем словарь для быстрого поиска данных о работе по participant_user_id
+        works_by_user = {w.get("participant_user_id"): w for w in works_data}
+    
+    sanitized = []
+    work_number = 1  # Начинаем с номера 1
+    
+    for participant in participants:
+        participant_user_id = participant.user_id
+        photo_link = participant.photo_link
+        
+        # Пропускаем собственную работу пользователя
+        if participant_user_id == user_id:
+            continue
+        
+        # Пропускаем участников без фотографии
+        if not photo_link:
+            continue
+        
+        # Получаем данные о голосах из JSON (если есть)
+        work_data = works_by_user.get(participant_user_id, {})
+        
+        # Проверяем голоса в соответствующей категории
+        already_rated = False
+        rating = None
+        if is_jury_or_creator_local:
+            jury_votes = work_data.get("jury_votes", {}) or {}
+            already_rated = str(user_id) in jury_votes
+            rating = jury_votes.get(str(user_id))
+        elif is_audience_local:
+            if audience_voting_enabled:
+                # Если зрительские симпатии включены, проверяем audience_votes
+                audience_votes = work_data.get("audience_votes", {}) or {}
+                already_rated = str(user_id) in audience_votes
+                rating = audience_votes.get(str(user_id))
             else:
-                # Для обратной совместимости проверяем старую структуру votes
-                votes = work.get("votes", {}) or {}
+                # Если зрительские симпатии не включены, но пользователь участник, проверяем старую структуру votes
+                votes = work_data.get("votes", {}) or {}
                 already_rated = str(user_id) in votes
                 rating = votes.get(str(user_id))
-            
-            sanitized.append({
-                "work_number": work_number,
-                "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image",
-                "already_rated": already_rated,
-                "rating": rating,
-                "is_own": False  # Все работы здесь уже не свои, так как мы их отфильтровали
-            })
+        else:
+            # Для обратной совместимости проверяем старую структуру votes
+            votes = work_data.get("votes", {}) or {}
+            already_rated = str(user_id) in votes
+            rating = votes.get(str(user_id))
+        
+        sanitized.append({
+            "work_number": work_number,
+            "image_url": photo_link,  # Используем photo_link из БД напрямую
+            "already_rated": already_rated,
+            "rating": rating,
+            "is_own": False,
+            "participant_user_id": participant_user_id
+        })
+        work_number += 1
 
         # can_vote уже определен выше при проверке прав доступа
         return {
@@ -3572,19 +3591,63 @@ async def submit_vote(contest_id: int, request: Request):
     # ВАЖНО: Если пользователь участник, он может голосовать, даже если audience_voting не установлено
     is_audience = not is_jury_or_creator and (audience_voting_enabled or is_participant)
 
+    # Получаем участников с фотографиями из базы данных в том же порядке, что и в get_voting_queue
+    participants_result = await session.execute(
+        select(Participant).where(
+            Participant.giveaway_id == contest_id,
+            Participant.photo_link.isnot(None),
+            Participant.photo_link != ''
+        ).order_by(Participant.id)  # Сортируем по id для сохранения порядка
+    )
+    participants = participants_result.scalars().all()
+    
+    if not participants:
+        raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
+    
+    # Исключаем собственную работу пользователя и получаем участника по номеру работы
+    filtered_participants = [p for p in participants if p.user_id != user_id]
+    
+    if work_number < 1 or work_number > len(filtered_participants):
+        raise HTTPException(status_code=404, detail="Работа не найдена")
+    
+    target_participant = filtered_participants[work_number - 1]  # work_number начинается с 1
+    participant_user_id = target_participant.user_id
+    
+    if participant_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
+
     async with drawing_data_lock:
         drawing_data = load_drawing_data()
         contest_entry = drawing_data.get(str(contest_id))
         if not contest_entry:
-            raise HTTPException(status_code=404, detail="Работы для голосования не найдены")
+            # Создаем запись конкурса, если её нет
+            contest_entry = {
+                "contest_id": contest_id,
+                "title": getattr(giveaway, 'name', '') or '',
+                "topic": getattr(giveaway, 'conditions', '') or '',
+                "created_by": giveaway.created_by,
+                "created_at": datetime.now().isoformat(),
+                "works": []
+            }
+            drawing_data[str(contest_id)] = contest_entry
 
         works = contest_entry.get("works", [])
-        work = next((w for w in works if w.get("work_number") == work_number), None)
-        if not work:
-            raise HTTPException(status_code=404, detail="Работа не найдена")
+        # Ищем или создаем запись о работе для этого участника
+        work = next((w for w in works if w.get("participant_user_id") == participant_user_id), None)
         
-        if work.get("participant_user_id") == user_id:
-            raise HTTPException(status_code=400, detail="Вы не можете оценивать собственную работу")
+        if not work:
+            # Создаем новую запись о работе
+            work = {
+                "work_number": work_number,
+                "participant_user_id": participant_user_id,
+                "jury_votes": {},
+                "audience_votes": {},
+                "votes": {}
+            }
+            works.append(work)
+        else:
+            # Обновляем номер работы, если он изменился
+            work["work_number"] = work_number
         
         print(f"DEBUG submit_vote: Определение типа голосующего - is_creator={is_creator}, is_jury_member={is_jury_member}, is_jury_or_creator={is_jury_or_creator}, is_participant={is_participant}, audience_voting={audience_voting}, audience_voting_enabled={audience_voting_enabled}, is_audience={is_audience}")
         
@@ -3623,21 +3686,27 @@ async def submit_vote(contest_id: int, request: Request):
             raise HTTPException(status_code=403, detail="У вас нет прав для голосования в этом конкурсе")
 
         # Подсчитываем оставшиеся работы для голосования
+        # Используем участников из БД для подсчета
         remaining = 0
-        for w in works:
-            if w.get("participant_user_id") == user_id:
-                continue
+        for idx, p in enumerate(filtered_participants, start=1):
+            participant_id = p.user_id
+            # Находим данные о работе для этого участника
+            work_data = next((w for w in works if w.get("participant_user_id") == participant_id), {})
+            
             if is_jury_or_creator:
-                if str(user_id) not in (w.get("jury_votes") or {}):
+                jury_votes = work_data.get("jury_votes", {}) or {}
+                if str(user_id) not in jury_votes:
                     remaining += 1
             elif is_audience:
                 if audience_voting_enabled:
                     # Если зрительские симпатии включены, проверяем audience_votes
-                    if str(user_id) not in (w.get("audience_votes") or {}):
+                    audience_votes = work_data.get("audience_votes", {}) or {}
+                    if str(user_id) not in audience_votes:
                         remaining += 1
                 else:
                     # Если зрительские симпатии не включены, проверяем старую структуру votes
-                    if str(user_id) not in (w.get("votes") or {}):
+                    votes = work_data.get("votes", {}) or {}
+                    if str(user_id) not in votes:
                         remaining += 1
 
         save_drawing_data(drawing_data)
