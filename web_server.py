@@ -2554,8 +2554,8 @@ async def upload_photo_for_drawing_contest(
                         if format_ext == 'PNG':
                             # Пробуем сохранить PNG с оптимизацией
                             img.save(output, format='PNG', optimize=True)
-                    else:
-                        img.save(output, format=format_ext, optimize=True)
+                        else:
+                            img.save(output, format=format_ext, optimize=True)
                     
                     file_size = len(output.getvalue())
                     # Если файл помещается в лимит или достигли минимального качества - останавливаемся
