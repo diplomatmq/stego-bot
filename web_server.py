@@ -3453,9 +3453,10 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
             already_rated = str(user_id) in votes
             rating = votes.get(str(user_id))
         
+        # Используем photo_link напрямую из БД
         sanitized.append({
             "work_number": work_number,
-            "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image?user_id={user_id}",  # Передаем user_id для правильной фильтрации
+            "image_url": photo_link,  # Используем photo_link напрямую из БД
             "already_rated": already_rated,
             "rating": rating,
             "is_own": False,
@@ -3463,13 +3464,13 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         })
         work_number += 1
 
-        # can_vote уже определен выше при проверке прав доступа
-        return {
-            "success": True,
-            "works": sanitized,
-            "total": len(sanitized),
-            "can_vote": can_vote  # Информация о правах доступа для оценивания
-        }
+    # can_vote уже определен выше при проверке прав доступа
+    return {
+        "success": True,
+        "works": sanitized,
+        "total": len(sanitized),
+        "can_vote": can_vote  # Информация о правах доступа для оценивания
+    }
 
 @app.post("/api/contests/{contest_id}/vote")
 async def submit_vote(contest_id: int, request: Request):
