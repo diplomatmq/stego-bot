@@ -3826,6 +3826,48 @@ async def cancel_contest_work(contest_id: int, work_number: int, request: Reques
             
             # Удаляем работу из списка
             works.remove(work)
+            
+            # ВАЖНО: Пересчитываем номера работ, чтобы они были последовательными (1, 2, 3, ...)
+            # Сортируем работы по текущему номеру
+            works_sorted = sorted(works, key=lambda w: w.get("work_number", 0))
+            
+            # Пересчитываем номера и переименовываем файлы
+            for new_number, work_item in enumerate(works_sorted, start=1):
+                old_number = work_item.get("work_number")
+                if old_number != new_number:
+                    # Обновляем номер работы
+                    work_item["work_number"] = new_number
+                    
+                    # Переименовываем файл, если он существует
+                    old_local_path = work_item.get("local_path")
+                    if old_local_path:
+                        try:
+                            old_full_path = os.path.join(ROOT_DIR, old_local_path)
+                            if os.path.exists(old_full_path):
+                                # Определяем расширение файла
+                                file_ext = os.path.splitext(old_local_path)[1]
+                                if not file_ext:
+                                    file_ext = ".jpg"
+                                
+                                # Формируем новый путь
+                                work_dir = os.path.dirname(old_full_path)
+                                new_filename = f"work_{new_number}{file_ext}"
+                                new_full_path = os.path.join(work_dir, new_filename)
+                                
+                                # Переименовываем файл
+                                os.rename(old_full_path, new_full_path)
+                                
+                                # Обновляем путь в данных работы
+                                new_local_path = os.path.relpath(new_full_path, ROOT_DIR).replace("\\", "/")
+                                work_item["local_path"] = new_local_path
+                                
+                                logger.info(f"✅ Переименован файл работы: {old_local_path} -> {new_local_path} (номер {old_number} -> {new_number})")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Не удалось переименовать файл работы {old_number} -> {new_number}: {e}")
+            
+            # Обновляем список works в contest_entry отсортированным и обновленным списком
+            contest_entry["works"] = works_sorted
+            
             save_drawing_data(drawing_data)
             
             # Обновляем participant в базе данных - удаляем photo_link
