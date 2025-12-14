@@ -3455,7 +3455,7 @@ async def get_voting_queue(contest_id: int, user_id: int = Query(...)):
         
         sanitized.append({
             "work_number": work_number,
-            "image_url": photo_link,  # Используем photo_link из БД напрямую
+            "image_url": f"/api/drawing-contests/{contest_id}/works/{work_number}/image",  # Используем API endpoint
             "already_rated": already_rated,
             "rating": rating,
             "is_own": False,
@@ -3720,29 +3720,60 @@ async def submit_vote(contest_id: int, request: Request):
 
 @app.get("/api/drawing-contests/{contest_id}/works/{work_number}/image")
 async def get_drawing_work_image(contest_id: int, work_number: int):
-    async with drawing_data_lock:
-        drawing_data = load_drawing_data()
-        contest_entry = drawing_data.get(str(contest_id))
-        if not contest_entry:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
-        work = next((w for w in contest_entry.get("works", []) if w.get("work_number") == work_number), None)
-        if not work:
+    """Получить изображение работы по номеру. Работа определяется по порядку участников из БД."""
+    from models import Participant
+    from fastapi.responses import RedirectResponse
+    
+    async with async_session() as session:
+        # Получаем участников с фотографиями из БД в том же порядке
+        participants_result = await session.execute(
+            select(Participant).where(
+                Participant.giveaway_id == contest_id,
+                Participant.photo_link.isnot(None),
+                Participant.photo_link != ''
+            ).order_by(Participant.id)
+        )
+        participants = participants_result.scalars().all()
+        
+        if not participants:
+            raise HTTPException(status_code=404, detail="Работы не найдены")
+        
+        if work_number < 1 or work_number > len(participants):
             raise HTTPException(status_code=404, detail="Работа не найдена")
         
-        local_path = work.get("local_path")
-
-    if not local_path:
+        target_participant = participants[work_number - 1]  # work_number начинается с 1
+        photo_link = target_participant.photo_link
+        
+        # Пытаемся найти локальный файл из JSON
+        async with drawing_data_lock:
+            drawing_data = load_drawing_data()
+            contest_entry = drawing_data.get(str(contest_id))
+            if contest_entry:
+                works = contest_entry.get("works", [])
+                work_data = next((w for w in works if w.get("participant_user_id") == target_participant.user_id), None)
+                if work_data:
+                    local_path = work_data.get("local_path")
+                    if local_path:
+                        full_path = os.path.abspath(os.path.join(ROOT_DIR, local_path))
+                        uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
+                        if full_path.startswith(uploads_root) and os.path.exists(full_path):
+                            media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
+                            return FileResponse(full_path, media_type=media_type)
+        
+        # Если локального файла нет, но есть photo_link - используем его
+        # Для ссылок на Telegram делаем редирект (они должны работать в Telegram WebApp)
+        if photo_link:
+            if photo_link.startswith('http'):
+                # Это прямая ссылка на Telegram - делаем редирект
+                # В Telegram WebApp такие ссылки должны работать
+                return RedirectResponse(url=photo_link, status_code=302)
+            elif photo_link.startswith('tg://'):
+                # Это tg:// ссылка - нельзя использовать в браузере
+                # Пытаемся найти альтернативу или возвращаем ошибку
+                logger.warning(f"Не удалось получить изображение для работы {work_number}: tg:// ссылка не поддерживается в браузере")
+                raise HTTPException(status_code=404, detail="Файл не найден. Локальный файл отсутствует.")
+        
         raise HTTPException(status_code=404, detail="Файл не найден")
-
-    full_path = os.path.abspath(os.path.join(ROOT_DIR, local_path))
-    uploads_root = os.path.abspath(DRAWING_UPLOADS_DIR)
-    if not full_path.startswith(uploads_root):
-        raise HTTPException(status_code=400, detail="Некорректный путь к файлу")
-    if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="Файл не найден")
-
-    media_type = mimetypes.guess_type(full_path)[0] or "image/jpeg"
-    return FileResponse(full_path, media_type=media_type)
 
 @app.get("/api/contests/{contest_id}/works")
 async def get_contest_works(contest_id: int, current_user_id: int = Query(...)):
