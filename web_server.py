@@ -4385,20 +4385,20 @@ async def get_drawing_contest_results(contest_id: int):
                 # Обновляем username из таблицы User для каждого результата
                 async def update_usernames_and_prizes(results_list):
                     for result in results_list:
-                    participant_user_id = result.get("participant_user_id")
-                    if participant_user_id:
-                        user_result = await session.execute(
-                            select(User).where(User.telegram_id == participant_user_id)
-                        )
-                        user = user_result.scalars().first()
-                        if user and user.username:
-                            result["username"] = user.username
-                    
-                    place = result.get("place", 0)
-                    if place > 0 and place <= len(prize_links):
-                        result["prize_link"] = prize_links[place - 1]
-                    else:
-                        result["prize_link"] = None
+                        participant_user_id = result.get("participant_user_id")
+                        if participant_user_id:
+                            user_result = await session.execute(
+                                select(User).where(User.telegram_id == participant_user_id)
+                            )
+                            user = user_result.scalars().first()
+                            if user and user.username:
+                                result["username"] = user.username
+                        
+                        place = result.get("place", 0)
+                        if place > 0 and place <= len(prize_links):
+                            result["prize_link"] = prize_links[place - 1]
+                        else:
+                            result["prize_link"] = None
                 
                 await update_usernames_and_prizes(jury_results)
                 await update_usernames_and_prizes(audience_results)
