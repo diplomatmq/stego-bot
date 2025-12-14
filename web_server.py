@@ -4374,10 +4374,10 @@ async def get_drawing_contest_results(contest_id: int):
                 # Для обратной совместимости: если нет раздельных результатов, используем старую структуру
                 if not jury_results and not audience_results:
                     results = contest_entry.get("results", [])
-                        if jury_enabled:
-                            jury_results = results
-                          else:
-                           audience_results = results
+                    if jury_enabled:
+                        jury_results = results
+                    else:
+                        audience_results = results
                 
                 print(f"DEBUG get_drawing_contest_results: jury_results count={len(jury_results)}, audience_results count={len(audience_results)}")
                 print(f"DEBUG get_drawing_contest_results: jury_enabled={jury_enabled}, audience_voting_enabled={audience_voting_enabled}")
