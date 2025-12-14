@@ -8,7 +8,21 @@ import logging
 Base = declarative_base()
 
 # Создаём движок и сессию
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Настройка пула соединений для PostgreSQL (предотвращает TooManyConnectionsError)
+# pool_size: базовое количество соединений в пуле
+# max_overflow: дополнительные соединения сверх pool_size
+# pool_pre_ping: проверка соединений перед использованием
+# pool_recycle: переиспользование соединений через указанное время (в секундах)
+pool_kwargs = {}
+if not DATABASE_URL.startswith("sqlite"):
+    pool_kwargs = {
+        "pool_size": 5,          # Базовое количество соединений
+        "max_overflow": 5,        # Дополнительные соединения
+        "pool_pre_ping": True,   # Проверка соединений перед использованием
+        "pool_recycle": 3600,     # Переиспользование соединений через 1 час
+    }
+
+engine = create_async_engine(DATABASE_URL, echo=False, **pool_kwargs)
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 IS_SQLITE = engine.url.get_backend_name().startswith("sqlite")
 
