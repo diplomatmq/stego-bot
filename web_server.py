@@ -5043,7 +5043,18 @@ async def get_nft_preview(nft_link: str = Query(...)):
         try:
             async with aiohttp.ClientSession(follow_redirects=True) as session:
                 headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Cache-Control': 'max-age=0'
                 }
                 async with session.get(nft_link, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     logger.info(f"📡 Статус ответа страницы NFT: {resp.status}")
@@ -5053,6 +5064,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
 
                         # Ищем og:image в мета-тегах
                         og_image_match = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                        logger.info(f"🔍 Поиск og:image в HTML: {'найдено' if og_image_match else 'не найдено'}")
                         if og_image_match:
                             image_url = og_image_match.group(1)
                             print(f"✅ Найдено изображение через og:image: {image_url}")
@@ -5104,10 +5116,32 @@ async def get_nft_preview(nft_link: str = Query(...)):
                         
                         else:
                             logger.info("❌ og:image не найден в HTML")
+                            # Покажем первые 1000 символов HTML для отладки
+                            logger.info(f"📄 Первые 1000 символов HTML: {html[:1000]}")
 
                         # Ищем обычный meta image
                         image_match = re.search(r'<meta\s+name=["\']image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                        logger.info(f"🔍 Поиск meta image: {'найдено' if image_match else 'не найдено'}")
                         if image_match:
+                            image_url = image_match.group(1)
+                            logger.info(f"✅ Найдено изображение через meta image: {image_url}")
+                        else:
+                            # Ищем другие варианты мета-тегов с изображениями
+                            twitter_image_match = re.search(r'<meta\s+name=["\']twitter:image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                            if twitter_image_match:
+                                image_url = twitter_image_match.group(1)
+                                logger.info(f"✅ Найдено изображение через twitter:image: {image_url}")
+                            else:
+                                # Ищем другие варианты
+                                other_meta_matches = re.findall(r'<meta[^>]+content=["\']([^"\']*\.(?:jpg|jpeg|png|gif|webp|svg)[^"\']*)["\'][^>]*>', html, re.IGNORECASE)
+                                if other_meta_matches:
+                                    logger.info(f"🔍 Найдены мета-теги с изображениями: {other_meta_matches[:3]}")
+                                    image_url = other_meta_matches[0]
+                                    logger.info(f"✅ Используем первое найденное изображение из мета-тегов: {image_url}")
+                                else:
+                                    image_url = None
+
+                        if image_url:
                             image_url = image_match.group(1)
                             logger.info(f"✅ Найдено изображение через meta image: {image_url}")
 
@@ -5135,8 +5169,15 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             logger.info(f"🔄 Fallback (meta): редирект на {image_url}")
                             return RedirectResponse(url=image_url, status_code=302)
                         
+                        # Ищем все img теги в HTML
+                        all_img_matches = re.findall(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>', html, re.IGNORECASE)
+                        logger.info(f"🔍 Найдено всех img тегов: {len(all_img_matches)}")
+                        if all_img_matches:
+                            logger.info(f"🔍 URL изображений: {all_img_matches[:5]}")  # Показываем первые 5
+
                         # Ищем img теги с классом или id, связанными с NFT
                         img_match = re.search(r'<img[^>]+(?:class|id)=["\'][^"\']*(?:nft|preview|image|photo)[^"\']*["\'][^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                        logger.info(f"🔍 Поиск img тегов с NFT классами: {'найдено' if img_match else 'не найдено'}")
                         if img_match:
                             image_url = img_match.group(1)
                             # Если относительный URL, делаем его абсолютным
@@ -5167,6 +5208,38 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             # Fallback на редирект
                             logger.info(f"🔄 Fallback (img): редирект на {image_url}")
                             return RedirectResponse(url=image_url, status_code=302)
+
+                        # Если ничего не найдено, попробуем первое изображение из всех img тегов
+                        if all_img_matches and len(all_img_matches) > 0:
+                            first_img_url = all_img_matches[0]
+                            # Если относительный URL, делаем его абсолютным
+                            if first_img_url.startswith('/'):
+                                first_img_url = f"https://t.me{first_img_url}"
+                            elif first_img_url.startswith('./') or first_img_url.startswith('../'):
+                                first_img_url = f"https://t.me/nft{first_img_url[1:]}"
+                            elif not first_img_url.startswith('http'):
+                                first_img_url = f"https://t.me{first_img_url if first_img_url.startswith('/') else '/' + first_img_url}"
+
+                            logger.info(f"🔍 Пробуем первое изображение из всех img тегов: {first_img_url}")
+
+                            # Скачиваем первое изображение
+                            try:
+                                async with session.get(first_img_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    logger.info(f"📡 HTTP статус ответа первого изображения: {img_resp.status}")
+                                    if img_resp.status == 200:
+                                        image_data = await img_resp.read()
+                                        content_type = img_resp.headers.get('content-type', 'image/jpeg')
+                                        logger.info(f"✅ Скачано первое изображение: {len(image_data)} байт, тип: {content_type}")
+
+                                        response = Response(content=image_data, media_type=content_type)
+                                        response.headers["Access-Control-Allow-Origin"] = "*"
+                                        response.headers["Access-Control-Allow-Methods"] = "GET"
+                                        response.headers["Access-Control-Allow-Headers"] = "*"
+                                        return response
+                                    else:
+                                        logger.warning(f"Не удалось скачать первое изображение: HTTP {img_resp.status}")
+                            except Exception as download_error:
+                                logger.error(f"❌ Ошибка при скачивании первого изображения: {download_error}", exc_info=True)
         except Exception as e:
             logger.debug(f"Не удалось получить изображение из HTML: {e}")
         
@@ -5181,6 +5254,9 @@ async def get_nft_preview(nft_link: str = Query(...)):
                 logger.info(f"📡 Запрос превью через Bot API для: {nft_link}")
                 preview = await bot.get_web_page_preview(url=nft_link)
                 logger.info(f"📋 Получен ответ от Bot API: {preview}")
+                logger.info(f"📋 Тип ответа: {type(preview)}")
+                if preview:
+                    logger.info(f"📋 Атрибуты preview: {dir(preview)}")
 
                 if preview and hasattr(preview, 'photo') and preview.photo:
                     photo = preview.photo
