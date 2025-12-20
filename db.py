@@ -89,6 +89,21 @@ async def init_db():
                             if 'pro_last_topup_required' not in existing_user_columns:
                                 await conn.execute(text("ALTER TABLE users ADD COLUMN pro_last_topup_required BOOLEAN DEFAULT FALSE"))
                                 print("✅ Добавлена колонка users.pro_last_topup_required (PostgreSQL)")
+
+                            # Migrate winners table for PostgreSQL
+                            try:
+                                result = await conn.execute(text("""
+                                    SELECT column_name
+                                    FROM information_schema.columns
+                                    WHERE table_name = 'winners'
+                                """))
+                                existing_winner_columns = [row[0] for row in result.fetchall()] if result else []
+
+                                if 'reroll_count' not in existing_winner_columns:
+                                    await conn.execute(text("ALTER TABLE winners ADD COLUMN reroll_count INTEGER DEFAULT 0"))
+                                    print("✅ Добавлена колонка winners.reroll_count (PostgreSQL)")
+                            except Exception as e:
+                                print(f"⚠️ Migration winners.reroll_count (PostgreSQL) error: {e}")
                         except Exception as e:
                             print(f"⚠️ Migration users (PostgreSQL) error: {e}")
                     
@@ -298,6 +313,10 @@ async def init_db():
                             if 'photo_message_id' not in existing_winner_columns:
                                 await conn.execute(text("ALTER TABLE winners ADD COLUMN photo_message_id INTEGER"))
                                 print("✅ Добавлена колонка winners.photo_message_id")
+
+                            if 'reroll_count' not in existing_winner_columns:
+                                await conn.execute(text("ALTER TABLE winners ADD COLUMN reroll_count INTEGER DEFAULT 0"))
+                                print("✅ Добавлена колонка winners.reroll_count")
                         except Exception as e:
                             print(f"⚠️ Migration winners error: {e}")
                         
