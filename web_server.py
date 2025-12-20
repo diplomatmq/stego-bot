@@ -5024,6 +5024,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
     from fastapi.responses import RedirectResponse, Response
     import aiohttp
     import re
+    from urllib.parse import urljoin
     
     try:
         # Нормализуем ссылку
@@ -5046,15 +5047,44 @@ async def get_nft_preview(nft_link: str = Query(...)):
                         if og_image_match:
                             image_url = og_image_match.group(1)
                             logger.info(f"✅ Найдено изображение через og:image: {image_url}")
-                            # Используем 301 (Permanent Redirect) вместо 307 для лучшей совместимости
-                            return RedirectResponse(url=image_url, status_code=301)
+
+                            # Вместо редиректа, скачиваем изображение и возвращаем его напрямую
+                            try:
+                                async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    if img_resp.status == 200:
+                                        image_data = await img_resp.read()
+                                        content_type = img_resp.headers.get('content-type', 'image/jpeg')
+                                        logger.info(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
+                                        return Response(content=image_data, media_type=content_type)
+                                    else:
+                                        logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
+                            except Exception as download_error:
+                                logger.warning(f"Ошибка при скачивании изображения: {download_error}")
+
+                            # Если не удалось скачать, возвращаем редирект как fallback
+                            return RedirectResponse(url=image_url, status_code=302)
                         
                         # Ищем обычный meta image
                         image_match = re.search(r'<meta\s+name=["\']image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
                         if image_match:
                             image_url = image_match.group(1)
                             logger.info(f"✅ Найдено изображение через meta image: {image_url}")
-                            return RedirectResponse(url=image_url, status_code=301)
+
+                            # Скачиваем изображение напрямую
+                            try:
+                                async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    if img_resp.status == 200:
+                                        image_data = await img_resp.read()
+                                        content_type = img_resp.headers.get('content-type', 'image/jpeg')
+                                        logger.info(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
+                                        return Response(content=image_data, media_type=content_type)
+                                    else:
+                                        logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
+                            except Exception as download_error:
+                                logger.warning(f"Ошибка при скачивании изображения: {download_error}")
+
+                            # Fallback на редирект
+                            return RedirectResponse(url=image_url, status_code=302)
                         
                         # Ищем img теги с классом или id, связанными с NFT
                         img_match = re.search(r'<img[^>]+(?:class|id)=["\'][^"\']*(?:nft|preview|image|photo)[^"\']*["\'][^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
@@ -5062,10 +5092,24 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             image_url = img_match.group(1)
                             # Если относительный URL, делаем его абсолютным
                             if image_url.startswith('/'):
-                                from urllib.parse import urljoin
                                 image_url = urljoin(nft_link, image_url)
                             logger.info(f"✅ Найдено изображение через img тег: {image_url}")
-                            return RedirectResponse(url=image_url, status_code=301)
+
+                            # Скачиваем изображение напрямую
+                            try:
+                                async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    if img_resp.status == 200:
+                                        image_data = await img_resp.read()
+                                        content_type = img_resp.headers.get('content-type', 'image/jpeg')
+                                        logger.info(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
+                                        return Response(content=image_data, media_type=content_type)
+                                    else:
+                                        logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
+                            except Exception as download_error:
+                                logger.warning(f"Ошибка при скачивании изображения: {download_error}")
+
+                            # Fallback на редирект
+                            return RedirectResponse(url=image_url, status_code=302)
         except Exception as e:
             logger.debug(f"Не удалось получить изображение из HTML: {e}")
         
@@ -5087,11 +5131,30 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             if file_id:
                                 file = await bot.get_file(file_id)
                                 file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
+
+                                # Скачиваем файл напрямую вместо редиректа
+                                try:
+                                    async with aiohttp.ClientSession() as download_session:
+                                        async with download_session.get(file_url, timeout=aiohttp.ClientTimeout(total=10)) as file_resp:
+                                            if file_resp.status == 200:
+                                                file_data = await file_resp.read()
+                                                content_type = file_resp.headers.get('content-type', 'image/jpeg')
+                                                logger.info(f"✅ Скачан файл через Telegram Bot API: {len(file_data)} байт, тип: {content_type}")
+                                                session = await bot.get_session()
+                                                if session:
+                                                    await session.close()
+                                                return Response(content=file_data, media_type=content_type)
+                                            else:
+                                                logger.warning(f"Не удалось скачать файл: HTTP {file_resp.status}")
+                                except Exception as download_error:
+                                    logger.warning(f"Ошибка при скачивании файла через Telegram API: {download_error}")
+
+                                # Fallback на редирект
                                 session = await bot.get_session()
                                 if session:
                                     await session.close()
                                 logger.info(f"✅ Найдено изображение через Telegram Bot API: {file_url}")
-                                return RedirectResponse(url=file_url, status_code=301)
+                                return RedirectResponse(url=file_url, status_code=302)
                 
                 session = await bot.get_session()
                 if session:
