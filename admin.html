@@ -1000,8 +1000,8 @@
 </head>
 <body class="page-dark text-white min-h-screen flex flex-col neon-sides">
 
-  <!-- 💰 Блок монеток по центру сверху -->
-  <div id="coins-header" class="fixed top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 border border-purple-500/50 shadow-lg shadow-purple-500/30">
+  <!-- 💰 Блок монеток справа сверху -->
+  <div id="coins-header" class="fixed top-2 right-4 z-50 flex items-center gap-2 bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 border border-purple-500/50 shadow-lg shadow-purple-500/30">
     <button id="add-coins-btn" class="w-8 h-8 flex items-center justify-center rounded-full bg-purple-600 hover:bg-purple-500 transition-colors text-white font-bold text-lg leading-none" style="line-height: 1;">+</button>
     <div class="flex items-center gap-1">
       <span id="coins-count" class="text-white font-semibold text-sm">0</span>
@@ -1378,43 +1378,24 @@
     <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto;">
       <button id="close-contest-type-selection-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
       <h3 class="text-lg font-semibold mb-4 sticky top-0 bg-[#0b0b10] pb-2 z-0">Выберите тип конкурса</h3>
-      <div id="contest-type-selection-balance" class="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-400/30 hidden">
-        <div class="flex items-center justify-between">
-          <span class="text-sm text-gray-400">Ваш баланс:</span>
-          <span id="contest-type-selection-balance-value" class="text-lg font-semibold text-violet-400">0</span>
-        </div>
-      </div>
       <div class="space-y-3" style="pointer-events: auto;">
-        <button id="select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
-          <div class="flex-1">
-            <div class="font-semibold text-lg flex items-center gap-2">
-              🎲 Рандом комментарий(10<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
-              <span id="random-comment-price" class="text-sm font-normal text-violet-400 hidden flex items-center gap-1">
-              </span>
-            </div>
+        <button id="select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
+          <div>
+            <div class="font-semibold text-lg">🎲 Рандом комментарий</div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на основе случайного выбора комментариев из поста</div>
           </div>
           <span class="text-2xl">→</span>
         </button>
-        <button id="select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
-          <div class="flex-1">
-            <div class="font-semibold text-lg flex items-center gap-2">
-              🎨 Конкурс рисунков(20<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
-              <span id="drawing-contest-price" class="text-sm font-normal text-violet-400 hidden flex items-center gap-1">
-                
-              </span>
-            </div>
+        <button id="select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
+          <div>
+            <div class="font-semibold text-lg">🎨 Конкурс рисунков</div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на лучший рисунок по заданной теме</div>
           </div>
           <span class="text-2xl">→</span>
         </button>
-        <button id="select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
-          <div class="flex-1">
-            <div class="font-semibold text-lg flex items-center gap-2">
-              🖼️ Конкурс коллекций(15<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
-              <span id="collection-contest-price" class="text-sm font-normal text-violet-400 hidden flex items-center gap-1">
-              </span>
-            </div>
+        <button id="select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between">
+          <div>
+            <div class="font-semibold text-lg">🖼️ Конкурс коллекций</div>
             <div class="text-sm text-gray-400 mt-1">Конкурс на лучшую коллекцию NFT (9 штук)</div>
           </div>
           <span class="text-2xl">→</span>
@@ -1498,21 +1479,6 @@
             <p class="text-xs text-gray-500">Данные членов жюри (ID и канал) нужно будет ввести после создания конкурса</p>
           </div>
         </div>
-        
-        <!-- Секция зрительских симпатий -->
-        <div class="border-t border-violet-500/30 pt-3 mt-3">
-          <div class="flex items-center justify-between mb-3">
-            <label class="block text-sm text-gray-400">👥 Зрительские симпатии</label>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="drawing-contest-audience-voting-enabled" class="sr-only peer" />
-              <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-violet-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600"></div>
-            </label>
-          </div>
-          
-          <div id="drawing-contest-audience-voting-settings" class="hidden space-y-3">
-            <p class="text-xs text-gray-500">Если включены и жюри, и зрительские симпатии, оценки будут считаться отдельно</p>
-          </div>
-        </div>
       </div>
       <button id="submit-drawing-contest" class="neon-button w-full mt-4 py-3 rounded-lg">Добавить данные</button>
       <button id="update-drawing-contest" class="neon-button w-full mt-4 py-3 rounded-lg hidden">Сохранить изменения</button>
@@ -1526,7 +1492,6 @@
         <h2 class="text-2xl font-bold text-white">🏆 Итоги конкурса</h2>
         <button onclick="document.getElementById('drawing-results-modal').classList.add('hidden'); document.body.classList.remove('modal-open');" class="bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
       </div>
-      <div id="drawing-results-tabs" class="mb-4"></div>
       <div id="drawing-results-content" class="space-y-4">
         <!-- Содержимое будет добавлено динамически -->
       </div>
@@ -1629,6 +1594,22 @@
   <!-- 🧠 Встроенная логика UI/загрузка -->
   <script>
     (function() {
+      // Функция для нормализации ссылок на NFT призы
+      function normalizePrizeLink(link) {
+        if (!link) return '';
+        link = link.trim();
+        // Если уже начинается с https:// или http://, возвращаем как есть
+        if (link.startsWith('http://') || link.startsWith('https://')) {
+          return link;
+        }
+        // Если начинается с t.me/, добавляем https://
+        if (link.startsWith('t.me/')) {
+          return 'https://' + link;
+        }
+        // Иначе добавляем https://
+        return 'https://' + link;
+      }
+
       let currentUserRole = null;
       let currentUserId = null;
       const spinner = document.getElementById('loading-spinner');
@@ -1868,15 +1849,13 @@
       let openPrizesModal = null; // Будет определена позже
 
       if (openContestBtn) {
-        openContestBtn.addEventListener('click', async (e) => {
+        openContestBtn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           // Показываем модалку выбора типа конкурса
           const contestTypeSelectionModal = document.getElementById('contest-type-selection-modal');
           if (contestTypeSelectionModal) {
             openModal(contestTypeSelectionModal);
-            // Обновляем цены при открытии модалки
-            await updateContestTypePrices();
           } else {
             console.error('❌ Модальное окно выбора типа конкурса не найдено!');
           }
@@ -1969,20 +1948,6 @@
       const closeContestTypeSelectionModal = document.getElementById('close-contest-type-selection-modal');
       const selectRandomCommentContest = document.getElementById('select-random-comment-contest');
       const selectDrawingContest = document.getElementById('select-drawing-contest');
-      
-      // Обновляем цены при показе модалки (наблюдатель за изменениями класса)
-      if (contestTypeSelectionModal) {
-        const observer = new MutationObserver(async (mutations) => {
-          mutations.forEach((mutation) => {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-              if (!contestTypeSelectionModal.classList.contains('hidden')) {
-                updateContestTypePrices();
-              }
-            }
-          });
-        });
-        observer.observe(contestTypeSelectionModal, { attributes: true, attributeFilter: ['class'] });
-      }
       
       if (closeContestTypeSelectionModal && contestTypeSelectionModal) {
         closeContestTypeSelectionModal.addEventListener('click', (e) => {
@@ -2349,18 +2314,6 @@
               // Показываем максимум 3 приза (за первые 3 места)
               const prizesToShow = c.prize_links.slice(0, Math.min(3, c.prize_links.length));
               
-              // Функция для нормализации ссылки на приз
-              function normalizePrizeLink(link) {
-                if (!link) return '';
-                link = link.trim();
-                if (link.startsWith('http://') || link.startsWith('https://')) {
-                  return link;
-                }
-                if (link.startsWith('t.me/')) {
-                  return 'https://' + link;
-                }
-                return 'https://' + link;
-              }
               
               // Функция для получения изображения NFT - используем img с загрузкой через API
               function getNFTImageHtml(link, idx) {
@@ -2452,26 +2405,13 @@
                 const createdByIdNum = c.created_by ? Number(c.created_by) : null;
                 drawingIsCreator = createdByIdNum !== null && currentUserIdNum === createdByIdNum;
                 
-                // Проверяем, идет ли время приема работ и период голосования
+                // Проверяем, идет ли время приема работ
                 const submissionEndDate = c.submission_end_date ? new Date(c.submission_end_date) : null;
-                const votingEndDate = c.end_at || c.end_date || c.voting_end_date ? new Date(c.end_at || c.end_date || c.voting_end_date) : null;
                 const now = new Date();
                 const isSubmissionPeriodActive = submissionEndDate && now <= submissionEndDate;
-                const afterSubmission = submissionEndDate ? now > submissionEndDate : true;
-                const isVotingPeriodActive = afterSubmission && (votingEndDate ? now <= votingEndDate : true);
                 
                 // Проверяем, является ли пользователь админом
                 const isAdmin = window.currentUserRole === 'admin' || window.currentUserRole === 'creator';
-                
-                // Получаем права доступа для оценивания с сервера
-                let canVote = false;
-                try {
-                  const canVoteResponse = await fetchJSON(`/api/contests/${c.id}/can-vote?user_id=${currentUserId}`);
-                  canVote = canVoteResponse?.can_vote || false;
-                } catch (error) {
-                  console.error(`❌ Ошибка при получении прав голосования для конкурса ${c.id}:`, error);
-                  canVote = false;
-                }
                 
                 if (isSubmissionPeriodActive && (drawingIsCreator || isAdmin)) {
                   // Показываем кнопку "Проверить работы" во время приема работ
@@ -2482,17 +2422,6 @@
                       id="check-works-btn-${c.id}"
                     >
                       🔍 Проверить работы
-                    </button>
-                  </div>`;
-                } else if (!isSubmissionPeriodActive && isVotingPeriodActive && canVote) {
-                  // Показываем кнопку "Голосовать" когда время приема работ истекло и идет период голосования
-                  drawingResultsHtml = `<div class="mt-2 pt-2 border-t border-violet-400/20">
-                    <button 
-                      onclick="window.openVotingModal && window.openVotingModal(${c.id})" 
-                      class="neon-button w-full py-2 rounded-lg text-sm"
-                      id="vote-btn-${c.id}"
-                    >
-                      🗳️ Голосовать
                     </button>
                   </div>`;
                 } else if (isEnded && !drawingResultsCalculated) {
@@ -2964,105 +2893,6 @@
         }
       };
       
-      // Глобальные переменные для хранения результатов
-      let currentResultsDataAdmin = {
-        contestId: null,
-        juryResults: [],
-        audienceResults: [],
-        juryEnabled: false,
-        audienceVotingEnabled: false
-      };
-      
-      // Функция для отображения таблицы результатов
-      function renderResultsTableAdmin(results, contestId) {
-        if (!results || results.length === 0) {
-          return '<div class="text-center text-gray-400 py-8">Нет данных для отображения</div>';
-        }
-        
-        let tableHtml = '<div class="space-y-4">';
-        
-        for (const result of results) {
-          const place = result.place;
-          const username = result.username || '';
-          const userId = result.participant_user_id;
-          const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
-          const prizeLink = result.prize_link;
-          const averageScore = result.average_score || 0;
-          const votesCount = result.votes_count || 0;
-          
-          tableHtml += `
-            <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
-              <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
-              <div class="text-sm text-gray-300 mb-3">
-                ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
-                <span class="text-gray-400">(ID: ${userId})</span>
-              </div>
-              <div class="mb-3">
-                <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
-              </div>
-              <div class="text-sm text-gray-400 mb-3">
-                Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
-              </div>
-              ${prizeLink ? `
-                <div class="text-sm">
-                  <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
-                </div>
-              ` : ''}
-            </div>
-          `;
-        }
-        
-        tableHtml += '</div>';
-        return tableHtml;
-      }
-      
-      // Функция переключения между таблицами (глобальная)
-      window.switchResultsTableAdmin = function(type) {
-        const resultsContent = document.getElementById('drawing-results-content');
-        const juryTabBtn = document.getElementById('results-jury-tab');
-        const audienceTabBtn = document.getElementById('results-audience-tab');
-        
-        if (!resultsContent) return;
-        
-        // Проверяем, не заблокирована ли кнопка
-        if (type === 'jury' && (!currentResultsDataAdmin.juryEnabled || currentResultsDataAdmin.juryResults.length === 0)) {
-          return; // Не переключаем, если жюри не включено или нет результатов
-        }
-        if (type === 'audience' && currentResultsDataAdmin.audienceResults.length === 0) {
-          return; // Не переключаем, если нет результатов участников
-        }
-        
-        // Обновляем активную кнопку
-        if (juryTabBtn && audienceTabBtn) {
-          if (type === 'jury') {
-            if (!juryTabBtn.disabled) {
-              juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              juryTabBtn.classList.add('bg-violet-600', 'text-white');
-            }
-            if (!audienceTabBtn.disabled) {
-              audienceTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
-            }
-          } else {
-            if (!audienceTabBtn.disabled) {
-              audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              audienceTabBtn.classList.add('bg-violet-600', 'text-white');
-            }
-            if (!juryTabBtn.disabled) {
-              juryTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
-            }
-          }
-        }
-        
-        // Отображаем соответствующую таблицу
-        if (type === 'jury') {
-          resultsContent.innerHTML = renderResultsTableAdmin(currentResultsDataAdmin.juryResults, currentResultsDataAdmin.contestId);
-        } else {
-          resultsContent.innerHTML = renderResultsTableAdmin(currentResultsDataAdmin.audienceResults, currentResultsDataAdmin.contestId);
-        }
-      };
-      
       // Функция для отображения итогов конкурса рисунков
       window.showDrawingResults = async function(contestId) {
         try {
@@ -3073,105 +2903,52 @@
             return;
           }
           
+          const results = response.results || [];
           const resultsModal = document.getElementById('drawing-results-modal');
           const resultsContent = document.getElementById('drawing-results-content');
-          const resultsTabs = document.getElementById('drawing-results-tabs');
           
           if (!resultsModal || !resultsContent) {
             alert('Модальное окно не найдено');
             return;
           }
           
-          const juryEnabled = response.jury_enabled || false;
-          const audienceVotingEnabled = response.audience_voting_enabled || false;
-          const juryResults = response.jury_results || [];
-          const audienceResults = response.audience_results || [];
+          // Формируем HTML с итогами
+          let resultsHtml = '<div class="space-y-4">';
           
-          // Логируем для отладки
-          console.log('DEBUG showDrawingResults (admin):', {
-            contestId,
-            juryEnabled,
-            audienceVotingEnabled,
-            juryResultsCount: juryResults.length,
-            audienceResultsCount: audienceResults.length
-          });
-          
-          // Сохраняем данные для переключения
-          currentResultsDataAdmin = {
-            contestId: contestId,
-            juryResults: juryResults,
-            audienceResults: audienceResults,
-            juryEnabled: juryEnabled,
-            audienceVotingEnabled: audienceVotingEnabled
-          };
-          
-          // Определяем, какую таблицу показывать по умолчанию
-          let defaultTable = '';
-          let defaultTab = null;
-          
-          if (juryEnabled && juryResults.length > 0) {
-            defaultTable = renderResultsTableAdmin(juryResults, contestId);
-            defaultTab = 'jury';
-          } else if (audienceResults.length > 0) {
-            // Показываем таблицу участников, если есть результаты (независимо от audienceVotingEnabled)
-            defaultTable = renderResultsTableAdmin(audienceResults, contestId);
-            defaultTab = 'audience';
-          } else if (juryEnabled) {
-            defaultTable = renderResultsTableAdmin(juryResults, contestId);
-            defaultTab = 'jury';
-          } else {
-            const results = response.results || [];
-            defaultTable = renderResultsTableAdmin(results, contestId);
+          for (const result of results) {
+            const place = result.place;
+            const username = result.username || '';
+            const userId = result.participant_user_id;
+            const userDisplay = username ? `${username} (ID: ${userId})` : `ID: ${userId}`;
+            const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
+            const prizeLink = result.prize_link;
+            const averageScore = result.average_score || 0;
+            const votesCount = result.votes_count || 0;
+            
+            resultsHtml += `
+              <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
+                <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
+                <div class="text-sm text-gray-300 mb-3">
+                  ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
+                  <span class="text-gray-400">(ID: ${userId})</span>
+                </div>
+                <div class="mb-3">
+                  <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
+                </div>
+                <div class="text-sm text-gray-400 mb-3">
+                  Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
+                </div>
+                ${prizeLink ? `
+                  <div class="text-sm">
+                    <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                  </div>
+                ` : ''}
+              </div>
+            `;
           }
           
-          // Формируем кнопки-табы - всегда показываем обе кнопки
-          // Кнопки будут неактивными (disabled), если соответствующий режим не включен или нет результатов
-          const juryTabDisabled = !juryEnabled || juryResults.length === 0;
-          // Таблица участников доступна, если есть результаты участников (независимо от audience_voting_enabled)
-          const audienceTabDisabled = audienceResults.length === 0;
-          
-          let juryTabClass, audienceTabClass;
-          if (juryTabDisabled) {
-            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
-          } else if (defaultTab === 'jury') {
-            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
-          } else {
-            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
-          }
-          
-          if (audienceTabDisabled) {
-            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
-          } else if (defaultTab === 'audience') {
-            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
-          } else {
-            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
-          }
-          
-          let tabsHtml = `
-            <div class="flex gap-2 mb-4">
-              <button id="results-jury-tab" ${juryTabDisabled ? 'disabled' : `onclick="switchResultsTableAdmin('jury')"`} class="${juryTabClass}">
-                🏆 Таблица жюри
-              </button>
-              <button id="results-audience-tab" ${audienceTabDisabled ? 'disabled' : `onclick="switchResultsTableAdmin('audience')"`} class="${audienceTabClass}">
-                👥 Таблица участников
-              </button>
-            </div>
-          `;
-          
-          // Устанавливаем HTML
-          const resultsTabsContainer = document.getElementById('drawing-results-tabs');
-          console.log('DEBUG (admin): resultsTabsContainer найден:', !!resultsTabsContainer);
-          
-          if (resultsTabsContainer) {
-            resultsTabsContainer.innerHTML = tabsHtml;
-            resultsContent.innerHTML = defaultTable;
-            console.log('DEBUG (admin): HTML установлен в контейнеры');
-          } else {
-            // Если контейнер для табов не найден, добавляем табы перед контентом
-            console.log('DEBUG (admin): Контейнер для табов не найден, добавляем табы в контент');
-            resultsContent.innerHTML = tabsHtml + defaultTable;
-          }
-          
+          resultsHtml += '</div>';
+          resultsContent.innerHTML = resultsHtml;
           openModal(resultsModal);
         } catch (e) {
           console.error('Ошибка загрузки итогов:', e);
@@ -4052,43 +3829,6 @@
       // Инициализируем количество жюри при загрузке
       updateJuryMembers(currentJuryCount);
       
-      // Обработчики для зрительских симпатий
-      const audienceVotingCheckbox = document.getElementById('drawing-contest-audience-voting-enabled');
-      const audienceVotingSettingsDiv = document.getElementById('drawing-contest-audience-voting-settings');
-      
-      if (audienceVotingCheckbox && audienceVotingSettingsDiv) {
-        audienceVotingCheckbox.addEventListener('change', (e) => {
-          if (e.target.checked) {
-            audienceVotingSettingsDiv.classList.remove('hidden');
-          } else {
-            audienceVotingSettingsDiv.classList.add('hidden');
-          }
-        });
-      }
-      
-      // Логика: зрительские симпатии можно отключить только если включены жюри
-      // Если жюри отключено, зрительские симпатии автоматически включены (нельзя отключить)
-      if (juryEnabledCheckbox && audienceVotingCheckbox) {
-        const updateAudienceVotingState = () => {
-          const juryEnabled = juryEnabledCheckbox.checked;
-          if (!juryEnabled) {
-            // Если жюри отключено, зрительские симпатии включены и заблокированы
-            audienceVotingCheckbox.checked = true;
-            audienceVotingCheckbox.disabled = true;
-            if (audienceVotingSettingsDiv) {
-              audienceVotingSettingsDiv.classList.remove('hidden');
-            }
-          } else {
-            // Если жюри включено, зрительские симпатии можно включать/выключать
-            audienceVotingCheckbox.disabled = false;
-          }
-        };
-        
-        juryEnabledCheckbox.addEventListener('change', updateAudienceVotingState);
-        // Вызываем при загрузке страницы
-        updateAudienceVotingState();
-      }
-      
       // Кнопки изменения количества членов жюри
       if (juryCountDecrease) {
         juryCountDecrease.addEventListener('click', () => {
@@ -4116,16 +3856,6 @@
           if (jurySettingsDiv) jurySettingsDiv.classList.add('hidden');
           currentJuryCount = 1;
           updateJuryMembers(1);
-          
-          // Сбрасываем состояние зрительских симпатий
-          if (audienceVotingCheckbox) {
-            audienceVotingCheckbox.checked = true; // По умолчанию включено (если жюри отключено)
-            audienceVotingCheckbox.disabled = false;
-          }
-          if (audienceVotingSettingsDiv) {
-            audienceVotingSettingsDiv.classList.add('hidden');
-          }
-          
           pendingContestData = null; // Очищаем временные данные при закрытии
           closeModal(drawingContestModal);
         });
@@ -4184,11 +3914,6 @@
           const juryEnabled = juryEnabledCheckbox && juryEnabledCheckbox.checked;
           const juryCount = parseInt(document.getElementById('drawing-contest-jury-count')?.value) || 1;
           
-          // Собираем данные зрительских симпатий
-          const audienceVotingEnabled = audienceVotingCheckbox && audienceVotingCheckbox.checked;
-          // Если зрительские симпатии включены, участники автоматически могут голосовать
-          const participantsCanVote = audienceVotingEnabled;
-          
           // Сохраняем информацию о жюри для модалки призов
           window.currentJuryEnabled = juryEnabled;
           window.currentJuryCount = juryCount;
@@ -4212,10 +3937,6 @@
               enabled: juryEnabled,
               members_count: juryEnabled ? juryCount : 0,
               members: [] // Данные будут введены в модалке призов
-            },
-            audience_voting: {
-              enabled: audienceVotingEnabled,
-              participants_can_vote: participantsCanVote
             }
           };
           
@@ -5643,65 +5364,9 @@
           }
         }
       }
-
-      // Обновление цен конкурсов в модалке выбора типа
-      async function updateContestTypePrices() {
-        try {
-          // Проверяем, является ли пользователь админом или пользователем с Pro подпиской
-          const isAdmin = currentUserRole === 'admin';
-          const isProUser = currentUserRole === 'user';
-          
-          // Для пользователей проверяем активность подписки
-          let proActive = false;
-          if (isProUser) {
-            try {
-              const subscription = await window.fetchJSON(`/api/profile/pro-subscription?tg_id=${currentUserId}`);
-              proActive = subscription.active || false;
-            } catch (e) {
-              console.error('Ошибка проверки подписки:', e);
-            }
-          }
-          
-          const shouldShowPrices = isAdmin || (isProUser && proActive);
-          
-          const balanceEl = document.getElementById('contest-type-selection-balance');
-          const balanceValueEl = document.getElementById('contest-type-selection-balance-value');
-          const randomPriceEl = document.getElementById('random-comment-price');
-          const drawingPriceEl = document.getElementById('drawing-contest-price');
-          const collectionPriceEl = document.getElementById('collection-contest-price');
-          
-          if (shouldShowPrices) {
-            // Показываем цены и баланс для админов
-            if (balanceEl) balanceEl.classList.remove('hidden');
-            if (randomPriceEl) randomPriceEl.classList.remove('hidden');
-            if (drawingPriceEl) drawingPriceEl.classList.remove('hidden');
-            if (collectionPriceEl) collectionPriceEl.classList.remove('hidden');
-            
-            // Загружаем баланс
-            try {
-              const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${currentUserId}`);
-              const balance = balanceResponse?.monkey_coins || 0;
-              if (balanceValueEl) {
-                balanceValueEl.innerHTML = `${balance} <img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain inline">`;
-              }
-            } catch (error) {
-              console.error('Ошибка загрузки баланса для модалки:', error);
-            }
-          } else {
-            // Скрываем цены для создателя
-            if (balanceEl) balanceEl.classList.add('hidden');
-            if (randomPriceEl) randomPriceEl.classList.add('hidden');
-            if (drawingPriceEl) drawingPriceEl.classList.add('hidden');
-            if (collectionPriceEl) collectionPriceEl.classList.add('hidden');
-          }
-        } catch (error) {
-          console.error('Ошибка обновления цен конкурсов:', error);
-        }
-      }
       
-      // Делаем функции доступными глобально
+      // Делаем функцию доступной глобально
       window.updateCoinsDisplay = updateCoinsDisplay;
-      window.updateContestTypePrices = updateContestTypePrices;
 
       // Обновление селектора тем с купленными темами
       async function updateThemeSelector() {
@@ -6186,303 +5851,6 @@
         alert('Ошибка при аннулировании работы: ' + (error.message || 'Неизвестная ошибка'));
       }
     });
-
-    // Функции для голосования (скопировано из user.html)
-    const votingState = {
-      contestId: null,
-      works: [],
-      currentIndex: 0
-    };
-    let votingModal;
-    let votingModalImage;
-    let votingModalProgress;
-    let votingModalLoader;
-    let votingModalInfo;
-    let votingModalCloseBtn;
-    let votingScoreButtons = [];
-
-    function resetVotingState() {
-      votingState.contestId = null;
-      votingState.works = [];
-      votingState.currentIndex = 0;
-    }
-
-    function closeVotingModal() {
-      if (votingModal) {
-        votingModal.classList.add('hidden');
-      }
-      resetVotingState();
-    }
-
-    function initVotingModalElements() {
-      if (votingModal) {
-        return;
-      }
-
-      votingModal = document.getElementById('voting-modal');
-      votingModalImage = document.getElementById('voting-modal-image');
-      votingModalProgress = document.getElementById('voting-modal-progress');
-      votingModalLoader = document.getElementById('voting-modal-loader');
-      votingModalInfo = document.getElementById('voting-modal-info');
-      votingModalCloseBtn = document.getElementById('voting-modal-close');
-      votingScoreButtons = Array.from(document.querySelectorAll('.voting-score-btn'));
-
-      if (votingModalCloseBtn) {
-        votingModalCloseBtn.addEventListener('click', closeVotingModal);
-      }
-
-      if (votingModal) {
-        votingModal.addEventListener('click', (event) => {
-          if (event.target === votingModal) {
-            closeVotingModal();
-          }
-        });
-      }
-
-      votingScoreButtons.forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const score = parseInt(btn.dataset.score, 10);
-          if (!Number.isNaN(score)) {
-            await handleVoteClick(score);
-          }
-        });
-      });
-    }
-
-    function showVotingLoader(show) {
-      initVotingModalElements();
-      if (votingModalLoader) {
-        votingModalLoader.classList.toggle('hidden', !show);
-      }
-      if (votingModalImage && show) {
-        votingModalImage.classList.add('hidden');
-      }
-      votingScoreButtons.forEach((btn) => {
-        btn.disabled = show;
-      });
-    }
-
-    function renderVotingWork() {
-      initVotingModalElements();
-      if (!votingState.works.length) {
-        if (votingModalInfo) {
-          votingModalInfo.textContent = 'Нет работ для оценки';
-        }
-        votingScoreButtons.forEach((btn) => {
-          btn.disabled = true;
-        });
-        if (votingModalImage) {
-          votingModalImage.src = '';
-          votingModalImage.classList.add('hidden');
-        }
-        return;
-      }
-
-      const work = votingState.works[votingState.currentIndex];
-      if (!work) {
-        goToNextWork();
-        return;
-      }
-
-      if (votingModalProgress) {
-        votingModalProgress.textContent = `Работа ${votingState.currentIndex + 1} из ${votingState.works.length}`;
-      }
-      if (votingModalInfo) {
-        votingModalInfo.textContent = 'Выберите оценку от 1 до 5';
-      }
-
-      if (votingModalImage) {
-        votingModalImage.classList.add('hidden');
-        votingModalImage.onload = () => votingModalImage.classList.remove('hidden');
-        votingModalImage.onerror = () => {
-          if (votingModalInfo) {
-            votingModalInfo.textContent = 'Не удалось загрузить изображение';
-          }
-        };
-        votingModalImage.src = `${work.image_url}?t=${Date.now()}`;
-      }
-
-      votingScoreButtons.forEach((btn) => {
-        const btnScore = Number(btn.dataset.score);
-        const isSelected = work.rating === btnScore;
-        if (isSelected) {
-          btn.classList.add('bg-violet-600');
-          btn.classList.remove('bg-violet-500/40');
-        } else {
-          btn.classList.remove('bg-violet-600');
-          btn.classList.add('bg-violet-500/40');
-        }
-        btn.disabled = false;
-      });
-    }
-
-    function goToNextWork() {
-      const works = votingState.works;
-      if (!works.length) {
-        closeVotingModal();
-        return;
-      }
-
-      const nextIndex = works.findIndex((work, index) => index > votingState.currentIndex && !work.already_rated);
-      if (nextIndex !== -1) {
-        votingState.currentIndex = nextIndex;
-        renderVotingWork();
-        return;
-      }
-
-      const firstUnrated = works.findIndex((work) => !work.already_rated);
-      if (firstUnrated !== -1) {
-        votingState.currentIndex = firstUnrated;
-        renderVotingWork();
-        return;
-      }
-
-      alert('Спасибо! Вы оценили все доступные работы.');
-      closeVotingModal();
-      if (typeof window.loadContests === 'function') {
-        window.loadContests(true);
-      }
-    }
-
-    async function handleVoteClick(score) {
-      initVotingModalElements();
-      if (!votingState.contestId || !votingState.works.length) {
-        return;
-      }
-
-      const currentWork = votingState.works[votingState.currentIndex];
-      if (!currentWork || currentWork.already_rated) {
-        goToNextWork();
-        return;
-      }
-
-      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
-
-      showVotingLoader(true);
-      if (votingModalInfo) {
-        votingModalInfo.textContent = 'Сохраняем вашу оценку...';
-      }
-
-      try {
-        await window.fetchJSON(`/api/contests/${votingState.contestId}/vote`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: currentUserId,
-            work_number: currentWork.work_number,
-            score: score
-          })
-        });
-
-        currentWork.already_rated = true;
-        currentWork.rating = score;
-        showVotingLoader(false);
-        goToNextWork();
-      } catch (error) {
-        showVotingLoader(false);
-        let message = 'Не удалось сохранить оценку';
-        if (error.response) {
-          try {
-            const errData = await error.response.clone().json();
-            message = errData.detail || errData.message || message;
-          } catch (e) {
-            // ignore JSON parse errors
-          }
-        } else if (error.message) {
-          message = error.message;
-        }
-        alert('❌ ' + message);
-      }
-    }
-
-    async function openVotingModal(contestId) {
-      const currentUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || window.currentUserId;
-      if (!currentUserId) {
-        alert('Не удалось определить ваш идентификатор. Попробуйте перезапустить приложение.');
-        return;
-      }
-
-      initVotingModalElements();
-      resetVotingState();
-      votingState.contestId = contestId;
-
-      if (votingModal) {
-        votingModal.classList.remove('hidden');
-      }
-
-      showVotingLoader(true);
-      if (votingModalInfo) {
-        votingModalInfo.textContent = 'Загружаем работы для голосования...';
-      }
-
-      try {
-        const response = await window.fetchJSON(`/api/contests/${contestId}/voting-queue?user_id=${currentUserId}`);
-        const works = response?.works || [];
-        const canVote = response?.can_vote !== false;
-
-        if (!canVote) {
-          alert('Оценивать работы могут только члены жюри и создатель конкурса.');
-          closeVotingModal();
-          return;
-        }
-
-        if (!works.length) {
-          alert('Нет работ для оценки или все работы принадлежат вам.');
-          closeVotingModal();
-          return;
-        }
-
-        const firstUnratedIndex = works.findIndex((work) => !work.already_rated);
-        if (firstUnratedIndex === -1) {
-          alert('Вы уже оценили все доступные работы. Спасибо!');
-          closeVotingModal();
-          return;
-        }
-
-        votingState.works = works;
-        votingState.currentIndex = firstUnratedIndex;
-        showVotingLoader(false);
-        renderVotingWork();
-      } catch (error) {
-        showVotingLoader(false);
-        let message = 'Не удалось загрузить список работ';
-        if (error.response) {
-          try {
-            const errData = await error.response.clone().json();
-            message = errData.detail || errData.message || message;
-          } catch (e) {
-            // ignore JSON parse errors
-          }
-        } else if (error.message) {
-          message = error.message;
-        }
-        alert('❌ ' + message);
-        closeVotingModal();
-      }
-    }
-
-    window.openVotingModal = openVotingModal;
-    window.closeVotingModal = closeVotingModal;
   </script>
-  <!-- 🗳️ Модальное окно голосования за работы -->
-  <div id="voting-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="relative w-full max-w-xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6">
-      <button id="voting-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
-      <div id="voting-modal-progress" class="text-sm text-gray-300 text-center mb-3"></div>
-      <div class="w-full rounded-xl overflow-hidden bg-black/40 mb-4 flex items-center justify-center min-h-[260px]">
-        <img id="voting-modal-image" src="" alt="Работа конкурса" class="max-h-[360px] object-contain w-full transition-opacity duration-300 hidden" />
-        <div id="voting-modal-loader" class="text-gray-400 text-sm">⏳ Загрузка...</div>
-      </div>
-      <div id="voting-modal-info" class="text-sm text-gray-400 text-center mb-4"></div>
-      <div class="flex justify-center gap-2 flex-wrap">
-        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="1">1</button>
-        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="2">2</button>
-        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="3">3</button>
-        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="4">4</button>
-        <button class="voting-score-btn neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20" data-score="5">5</button>
-      </div>
-    </div>
-  </div>
-
-  </body>
+</body>
 </html>
