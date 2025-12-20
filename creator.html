@@ -3045,6 +3045,7 @@
           
           // Фильтруем конкурсы по выбранному типу
           const contestsToShow = (window.currentContestType || 'active') === 'active' ? activeContests : completedContests;
+          console.log(`📊 Showing contests: type=${window.currentContestType}, total=${contestsToShow.length}, active=${activeContests.length}, completed=${completedContests.length}`);
           
           if (!contestList) {
             console.error('contestList не найден');
@@ -3062,8 +3063,10 @@
           }
           
           // Создаем карточки для выбранного типа конкурсов
+          console.log(`🎯 Processing ${contestsToShow.length} contests of type: ${window.currentContestType || 'active'}`);
           for (let idx = 0; idx < contestsToShow.length; idx++) {
             const { contest: c, index: i, winnersData } = contestsToShow[idx];
+            console.log(`📝 Processing contest ${c.id}, has prize_links: ${!!c.prize_links}, prize_links length: ${c.prize_links?.length || 0}`);
             
             const card = document.createElement('div');
             card.className = 'deletable-item rounded-lg border border-violet-400/30 p-3 bg-black/30';
@@ -3095,6 +3098,7 @@
             // Отображаем призы (максимум 3, но если меньше - показываем все)
             let prizesHtml = '';
             console.log(`🎁 Contest ${c.id} prizes check: prize_links=${JSON.stringify(c.prize_links)}, isArray=${Array.isArray(c.prize_links)}, length=${c.prize_links?.length}`);
+            console.log(`🎁 Contest ${c.id} conditions: prize_links exists=${!!c.prize_links}, isArray=${Array.isArray(c.prize_links)}, length=${c.prize_links?.length}, length > 0=${c.prize_links?.length > 0}`);
             if (c.prize_links && Array.isArray(c.prize_links) && c.prize_links.length > 0) {
               // Показываем максимум 3 приза (за первые 3 места)
               const prizesToShow = c.prize_links.slice(0, Math.min(3, c.prize_links.length));
