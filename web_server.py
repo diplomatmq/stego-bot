@@ -21,7 +21,7 @@ import asyncio
 import time
 import mimetypes
 from aiogram import Bot
-from giveaway import select_winners_from_contest, reroll_single_winner, confirm_winners
+from giveaway import select_winners_from_contest, reroll_single_winner, confirm_winners, send_congratulations_messages
 import re
 import logging
 import tempfile
@@ -4706,6 +4706,15 @@ async def confirm_contest_winners(contest_id: int, current_user_id: int = Query(
                     )
 
         result = await confirm_winners(contest_id)
+
+        # Отправляем поздравительные сообщения победителям
+        try:
+            bot = Bot(token=BOT_TOKEN)
+            await send_congratulations_messages(contest_id, bot)
+        except Exception as e:
+            logger.error(f"Ошибка при отправке поздравительных сообщений: {e}")
+            # Не прерываем выполнение, если не удалось отправить поздравления
+
         return {"success": True, "message": "Победители подтверждены"}
     except HTTPException:
         raise
