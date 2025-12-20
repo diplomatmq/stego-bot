@@ -837,12 +837,14 @@ async def reroll_single_winner(contest_id: int, old_winner_link: str, bot: Bot) 
             old_winner = old_winner_result.scalar_one_or_none()
             old_place = None
             old_prize_link = None
+            old_reroll_count = 0
             if old_winner:
                 old_place = old_winner.place if hasattr(old_winner, 'place') else None
                 old_prize_link = old_winner.prize_link if hasattr(old_winner, 'prize_link') else None
+                old_reroll_count = getattr(old_winner, 'reroll_count', 0) or 0
                 await session.delete(old_winner)
                 logger.info(f"🗑️ Удален старый победитель для конкурса {contest_id}: {old_winner_link}")
-            
+
             # Исключаем текущих победителей из выборки
             available_participants = [p for p in participants if p.photo_link != old_winner_link and p.photo_link not in existing_photo_links]
             
@@ -897,12 +899,14 @@ async def reroll_single_winner(contest_id: int, old_winner_link: str, bot: Bot) 
             old_winner = old_winner_result.scalar_one_or_none()
             old_place = None
             old_prize_link = None
+            old_reroll_count = 0
             if old_winner:
                 old_place = old_winner.place if hasattr(old_winner, 'place') else None
                 old_prize_link = old_winner.prize_link if hasattr(old_winner, 'prize_link') else None
+                old_reroll_count = getattr(old_winner, 'reroll_count', 0) or 0
                 await session.delete(old_winner)
                 logger.info(f"🗑️ Удален старый победитель для конкурса {contest_id}: {old_winner_link}")
-            
+
             # Убираем старый победитель и исключаем его из выборки
             available_links = [link for link in comment_links if link != old_winner_link and link not in existing_links]
             
@@ -932,7 +936,8 @@ async def reroll_single_winner(contest_id: int, old_winner_link: str, bot: Bot) 
                 user_id=new_winner_data.get('user_id') if new_winner_data else None,
                 user_username=new_winner_data.get('user_username') if new_winner_data else None,
                 prize_link=old_prize_link,  # Сохраняем приз от старого победителя
-                place=old_place  # Сохраняем место от старого победителя
+                place=old_place,  # Сохраняем место от старого победителя
+                reroll_count=old_reroll_count + 1  # Увеличиваем счетчик реролов
             )
         else:
             # Для конкурса рисунков используем photo_link
@@ -944,7 +949,8 @@ async def reroll_single_winner(contest_id: int, old_winner_link: str, bot: Bot) 
                 user_id=new_winner_data.get('user_id') if new_winner_data else None,
                 user_username=new_winner_data.get('user_username') if new_winner_data else None,
                 prize_link=old_prize_link,  # Сохраняем приз от старого победителя
-                place=old_place  # Сохраняем место от старого победителя
+                place=old_place,  # Сохраняем место от старого победителя
+                reroll_count=old_reroll_count + 1  # Увеличиваем счетчик реролов
             )
         session.add(new_winner)
         await session.commit()
@@ -1203,6 +1209,169 @@ async def confirm_winners(contest_id: int) -> bool:
             logger.warning(f"⚠️ Не удалось удалить файл с комментариями для конкурса {contest_id}: {e}")
         
         return True
+
+
+async def send_congratulations_messages(contest_id: int, bot: Bot) -> None:
+    """
+    Отправляет поздравительные сообщения победителям конкурса в группу обсуждения
+    """
+    try:
+        async with async_session() as session:
+            # Получаем информацию о конкурсе
+            giveaway_result = await session.execute(
+                select(Giveaway).where(Giveaway.id == contest_id)
+            )
+            giveaway = giveaway_result.scalars().first()
+
+            if not giveaway:
+                logger.error(f"Конкурс {contest_id} не найден для отправки поздравлений")
+                return
+
+            # Получаем всех победителей конкурса
+            winners_result = await session.execute(
+                select(Winner).where(Winner.giveaway_id == contest_id).order_by(Winner.place)
+            )
+            winners = winners_result.scalars().all()
+
+            if not winners:
+                logger.warning(f"Нет победителей для конкурса {contest_id}")
+                return
+
+            # Определяем тип конкурса
+            contest_type = getattr(giveaway, 'contest_type', 'random_comment')
+
+            # Получаем информацию о группе обсуждения
+            discussion_group_link = giveaway.discussion_group_link
+            if not discussion_group_link:
+                logger.warning(f"У конкурса {contest_id} не указана группа обсуждения")
+                return
+
+            # Парсим ссылку на группу обсуждения
+            from post_parser import parse_telegram_chat_link
+            group_chat_id = parse_telegram_chat_link(discussion_group_link)
+            if not group_chat_id:
+                logger.error(f"Не удалось распарсить ссылку на группу обсуждения: {discussion_group_link}")
+                return
+
+            # Получаем post_link для определения reply_to_message_id
+            post_link = giveaway.post_link
+            if contest_type == 'random_comment' and not post_link:
+                logger.error(f"У конкурса рандом комментариев {contest_id} не указан post_link")
+                return
+
+            reply_to_message_id = None
+            if contest_type == 'random_comment':
+                # Для рандом комментариев парсим post_link чтобы получить message_id поста
+                from post_parser import parse_telegram_link
+                parsed = parse_telegram_link(post_link)
+                if parsed:
+                    _, reply_to_message_id = parsed
+
+            # Отправляем поздравления для каждого победителя
+            for winner in winners:
+                try:
+                    if contest_type == 'random_comment':
+                        # Для рандом комментариев
+                        if not winner.comment_link:
+                            logger.warning(f"У победителя {winner.id} нет comment_link")
+                            continue
+
+                        # Получаем username победителя
+                        username = winner.user_username or "пользователь"
+                        if username.startswith('@'):
+                            username_display = username
+                        else:
+                            username_display = f"@{username}"
+
+                        # Формируем поздравительное сообщение
+                        congratulation_text = f"🎉 Поздравляем победителя!\n\n"
+                        congratulation_text += f"🏆 {winner.comment_link}\n"
+                        congratulation_text += f"👤 {username_display}"
+
+                        # Добавляем информацию о призе, если есть
+                        if winner.prize_link:
+                            congratulation_text += f"\n🎁 Приз: {winner.prize_link}"
+
+                        # Добавляем место победителя
+                        if winner.place:
+                            place_text = ""
+                            if winner.place == 1:
+                                place_text = "🥇 1 место"
+                            elif winner.place == 2:
+                                place_text = "🥈 2 место"
+                            elif winner.place == 3:
+                                place_text = "🥉 3 место"
+                            else:
+                                place_text = f"🏅 {winner.place} место"
+
+                            congratulation_text += f"\n{place_text}"
+
+                        # Добавляем информацию о реролах, если они были
+                        reroll_count = getattr(winner, 'reroll_count', 0) or 0
+                        if reroll_count > 0:
+                            congratulation_text += f"\n🔄 Реролов: {reroll_count}"
+
+                        # Отправляем сообщение в группу обсуждения в ответ на пост
+                        await bot.send_message(
+                            chat_id=group_chat_id,
+                            text=congratulation_text,
+                            reply_to_message_id=reply_to_message_id
+                        )
+
+                        logger.info(f"✅ Отправлено поздравление победителю конкурса {contest_id}: {username_display}")
+
+                    else:
+                        # Для конкурсов рисунков
+                        if not winner.photo_link:
+                            logger.warning(f"У победителя {winner.id} нет photo_link")
+                            continue
+
+                        username = winner.user_username or "пользователь"
+                        if username.startswith('@'):
+                            username_display = username
+                        else:
+                            username_display = f"@{username}"
+
+                        congratulation_text = f"🎉 Поздравляем победителя конкурса рисунков!\n\n"
+                        congratulation_text += f"🏆 {winner.photo_link}\n"
+                        congratulation_text += f"👤 {username_display}"
+
+                        if winner.prize_link:
+                            congratulation_text += f"\n🎁 Приз: {winner.prize_link}"
+
+                        if winner.place:
+                            place_text = ""
+                            if winner.place == 1:
+                                place_text = "🥇 1 место"
+                            elif winner.place == 2:
+                                place_text = "🥈 2 место"
+                            elif winner.place == 3:
+                                place_text = "🥉 3 место"
+                            else:
+                                place_text = f"🏅 {winner.place} место"
+
+                            congratulation_text += f"\n{place_text}"
+
+                        # Добавляем информацию о реролах, если они были
+                        reroll_count = getattr(winner, 'reroll_count', 0) or 0
+                        if reroll_count > 0:
+                            congratulation_text += f"\n🔄 Реролов: {reroll_count}"
+
+                        await bot.send_message(
+                            chat_id=group_chat_id,
+                            text=congratulation_text
+                        )
+
+                        logger.info(f"✅ Отправлено поздравление победителю конкурса рисунков {contest_id}: {username_display}")
+
+                except Exception as e:
+                    logger.error(f"❌ Ошибка при отправке поздравления победителю {winner.id}: {e}")
+                    continue
+
+            logger.info(f"✅ Отправлены поздравления для всех победителей конкурса {contest_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке поздравительных сообщений для конкурса {contest_id}: {e}")
 
 
 async def check_all_giveaways_historical_comments(bot: Bot):
