@@ -1548,7 +1548,28 @@ async def create_giveaway(request: Request):
     admin_fee_deducted = None
     
     async with async_session() as session:
-        # Убрана проверка уникальности post_link - теперь одну ссылку можно использовать несколько раз
+        # Проверяем уникальность post_link только для обычных пользователей
+        # Админы и создатели могут использовать одну ссылку несколько раз
+        if contest_type == "random_comment" and post_link and created_by:
+            # Получаем роль пользователя
+            creator_result = await session.execute(
+                select(User).where(User.telegram_id == created_by)
+            )
+            creator_user = creator_result.scalars().first()
+
+            # Если это обычный пользователь (не admin и не creator), проверяем уникальность post_link
+            if creator_user and creator_user.role == "user":
+                # Проверяем, нет ли уже активного конкурса для этого поста
+                existing_result = await session.execute(
+                    select(Giveaway).where(
+                        Giveaway.post_link == post_link,
+                        Giveaway.contest_type == "random_comment",
+                        Giveaway.is_confirmed == False  # Только активные (неподтвержденные) конкурсы
+                    )
+                )
+                existing_giveaway = existing_result.scalars().first()
+                if existing_giveaway:
+                    return {"success": False, "message": "❌ С этим постом уже есть активный конкурс рандом комментариев. Админы и создатели могут использовать одну ссылку несколько раз."}
         
         # Определяем канал и группу обсуждения
         channel_link = data.get("channel_link")  # Берем из запроса
