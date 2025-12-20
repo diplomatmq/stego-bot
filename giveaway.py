@@ -1246,12 +1246,16 @@ async def send_congratulations_messages(contest_id: int, bot: Bot) -> None:
                 logger.warning(f"У конкурса {contest_id} не указана группа обсуждения")
                 return
 
+            logger.info(f"Конкурс {contest_id}: discussion_group_link = {discussion_group_link}")
+
             # Парсим ссылку на группу обсуждения
             from post_parser import parse_telegram_chat_link
             group_chat_id = parse_telegram_chat_link(discussion_group_link)
             if not group_chat_id:
                 logger.error(f"Не удалось распарсить ссылку на группу обсуждения: {discussion_group_link}")
                 return
+
+            logger.info(f"Группа обсуждения: {discussion_group_link} -> {group_chat_id}")
 
             # Получаем post_link для определения reply_to_message_id
             post_link = giveaway.post_link
@@ -1261,11 +1265,50 @@ async def send_congratulations_messages(contest_id: int, bot: Bot) -> None:
 
             reply_to_message_id = None
             if contest_type == 'random_comment':
-                # Для рандом комментариев парсим post_link чтобы получить message_id поста
+                # Для рандом комментариев пытаемся найти message_id группы обсуждения
+                # Сначала парсим post_link чтобы получить message_id поста в канале
                 from post_parser import parse_telegram_link
                 parsed = parse_telegram_link(post_link)
                 if parsed:
-                    _, reply_to_message_id = parsed
+                    channel_chat_id, post_message_id = parsed
+                    logger.info(f"Парсинг post_link: channel={channel_chat_id}, message_id={post_message_id}")
+
+                    # Пытаемся найти соответствующее сообщение в группе обсуждения
+                    try:
+                        # Используем Telethon для получения discussion message
+                        if HAS_TELETHON and TELEGRAM_API_ID and TELEGRAM_API_HASH:
+                            logger.info("Используем Telethon для получения discussion message")
+                            from telethon import TelegramClient
+                            from telethon.errors import BotMethodInvalidError
+
+                            session_file = 'giveaway_session.session'
+                            client = TelegramClient(session_file, int(TELEGRAM_API_ID), TELEGRAM_API_HASH)
+
+                            try:
+                                await client.start()
+                                # Получаем discussion message для поста в канале
+                                discussion_message = await client.get_discussion_message(channel_chat_id, post_message_id)
+                                if discussion_message:
+                                    reply_to_message_id = discussion_message.id
+                                    logger.info(f"Найден discussion message: {reply_to_message_id}")
+                                else:
+                                    logger.warning(f"Не найден discussion message для поста {post_message_id}")
+                            except Exception as e:
+                                logger.warning(f"Ошибка при получении discussion message: {e}")
+                            finally:
+                                await client.disconnect()
+                        else:
+                            logger.warning("Telethon не настроен, невозможно получить discussion message")
+                    except Exception as e:
+                        logger.warning(f"Ошибка при работе с Telethon: {e}")
+
+            # Проверяем, что бот имеет доступ к группе обсуждения
+            try:
+                chat_info = await bot.get_chat(group_chat_id)
+                logger.info(f"Бот имеет доступ к группе: {chat_info.title} (ID: {chat_info.id})")
+            except Exception as e:
+                logger.error(f"Бот не имеет доступа к группе {group_chat_id}: {e}")
+                return
 
             # Отправляем поздравления для каждого победителя
             for winner in winners:
@@ -1312,13 +1355,31 @@ async def send_congratulations_messages(contest_id: int, bot: Bot) -> None:
                             congratulation_text += f"\n🔄 Реролов: {reroll_count}"
 
                         # Отправляем сообщение в группу обсуждения в ответ на пост
-                        await bot.send_message(
-                            chat_id=group_chat_id,
-                            text=congratulation_text,
-                            reply_to_message_id=reply_to_message_id
-                        )
-
-                        logger.info(f"✅ Отправлено поздравление победителю конкурса {contest_id}: {username_display}")
+                        try:
+                            if reply_to_message_id:
+                                await bot.send_message(
+                                    chat_id=group_chat_id,
+                                    text=congratulation_text,
+                                    reply_to_message_id=reply_to_message_id
+                                )
+                                logger.info(f"✅ Отправлено поздравление победителю конкурса {contest_id}: {username_display} (reply_to: {reply_to_message_id})")
+                            else:
+                                await bot.send_message(
+                                    chat_id=group_chat_id,
+                                    text=congratulation_text
+                                )
+                                logger.info(f"✅ Отправлено поздравление победителю конкурса {contest_id}: {username_display} (без reply_to)")
+                        except Exception as send_error:
+                            logger.error(f"❌ Ошибка при отправке поздравления победителю {winner.id}: {send_error}")
+                            # Пробуем отправить без reply_to_message_id
+                            try:
+                                await bot.send_message(
+                                    chat_id=group_chat_id,
+                                    text=f"{congratulation_text}\n\n❌ Не удалось ответить на пост"
+                                )
+                                logger.info(f"✅ Отправлено поздравление без reply_to для победителя конкурса {contest_id}: {username_display}")
+                            except Exception as fallback_error:
+                                logger.error(f"❌ Ошибка при отправке fallback поздравления победителю {winner.id}: {fallback_error}")
 
                     else:
                         # Для конкурсов рисунков
