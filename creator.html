@@ -2973,9 +2973,11 @@
       }
       
       async function loadContests(showLoading = true, contestType = null) {
+        console.log(`🚀 loadContests called with contestType: ${contestType}, showLoading: ${showLoading}`);
         // Обновляем тип фильтрации, если передан
         if (contestType) {
           window.currentContestType = contestType;
+          console.log(`📝 Updated window.currentContestType to: ${window.currentContestType}`);
         }
         try {
           // Показываем индикатор загрузки только если явно запрошено
@@ -2988,8 +2990,23 @@
             }
           }
           
+          console.log(`📡 Fetching contests from API...`);
           const items = await fetchJSON('/api/contests');
-          
+          console.log(`📦 Received ${items.length} contests from API`);
+
+          // Проверим конкурс 77
+          const contest77 = items.find(c => c.id === 77);
+          if (contest77) {
+            console.log(`🎯 Contest 77 found:`, {
+              id: contest77.id,
+              prize_links: contest77.prize_links,
+              end_at: contest77.end_at,
+              is_confirmed: contest77.is_confirmed
+            });
+          } else {
+            console.log(`❌ Contest 77 not found in API response`);
+          }
+
           if (!contestList) {
             console.error('contestList не найден');
             return;
@@ -3552,6 +3569,7 @@
         
         if (completedContestsBtn) {
           completedContestsBtn.addEventListener('click', () => {
+            console.log(`🎯 Completed contests button clicked`);
             completedContestsBtn.classList.add('active');
             if (activeContestsBtn) activeContestsBtn.classList.remove('active');
             loadContests(true, 'completed');
