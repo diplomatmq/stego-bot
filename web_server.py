@@ -5022,7 +5022,7 @@ async def update_contest(contest_id: int, request: Request):
 async def get_nft_preview(nft_link: str = Query(...)):
     """Получить превью изображения NFT из Telegram ссылки"""
     from fastapi.responses import RedirectResponse, Response
-    import aiohttp
+    import requests
     import re
     from urllib.parse import urljoin
 
@@ -5037,42 +5037,255 @@ async def get_nft_preview(nft_link: str = Query(...)):
         print(f"🔗 Normalized NFT link: {nft_link}")
         logger.info(f"🔗 Normalized NFT link: {nft_link}")
 
-        # Сначала пытаемся получить изображение через парсинг HTML страницы
-        # Это более надежный способ для Telegram NFT
+        # Пробуем получить изображение через парсинг HTML страницы
         logger.info(f"🔍 Начинаем парсинг HTML страницы: {nft_link}")
+        print(f"🔍 Начинаем парсинг HTML страницы: {nft_link}")
+
         try:
-            async with aiohttp.ClientSession(follow_redirects=True) as session:
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                    'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Cache-Control': 'max-age=0'
-                }
-                async with session.get(nft_link, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    logger.info(f"📡 Статус ответа страницы NFT: {resp.status}")
-                    if resp.status == 200:
-                        html = await resp.text()
-                        logger.info(f"📄 Получен HTML контент, длина: {len(html)} символов")
+            print("🔧 Пробуем HTTP запрос с requests...")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            }
 
-                        # Ищем og:image в мета-тегах
-                        og_image_match = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
-                        logger.info(f"🔍 Поиск og:image в HTML: {'найдено' if og_image_match else 'не найдено'}")
-                        if og_image_match:
-                            image_url = og_image_match.group(1)
-                            print(f"✅ Найдено изображение через og:image: {image_url}")
-                            logger.info(f"✅ Найдено изображение через og:image: {image_url}")
+            response = requests.get(nft_link, headers=headers, timeout=15)
+            print(f"📡 HTTP статус: {response.status_code}")
+            logger.info(f"📡 HTTP статус: {response.status_code}")
 
-                            # Вместо редиректа, скачиваем изображение и возвращаем его напрямую
-                            print(f"🔄 Начинаем скачивание изображения: {image_url}")
-                            logger.info(f"🔄 Начинаем скачивание изображения: {image_url}")
+            if response.status_code == 200:
+                html = response.text
+                print(f"📄 Получен HTML, длина: {len(html)} символов")
+                logger.info(f"📄 HTML длина: {len(html)} символов")
+
+                # Парсим HTML
+                print("🔍 Начинаем парсинг HTML...")
+
+                # Ищем og:image в мета-тегах
+                og_image_match = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                print(f"🔍 og:image: {'найдено' if og_image_match else 'не найдено'}")
+                logger.info(f"🔍 og:image: {'найдено' if og_image_match else 'не найдено'}")
+
+                if og_image_match:
+                    image_url = og_image_match.group(1)
+                    print(f"✅ Найдено изображение через og:image: {image_url}")
+                    logger.info(f"✅ og:image: {image_url}")
+
+                    # Скачиваем изображение
+                    print(f"🔄 Скачиваем изображение: {image_url}")
+                    try:
+                        img_response = requests.get(image_url, headers=headers, timeout=15)
+                        print(f"📡 Статус скачивания: {img_response.status_code}")
+                        logger.info(f"📡 Статус скачивания: {img_response.status_code}")
+
+                        if img_response.status_code == 200:
+                            image_data = img_response.content
+                            content_type = img_response.headers.get('content-type', 'image/jpeg')
+                            print(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
+                            logger.info(f"✅ Скачано: {len(image_data)} байт, тип: {content_type}")
+
+                            return Response(
+                                content=image_data,
+                                media_type=content_type,
+                                headers={
+                                    "Access-Control-Allow-Origin": "*",
+                                    "Access-Control-Allow-Methods": "GET",
+                                    "Access-Control-Allow-Headers": "*"
+                                }
+                            )
+                        else:
+                            print(f"❌ Ошибка скачивания: HTTP {img_response.status_code}")
+                    except Exception as e:
+                        print(f"❌ Ошибка при скачивании: {e}")
+                        logger.error(f"❌ Ошибка скачивания: {e}")
+
+                else:
+                    print("❌ og:image не найден")
+                    # Показываем первые 500 символов HTML для отладки
+                    print(f"📄 HTML preview: {html[:500]}...")
+                    logger.info(f"📄 HTML preview: {html[:500]}...")
+
+            else:
+                print(f"❌ HTTP ошибка: {response.status_code}")
+                logger.warning(f"❌ HTTP статус: {response.status_code}")
+
+        except Exception as e:
+            print(f"❌ Ошибка HTTP запроса: {e}")
+            logger.error(f"❌ Ошибка HTTP: {e}")
+
+        # Если HTML парсинг не дал результатов, пробуем Bot API
+        logger.info("🤖 Пробуем получить превью через Telegram Bot API")
+        print("🤖 Пробуем Bot API...")
+        try:
+            from aiogram import Bot
+            from config import BOT_TOKEN
+
+            bot = Bot(token=BOT_TOKEN)
+            try:
+                print(f"📡 Запрос к Bot API: {nft_link}")
+                preview = await bot.get_web_page_preview(url=nft_link)
+                print(f"📋 Ответ Bot API: {type(preview)}")
+                logger.info(f"📋 Bot API response type: {type(preview)}")
+
+                if preview and hasattr(preview, 'photo') and preview.photo:
+                    print("✅ Найдено фото в Bot API ответе")
+                    photo = preview.photo
+                    if hasattr(photo, 'sizes') and photo.sizes:
+                        largest = max(photo.sizes, key=lambda x: getattr(x, 'w', 0) * getattr(x, 'h', 0))
+                        if hasattr(largest, 'location'):
+                            file_id = largest.location.file_id if hasattr(largest.location, 'file_id') else None
+                            if file_id:
+                                print(f"📄 File ID: {file_id}")
+                                file = await bot.get_file(file_id)
+                                file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
+                                print(f"🔗 File URL: {file_url}")
+
+                                # Скачиваем файл
+                                try:
+                                    file_response = requests.get(file_url, timeout=15)
+                                    if file_response.status_code == 200:
+                                        file_data = file_response.content
+                                        content_type = file_response.headers.get('content-type', 'image/jpeg')
+                                        print(f"✅ Скачан файл через Bot API: {len(file_data)} байт")
+                                        logger.info(f"✅ Bot API файл: {len(file_data)} байт, тип: {content_type}")
+
+                                        return Response(
+                                            content=file_data,
+                                            media_type=content_type,
+                                            headers={
+                                                "Access-Control-Allow-Origin": "*",
+                                                "Access-Control-Allow-Methods": "GET",
+                                                "Access-Control-Allow-Headers": "*"
+                                            }
+                                        )
+                                    else:
+                                        print(f"❌ Ошибка скачивания файла: HTTP {file_response.status_code}")
+                                except Exception as e:
+                                    print(f"❌ Ошибка скачивания файла: {e}")
+                                    logger.error(f"❌ Bot API download error: {e}")
+
+                else:
+                    print("❌ Фото не найдено в Bot API ответе")
+                    if preview:
+                        print(f"📋 Preview attributes: {dir(preview)}")
+
+            except Exception as e:
+                print(f"❌ Ошибка Bot API: {e}")
+                logger.error(f"❌ Bot API error: {e}")
+
+            # Закрываем сессию бота
+            try:
+                session = await bot.get_session()
+                if session:
+                    await session.close()
+            except:
+                pass
+
+        except Exception as e:
+            print(f"❌ Ошибка импорта Bot API: {e}")
+            logger.error(f"❌ Bot API import error: {e}")
+
+        # Если ничего не получилось, возвращаем прозрачный пиксель
+        print("🖼️ Возвращаем fallback - прозрачный пиксель")
+        logger.warning(f"⚠️ Не удалось получить изображение для NFT: {nft_link}")
+        transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
+        return Response(content=transparent_pixel, media_type="image/png")
+
+    except Exception as e:
+        print(f"💥 Критическая ошибка в get_nft_preview: {e}")
+        logger.error(f"💥 Critical error in get_nft_preview: {e}", exc_info=True)
+        transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
+        return Response(content=transparent_pixel, media_type="image/png")
+
+        # Если HTML парсинг не дал результатов, пробуем Bot API
+        logger.info("🤖 Пробуем получить превью через Telegram Bot API")
+        print("🤖 Пробуем Bot API...")
+        try:
+            from aiogram import Bot
+            from config import BOT_TOKEN
+
+            bot = Bot(token=BOT_TOKEN)
+            try:
+                print(f"📡 Запрос к Bot API: {nft_link}")
+                preview = await bot.get_web_page_preview(url=nft_link)
+                print(f"📋 Ответ Bot API: {type(preview)}")
+                logger.info(f"📋 Bot API response type: {type(preview)}")
+
+                if preview and hasattr(preview, 'photo') and preview.photo:
+                    print("✅ Найдено фото в Bot API ответе")
+                    photo = preview.photo
+                    if hasattr(photo, 'sizes') and photo.sizes:
+                        largest = max(photo.sizes, key=lambda x: getattr(x, 'w', 0) * getattr(x, 'h', 0))
+                        if hasattr(largest, 'location'):
+                            file_id = largest.location.file_id if hasattr(largest.location, 'file_id') else None
+                            if file_id:
+                                print(f"📄 File ID: {file_id}")
+                                file = await bot.get_file(file_id)
+                                file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
+                                print(f"🔗 File URL: {file_url}")
+
+                                # Скачиваем файл
+                                try:
+                                    file_response = requests.get(file_url, timeout=15)
+                                    if file_response.status_code == 200:
+                                        file_data = file_response.content
+                                        content_type = file_response.headers.get('content-type', 'image/jpeg')
+                                        print(f"✅ Скачан файл через Bot API: {len(file_data)} байт")
+                                        logger.info(f"✅ Bot API файл: {len(file_data)} байт, тип: {content_type}")
+
+                                        return Response(
+                                            content=file_data,
+                                            media_type=content_type,
+                                            headers={
+                                                "Access-Control-Allow-Origin": "*",
+                                                "Access-Control-Allow-Methods": "GET",
+                                                "Access-Control-Allow-Headers": "*"
+                                            }
+                                        )
+                                    else:
+                                        print(f"❌ Ошибка скачивания файла: HTTP {file_response.status_code}")
+                                except Exception as e:
+                                    print(f"❌ Ошибка скачивания файла: {e}")
+                                    logger.error(f"❌ Bot API download error: {e}")
+
+                else:
+                    print("❌ Фото не найдено в Bot API ответе")
+                    if preview:
+                        print(f"📋 Preview attributes: {dir(preview)}")
+
+            except Exception as e:
+                print(f"❌ Ошибка Bot API: {e}")
+                logger.error(f"❌ Bot API error: {e}")
+
+            # Закрываем сессию бота
+            try:
+                session = await bot.get_session()
+                if session:
+                    await session.close()
+            except:
+                pass
+
+        except Exception as e:
+            print(f"❌ Ошибка импорта Bot API: {e}")
+            logger.error(f"❌ Bot API import error: {e}")
+
+        # Если ничего не получилось, возвращаем прозрачный пиксель
+        print("🖼️ Возвращаем fallback - прозрачный пиксель")
+        logger.warning(f"⚠️ Не удалось получить изображение для NFT: {nft_link}")
+        transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
+        return Response(content=transparent_pixel, media_type="image/png")
+
+    except Exception as e:
+        print(f"💥 Критическая ошибка в get_nft_preview: {e}")
+        logger.error(f"💥 Critical error in get_nft_preview: {e}", exc_info=True)
+        transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
+        return Response(content=transparent_pixel, media_type="image/png")
+
+@app.get("/api/chat-info")
                             try:
                                 async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as img_resp:
                                     logger.info(f"📡 HTTP статус ответа изображения: {img_resp.status}")
