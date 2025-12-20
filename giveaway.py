@@ -1043,9 +1043,9 @@ async def award_experience_for_contest(contest_id: int, session) -> None:
                 user_id = winner.user_id
             elif winner.comment_link:
                 # Пытаемся найти user_id в таблице Comment
-                from models import Comment
+                from models import Comment as CommentModel
                 comment_result = await session.execute(
-                    select(Comment).where(Comment.comment_link == winner.comment_link)
+                    select(CommentModel).where(CommentModel.comment_link == winner.comment_link)
                 )
                 comment = comment_result.scalars().first()
                 if comment and comment.user_id:
@@ -1101,15 +1101,16 @@ async def award_experience_for_contest(contest_id: int, session) -> None:
                 
                 # Ищем все комментарии к этому посту
                 # Пробуем разные варианты channel_id
+                from models import Comment as CommentModel
                 comments_result = await session.execute(
-                    select(Comment).where(
+                    select(CommentModel).where(
                         and_(
                             or_(
-                                Comment.chat_id == channel_id_str,
-                                Comment.chat_id == str(channel_id),
-                                Comment.chat_id == f"@{channel_id_str}"
+                                CommentModel.chat_id == channel_id_str,
+                                CommentModel.chat_id == str(channel_id),
+                                CommentModel.chat_id == f"@{channel_id_str}"
                             ),
-                            Comment.post_message_id == post_message_id
+                            CommentModel.post_message_id == post_message_id
                         )
                     )
                 )
