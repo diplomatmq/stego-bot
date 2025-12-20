@@ -3094,6 +3094,7 @@
             
             // Отображаем призы (максимум 3, но если меньше - показываем все)
             let prizesHtml = '';
+            console.log(`🎁 Contest ${c.id} prizes check: prize_links=${JSON.stringify(c.prize_links)}, isArray=${Array.isArray(c.prize_links)}, length=${c.prize_links?.length}`);
             if (c.prize_links && Array.isArray(c.prize_links) && c.prize_links.length > 0) {
               // Показываем максимум 3 приза (за первые 3 места)
               const prizesToShow = c.prize_links.slice(0, Math.min(3, c.prize_links.length));
@@ -3114,10 +3115,11 @@
               // Функция для получения изображения NFT - используем img с загрузкой через API
               function getNFTImageHtml(link, idx) {
                 const normalizedLink = normalizePrizeLink(link);
+                console.log(`🎨 getNFTImageHtml called for contest ${c.id}, prize ${idx + 1}, link: ${link}, normalized: ${normalizedLink}`);
                 // Используем img с src, который будет загружен через API endpoint
                 return `
-                  <img 
-                    src="/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}" 
+                  <img
+                    src="/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}"
                     alt="Приз ${idx + 1}"
                     class="w-full h-full object-cover rounded-lg prize-image"
                     style="background:#170017;min-height:120px;"
@@ -3420,7 +3422,8 @@
             
             // Отладочная информация
             console.log(`Конкурс ${c.id}: prize_links =`, c.prize_links, 'type:', typeof c.prize_links, 'isArray:', Array.isArray(c.prize_links));
-            
+            console.log(`🎭 Contest ${c.id} prizesHtml length: ${prizesHtml.length}, content:`, prizesHtml.substring(0, 200) + '...');
+
             card.innerHTML = `
               ${prizesHtml || ''}
               
