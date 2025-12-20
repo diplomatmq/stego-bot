@@ -1396,9 +1396,6 @@
         <button id="contests-completed-btn" class="nav-button px-4 py-2 rounded-lg" data-contest-type="completed">🏁 Завершенные</button>
       </div>
       
-      <!-- Кнопка создания конкурса для Pro пользователей -->
-      <button id="user-create-contest-btn" class="neon-button w-full py-3 rounded-lg mb-6 hidden">➕ Создать конкурс</button>
-      
       <div id="contest-list" class="space-y-4 mb-6"></div>
     </section>
 
@@ -1450,21 +1447,6 @@
             <span class="text-gray-400">Статус:</span>
             <span id="profile-status" class="text-green-400 font-semibold"></span>
           </div>
-        </div>
-      </div>
-
-      <!-- ⭐ Pro Подписка -->
-      <div class="rounded-lg border border-violet-400/30 p-6 bg-black/30 space-y-4 mb-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-lg font-semibold mb-1">⭐ Pro Подписка</h3>
-            <p class="text-sm text-gray-400" id="pro-subscription-status">Не активирована</p>
-          </div>
-          <button id="activate-pro-btn" class="neon-button px-4 py-2 rounded-lg">Активировать</button>
-        </div>
-        <div id="pro-subscription-info" class="hidden text-sm text-gray-400 space-y-1">
-          <div>Действует до: <span id="pro-subscription-end" class="text-violet-400"></span></div>
-          <div>Создано конкурсов: <span id="pro-contests-count" class="text-violet-400">0</span></div>
         </div>
       </div>
 
@@ -1534,79 +1516,6 @@
       </div>
     </section>
     
-    <!-- ⭐ Модалка: Активация Pro подписки -->
-    <div id="pro-subscription-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div class="relative w-full sm:w-[450px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-4 mx-4">
-        <button id="close-pro-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button" aria-label="Закрыть">✕</button>
-        <h3 class="text-base font-semibold mb-3">⭐ Активация Pro подписки</h3>
-        
-        <div class="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-400/30">
-          <p class="text-sm text-gray-300 mb-2">Для активации Pro подписки необходимо:</p>
-          <ul class="text-sm text-gray-400 space-y-1 list-disc list-inside">
-            <li>Баланс минимум 50 Monkey Coins</li>
-            <li>Ссылка на ваш канал (обязательно)</li>
-            <li>Ссылка на чат (необязательно)</li>
-          </ul>
-        </div>
-        
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">🔗 Ссылка на канал *</label>
-            <input type="text" id="pro-channel-link" class="input-field w-full p-2 rounded" placeholder="https://t.me/your_channel" />
-          </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">💬 Ссылка на чат (необязательно)</label>
-            <input type="text" id="pro-chat-link" class="input-field w-full p-2 rounded" placeholder="https://t.me/your_chat" />
-          </div>
-        </div>
-        
-        <button id="confirm-pro-activation" class="neon-button w-full mt-4 py-3 rounded-lg">✅ Активировать подписку</button>
-      </div>
-    </div>
-
-    <!-- 🎯 Модалка: Выбор типа конкурса для пользователей -->
-    <div id="user-contest-type-selection-modal" class="hidden fixed inset-0 z-25 flex items-end sm:items-center justify-center bg-black/60 p-4" style="pointer-events: auto;">
-      <div class="relative w-full max-w-[520px] max-h-[90vh] sm:max-h-[85vh] bg-[#0b0b10] rounded-t-2xl sm:rounded-2xl border border-violet-500/30 shadow-2xl p-5 my-auto" style="pointer-events: auto;">
-        <button id="close-user-contest-type-selection-modal" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button z-10" aria-label="Закрыть">✕</button>
-        <h3 class="text-lg font-semibold mb-4 sticky top-0 bg-[#0b0b10] pb-2 z-0">Выберите тип конкурса</h3>
-        <div id="user-contest-type-selection-balance" class="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-400/30 hidden">
-          <div class="flex items-center justify-between">
-            <span class="text-sm text-gray-400">Ваш баланс:</span>
-            <span id="user-contest-type-selection-balance-value" class="text-lg font-semibold text-violet-400">0</span>
-          </div>
-        </div>
-        <div class="space-y-3" style="pointer-events: auto;">
-          <button id="user-select-random-comment-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
-            <div class="flex-1">
-              <div class="font-semibold text-lg flex items-center gap-2">
-                🎲 Рандом комментарий(10<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
-              </div>
-              <div class="text-sm text-gray-400 mt-1">Конкурс на основе случайного выбора комментариев из поста</div>
-            </div>
-            <span class="text-2xl">→</span>
-          </button>
-          <button id="user-select-drawing-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
-            <div class="flex-1">
-              <div class="font-semibold text-lg flex items-center gap-2">
-                🎨 Конкурс рисунков(20<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
-              </div>
-              <div class="text-sm text-gray-400 mt-1">Конкурс на лучший рисунок по заданной теме</div>
-            </div>
-            <span class="text-2xl">→</span>
-          </button>
-          <button id="user-select-collection-contest" class="w-full neon-button py-4 rounded-lg text-left px-4 flex items-center justify-between relative">
-            <div class="flex-1">
-              <div class="font-semibold text-lg flex items-center gap-2">
-                🖼️ Конкурс коллекций(15<img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain">)
-              </div>
-              <div class="text-sm text-gray-400 mt-1">Конкурс на лучшую коллекцию NFT (9 штук)</div>
-            </div>
-            <span class="text-2xl">→</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 🎨 Модалка: Выбор темы -->
     <div id="theme-selector-modal" class="hidden fixed inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div class="relative w-full sm:w-[500px] bg-[#0b0b10] rounded-2xl border border-violet-500/30 shadow-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
@@ -1734,7 +1643,6 @@
         <h2 class="text-2xl font-bold text-white">🏆 Итоги конкурса</h2>
         <button onclick="document.getElementById('drawing-results-modal').classList.add('hidden')" class="bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
       </div>
-      <div id="drawing-results-tabs" class="mb-4"></div>
       <div id="drawing-results-content" class="space-y-4">
         <!-- Содержимое будет добавлено динамически -->
       </div>
@@ -1838,6 +1746,22 @@
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit'
         }).format(d);
+      }
+
+      // Функция для нормализации ссылок на NFT призы
+      function normalizePrizeLink(link) {
+        if (!link) return '';
+        link = link.trim();
+        // Если уже начинается с https:// или http://, возвращаем как есть
+        if (link.startsWith('http://') || link.startsWith('https://')) {
+          return link;
+        }
+        // Если начинается с t.me/, добавляем https://
+        if (link.startsWith('t.me/')) {
+          return 'https://' + link;
+        }
+        // Иначе добавляем https://
+        return 'https://' + link;
       }
 
       // Делаем fetchJSON доступной глобально СРАЗУ
@@ -2190,109 +2114,6 @@
         }
       };
       
-      // Глобальные переменные для хранения результатов
-      let currentResultsData = {
-        contestId: null,
-        juryResults: [],
-        audienceResults: [],
-        juryEnabled: false,
-        audienceVotingEnabled: false
-      };
-      
-      // Функция для отображения таблицы результатов
-      function renderResultsTable(results, contestId) {
-        if (!results || results.length === 0) {
-          return '<div class="text-center text-gray-400 py-8">Нет данных для отображения</div>';
-        }
-        
-        let tableHtml = '<div class="space-y-4">';
-        
-        for (const result of results) {
-          const place = result.place;
-          const username = result.username || '';
-          const userId = result.participant_user_id;
-          const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
-          const prizeLink = result.prize_link;
-          const averageScore = result.average_score || 0;
-          const votesCount = result.votes_count || 0;
-          
-          tableHtml += `
-            <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
-              <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
-              <div class="text-sm text-gray-300 mb-3">
-                ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
-                <span class="text-gray-400">(ID: ${userId})</span>
-              </div>
-              <div class="mb-3">
-                <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
-              </div>
-              <div class="text-sm text-gray-400 mb-3">
-                Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
-              </div>
-              ${prizeLink ? `
-                <div class="text-sm">
-                  <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
-                </div>
-              ` : ''}
-            </div>
-          `;
-        }
-        
-        tableHtml += '</div>';
-        return tableHtml;
-      }
-      
-      // Функция переключения между таблицами (глобальная)
-      window.switchResultsTable = function(type) {
-        const resultsContent = document.getElementById('drawing-results-content');
-        const juryTabBtn = document.getElementById('results-jury-tab');
-        const audienceTabBtn = document.getElementById('results-audience-tab');
-        
-        if (!resultsContent) return;
-        
-        // Проверяем, не заблокирована ли кнопка
-        if (type === 'jury' && (!currentResultsData.juryEnabled || currentResultsData.juryResults.length === 0)) {
-          return; // Не переключаем, если жюри не включено или нет результатов
-        }
-        if (type === 'audience' && currentResultsData.audienceResults.length === 0) {
-          return; // Не переключаем, если нет результатов участников
-        }
-        
-        // Обновляем активную кнопку
-        if (juryTabBtn && audienceTabBtn) {
-          if (type === 'jury') {
-            // Активируем кнопку жюри (если она не disabled)
-            if (!juryTabBtn.disabled) {
-              juryTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              juryTabBtn.classList.add('bg-violet-600', 'text-white');
-            }
-            // Деактивируем кнопку участников (если она не disabled)
-            if (!audienceTabBtn.disabled) {
-              audienceTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              audienceTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
-            }
-          } else {
-            // Активируем кнопку участников (если она не disabled)
-            if (!audienceTabBtn.disabled) {
-              audienceTabBtn.classList.remove('bg-violet-500/40', 'text-gray-300', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              audienceTabBtn.classList.add('bg-violet-600', 'text-white');
-            }
-            // Деактивируем кнопку жюри (если она не disabled)
-            if (!juryTabBtn.disabled) {
-              juryTabBtn.classList.remove('bg-violet-600', 'text-white', 'bg-gray-600/40', 'text-gray-500', 'opacity-50', 'cursor-not-allowed');
-              juryTabBtn.classList.add('bg-violet-500/40', 'text-gray-300');
-            }
-          }
-        }
-        
-        // Отображаем соответствующую таблицу
-        if (type === 'jury') {
-          resultsContent.innerHTML = renderResultsTable(currentResultsData.juryResults, currentResultsData.contestId);
-        } else {
-          resultsContent.innerHTML = renderResultsTable(currentResultsData.audienceResults, currentResultsData.contestId);
-        }
-      }
-      
       // Функция для отображения итогов конкурса рисунков
       window.showDrawingResults = async function(contestId) {
         try {
@@ -2303,109 +2124,52 @@
             return;
           }
           
+          const results = response.results || [];
           const resultsModal = document.getElementById('drawing-results-modal');
           const resultsContent = document.getElementById('drawing-results-content');
-          const resultsTabs = document.getElementById('drawing-results-tabs');
           
           if (!resultsModal || !resultsContent) {
             alert('Модальное окно не найдено');
             return;
           }
           
-          const juryEnabled = response.jury_enabled || false;
-          const audienceVotingEnabled = response.audience_voting_enabled || false;
-          const juryResults = response.jury_results || [];
-          const audienceResults = response.audience_results || [];
+          // Формируем HTML с итогами
+          let resultsHtml = '<div class="space-y-4">';
           
-          // Логируем для отладки
-          console.log('DEBUG showDrawingResults:', {
-            contestId,
-            juryEnabled,
-            audienceVotingEnabled,
-            juryResultsCount: juryResults.length,
-            audienceResultsCount: audienceResults.length,
-            response: response
-          });
-          
-          // Сохраняем данные для переключения
-          currentResultsData = {
-            contestId: contestId,
-            juryResults: juryResults,
-            audienceResults: audienceResults,
-            juryEnabled: juryEnabled,
-            audienceVotingEnabled: audienceVotingEnabled
-          };
-          
-          // Определяем, какую таблицу показывать по умолчанию
-          // Приоритет: жюри, затем зрительские симпатии, затем старая структура
-          let defaultTable = '';
-          let defaultTab = null;
-          
-          if (juryEnabled && juryResults.length > 0) {
-            defaultTable = renderResultsTable(juryResults, contestId);
-            defaultTab = 'jury';
-          } else if (audienceResults.length > 0) {
-            // Показываем таблицу участников, если есть результаты (независимо от audienceVotingEnabled)
-            defaultTable = renderResultsTable(audienceResults, contestId);
-            defaultTab = 'audience';
-          } else if (juryEnabled) {
-            // Жюри включено, но результатов нет
-            defaultTable = renderResultsTable(juryResults, contestId);
-            defaultTab = 'jury';
-          } else {
-            const results = response.results || [];
-            defaultTable = renderResultsTable(results, contestId);
+          for (const result of results) {
+            const place = result.place;
+            const username = result.username || '';
+            const userId = result.participant_user_id;
+            const userDisplay = username ? `${username} (ID: ${userId})` : `ID: ${userId}`;
+            const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
+            const prizeLink = result.prize_link;
+            const averageScore = result.average_score || 0;
+            const votesCount = result.votes_count || 0;
+            
+            resultsHtml += `
+              <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
+                <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
+                <div class="text-sm text-gray-300 mb-3">
+                  ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
+                  <span class="text-gray-400">(ID: ${userId})</span>
+                </div>
+                <div class="mb-3">
+                  <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
+                </div>
+                <div class="text-sm text-gray-400 mb-3">
+                  Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
+                </div>
+                ${prizeLink ? `
+                  <div class="text-sm">
+                    <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                  </div>
+                ` : ''}
+              </div>
+            `;
           }
           
-          // Формируем кнопки-табы - всегда показываем обе кнопки
-          // Кнопки будут неактивными (disabled), если соответствующий режим не включен или нет результатов
-          const juryTabDisabled = !juryEnabled || juryResults.length === 0;
-          // Таблица участников доступна, если есть результаты участников (независимо от audience_voting_enabled)
-          const audienceTabDisabled = audienceResults.length === 0;
-          
-          // Определяем классы для кнопок
-          let juryTabClass, audienceTabClass;
-          
-          if (juryTabDisabled) {
-            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
-          } else if (defaultTab === 'jury') {
-            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
-          } else {
-            juryTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
-          }
-          
-          if (audienceTabDisabled) {
-            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-gray-600/40 text-gray-500 neon-button border border-gray-500/30 cursor-not-allowed opacity-50';
-          } else if (defaultTab === 'audience') {
-            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-600 text-white neon-button border border-violet-400/50';
-          } else {
-            audienceTabClass = 'flex-1 py-2 px-4 rounded-lg text-sm font-semibold bg-violet-500/40 text-gray-300 neon-button border border-violet-400/30';
-          }
-          
-          let tabsHtml = `
-            <div class="flex gap-2 mb-4">
-              <button id="results-jury-tab" ${juryTabDisabled ? 'disabled' : `onclick="switchResultsTable('jury')"`} class="${juryTabClass}">
-                🏆 Таблица жюри
-              </button>
-              <button id="results-audience-tab" ${audienceTabDisabled ? 'disabled' : `onclick="switchResultsTable('audience')"`} class="${audienceTabClass}">
-                👥 Таблица участников
-              </button>
-            </div>
-          `;
-          
-          // Устанавливаем HTML
-          const resultsTabsContainer = document.getElementById('drawing-results-tabs');
-          console.log('DEBUG: resultsTabsContainer найден:', !!resultsTabsContainer);
-          
-          if (resultsTabsContainer) {
-            resultsTabsContainer.innerHTML = tabsHtml;
-            resultsContent.innerHTML = defaultTable;
-            console.log('DEBUG: HTML установлен в контейнеры');
-          } else {
-            // Если контейнер для табов не найден, добавляем табы перед контентом
-            console.log('DEBUG: Контейнер для табов не найден, добавляем табы в контент');
-            resultsContent.innerHTML = tabsHtml + defaultTable;
-          }
+          resultsHtml += '</div>';
+          resultsContent.innerHTML = resultsHtml;
           
           // Открываем модальное окно
           resultsModal.classList.remove('hidden');
@@ -2884,15 +2648,6 @@
     let currentContestType = 'active';
     
     window.loadContests = async function(silentUpdate = false, contestType = null) {
-      // Показываем/скрываем кнопку создания конкурса для Pro пользователей
-      const createContestBtn = document.getElementById('user-create-contest-btn');
-      if (createContestBtn) {
-        if (window.proSubscriptionActive) {
-          createContestBtn.classList.remove('hidden');
-        } else {
-          createContestBtn.classList.add('hidden');
-        }
-      }
       // Используем переданный тип или текущий выбранный
       if (contestType) {
         currentContestType = contestType;
@@ -3106,21 +2861,6 @@
             // Показываем максимум 3 приза (за первые 3 места)
             const prizesToShow = prizeLinks.slice(0, Math.min(3, prizeLinks.length));
             
-            // Функция для нормализации ссылки на приз
-            function normalizePrizeLink(link) {
-              if (!link) return '';
-              link = link.trim();
-              // Если уже начинается с https:// или http://, возвращаем как есть
-              if (link.startsWith('http://') || link.startsWith('https://')) {
-                return link;
-              }
-              // Если начинается с t.me/, добавляем https://
-              if (link.startsWith('t.me/')) {
-                return 'https://' + link;
-              }
-              // Иначе добавляем https://
-              return 'https://' + link;
-            }
             
             // Функция для получения изображения NFT - используем img с загрузкой через API
             function getNFTImageHtml(link, idx) {
@@ -3280,16 +3020,15 @@
                 const submissionEndDate = c.submission_end_date;
                 const votingEndDate = c.end_at || c.end_date || c.voting_end_date;
                 
-                // Получаем права доступа для оценивания с сервера
-                let canVote = false;
-                if (isDrawingContest) {
-                  try {
-                    const canVoteResponse = await window.fetchJSON(`/api/contests/${c.id}/can-vote?user_id=${currentUserId}`);
-                    canVote = canVoteResponse?.can_vote || false;
-                  } catch (error) {
-                    console.error(`❌ Ошибка при получении прав голосования для конкурса ${c.id}:`, error);
-                    canVote = false;
-                  }
+                // Проверяем права доступа для оценивания (для жюри)
+                const jury = c.jury;
+                let canVote = true; // По умолчанию все могут оценивать (если жюри выключено)
+                if (jury && typeof jury === 'object' && jury.enabled === true) {
+                  // Жюри включено - проверяем, является ли пользователь членом жюри или создателем
+                  const isCreator = c.created_by === currentUserId;
+                  const juryMembers = jury.members || [];
+                  const isJuryMember = juryMembers.some(member => member.user_id === currentUserId);
+                  canVote = isCreator || isJuryMember;
                 }
                 
                 const now = new Date();
@@ -3317,10 +3056,9 @@
                   timeMessage = '⏰ Дата окончания приема работ не указана';
                 }
                 
-                // Определяем период голосования
-                const afterSubmission = submissionEnd ? now.getTime() > submissionEnd.getTime() : true;
                 if (votingEnd) {
                   const votingDisplay = toMoscowDateTime(votingEnd);
+                  const afterSubmission = submissionEnd ? now.getTime() > submissionEnd.getTime() : true;
                   if (!afterSubmission) {
                     votingMessage = `🗳️ Голосование до: ${votingDisplay}`;
                   } else if (now.getTime() <= votingEnd.getTime()) {
@@ -3330,14 +3068,6 @@
                     hasVotingEnded = true;
                     votingMessage = `🗳️ Голосование завершено: ${votingDisplay}`;
                   }
-                } else if (afterSubmission) {
-                  // Если время приема работ истекло, но время голосования не указано, считаем голосование активным
-                  isVotingPeriodActive = true;
-                  votingMessage = `🗳️ Голосование активно`;
-                } else if (afterSubmission) {
-                  // Если время приема работ истекло, но время голосования не указано, считаем голосование активным
-                  isVotingPeriodActive = true;
-                  votingMessage = `🗳️ Голосование активно`;
                 }
                 
                 if (!submissionEnd) {
@@ -3356,12 +3086,10 @@
                 // 3. Время приема работ еще не истекло
                 const hasSubmitted = isDrawingContest ? hasPhoto : hasCollection;
                 
-                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}, canVote=${canVote}, submissionEnd=${submissionEndDate}, votingEnd=${votingEndDate}, audienceVoting=${c.audience_voting ? JSON.stringify(c.audience_voting) : 'null'}`);
+                console.log(`Конкурс ${c.id}: canParticipate=${canParticipate}, canUpload=${canUpload}, isParticipating=${isParticipating}, hasPhoto=${hasPhoto}, hasCollection=${hasCollection}, hasSubmitted=${hasSubmitted}, isSubmissionPeriodActive=${isSubmissionPeriodActive}, isVotingPeriodActive=${isVotingPeriodActive}`);
                 
                 let photoHtml = '';
                 
-                // ПРИОРИТЕТ: Сначала проверяем период приема работ
-                // Во время приема работ показываем кнопки для загрузки работ
                 if (hasSubmitted && isSubmissionPeriodActive) {
                   // Работа уже загружена, но время приема работ еще не истекло
                   const submittedText = isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена';
@@ -3369,6 +3097,25 @@
                     <div class="text-sm text-green-400 mb-2">${submittedText}</div>
                     ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
                   `;
+                } else if (hasSubmitted && !isSubmissionPeriodActive && isParticipating === true) {
+                  // Работа загружена, время приема работ истекло, пользователь участвует
+                  const submittedText = isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена';
+                  if (isVotingPeriodActive && canVote) {
+                    photoHtml = `
+                      <div class="text-sm text-green-400 mb-2">${submittedText}</div>
+                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                      <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                        🗳️ Голосовать
+                      </button>
+                    `;
+                  } else {
+                    photoHtml = `
+                      <div class="text-sm text-green-400 mb-2">${submittedText}</div>
+                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    `;
+                  }
                 } else if (isParticipating === true && canUpload && isSubmissionPeriodActive && !hasSubmitted) {
                   // Пользователь участвует, но еще не загрузил работу, и время приема работ еще не истекло
                   if (isDrawingContest) {
@@ -3398,29 +3145,31 @@
                       ✨ Участвовать
                     </button>
                   `;
-                } else if (!isSubmissionPeriodActive && canVote && !hasVotingEnded && isDrawingContest) {
-                  // Время приема работ истекло, пользователь может голосовать - показываем кнопку "Голосовать"
-                  const submittedText = (isParticipating && hasSubmitted) 
-                    ? (isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена')
-                    : '';
-                  photoHtml = `
-                    ${submittedText ? `<div class="text-sm text-green-400 mb-2">${submittedText}</div>` : ''}
-                    <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                    <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
-                      🗳️ Голосовать
-                    </button>
-                  `;
                 } else if (!isSubmissionPeriodActive) {
-                  // Время приема работ истекло, но пользователь не может голосовать
-                  const submittedText = (isParticipating && hasSubmitted) 
-                    ? (isDrawingContest ? '✅ Фотография загружена' : '✅ Коллекция отправлена')
-                    : '';
-                  photoHtml = `
-                    ${submittedText ? `<div class="text-sm text-green-400 mb-2">${submittedText}</div>` : ''}
-                    <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
-                    ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
-                  `;
+                  // Время приема работ истекло
+                  if (isParticipating === true) {
+                    // Пользователь участвует - показываем кнопку "Голосовать" если период голосования активен и есть права доступа
+                    if (isVotingPeriodActive && canVote) {
+                      photoHtml = `
+                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                        <button id="vote-btn-${c.id}" class="neon-button w-full py-2 rounded-lg text-sm font-semibold">
+                          🗳️ Голосовать
+                        </button>
+                      `;
+                    } else {
+                      photoHtml = `
+                        <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                        ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                      `;
+                    }
+                  } else {
+                    // Пользователь НЕ участвует - не показываем кнопку "Участвовать", только сообщение
+                    photoHtml = `
+                      <div class="text-sm text-gray-400 mb-2">⏰ Время приема работ истекло</div>
+                      ${timeMessage ? `<div class="text-xs text-gray-500 mb-2">${timeMessage}</div>` : ''}
+                    `;
+                  }
                 } else {
                   // Другие случаи (например, пользователь участвует, но время истекло)
                   photoHtml = `
@@ -3436,17 +3185,11 @@
                 }
                 
                 // Добавляем обработчик кнопки "Голосовать" только если есть права доступа
-                // Кнопка показывается для всех, кто может голосовать (создатель, жюри, участники, зрители при включенных зрительских симпатиях)
-                // Только после окончания времени приема работ
-                if (canVote && !hasVotingEnded && !isSubmissionPeriodActive && isDrawingContest) {
+                if (canVote && isVotingPeriodActive && !isSubmissionPeriodActive) {
                   setTimeout(() => {
                     const voteBtn = document.getElementById(`vote-btn-${c.id}`);
                     if (voteBtn) {
-                      // Удаляем старый обработчик, если есть
-                      const newBtn = voteBtn.cloneNode(true);
-                      voteBtn.parentNode.replaceChild(newBtn, voteBtn);
-                      // Добавляем новый обработчик
-                      newBtn.addEventListener('click', () => {
+                      voteBtn.addEventListener('click', () => {
                         window.openVotingModal(c.id);
                       });
                     }
@@ -3643,11 +3386,10 @@
                           return;
                         }
                         
-                        // Убрали проверку размера на клиенте - сервер сам обработает и сожмет изображение
-                        // if (file.size > 10 * 1024 * 1024) {
-                        //   alert('⚠️ Размер файла не должен превышать 10 МБ');
-                        //   return;
-                        // }
+                        if (file.size > 10 * 1024 * 1024) {
+                          alert('⚠️ Размер файла не должен превышать 10 МБ');
+                          return;
+                        }
                         
                         freshUploadBtn.disabled = true;
                         freshUploadBtn.textContent = '⏳ Загрузка...';
@@ -3675,31 +3417,13 @@
                           console.log(`[DEBUG] Получен ответ: status=${response.status}, ok=${response.ok}`);
                           
                           let result;
-                          // Клонируем response перед чтением, чтобы можно было прочитать при ошибке
-                          const responseClone = response.clone();
-                          
-                          if (!response.ok) {
-                            // Если статус не OK, читаем текст ошибки из клона
-                            try {
-                              const errorText = await responseClone.text();
-                              throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}. ${errorText}`);
-                            } catch (textError) {
-                              throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
-                            }
-                          }
-                          
                           try {
                             result = await response.json();
                             console.log(`[DEBUG] Результат:`, result);
                           } catch (jsonError) {
                             console.error('Ошибка парсинга JSON:', jsonError);
-                            // Если не удалось распарсить JSON, пробуем прочитать текст из клона
-                            try {
-                              const text = await responseClone.text();
-                              throw new Error(`Ошибка парсинга ответа: ${text}`);
-                            } catch (textError) {
-                              throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
-                            }
+                            const text = await response.text();
+                            throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}. ${text}`);
                           }
                           
                           if (response.ok && result.success) {
@@ -4006,9 +3730,6 @@
           
           // Загружаем баланс Monkey Coins
           await updateCoinsDisplay();
-          
-          // Загружаем статус Pro подписки
-          await loadProSubscriptionStatus();
         } catch (e) {
           const params = new URLSearchParams(window.location.search);
           const pid = params.get('tg_id');
@@ -4032,234 +3753,6 @@
             document.getElementById('profile-status').textContent = prole;
           }
         }
-      }
-
-      // Загрузка статуса Pro подписки
-      async function loadProSubscriptionStatus() {
-        try {
-          const params = new URLSearchParams(window.location.search);
-          const tgId = params.get('tg_id');
-          
-          if (!tgId) return;
-          
-          const subscription = await window.fetchJSON(`/api/profile/pro-subscription?tg_id=${tgId}`);
-          
-          const statusEl = document.getElementById('pro-subscription-status');
-          const infoEl = document.getElementById('pro-subscription-info');
-          const activateBtn = document.getElementById('activate-pro-btn');
-          const endDateEl = document.getElementById('pro-subscription-end');
-          const contestsCountEl = document.getElementById('pro-contests-count');
-          
-          if (subscription.active) {
-            if (statusEl) statusEl.textContent = 'Активна';
-            if (infoEl) infoEl.classList.remove('hidden');
-            if (activateBtn) activateBtn.textContent = 'Обновить';
-            if (endDateEl && subscription.end_date) {
-              const endDate = new Date(subscription.end_date);
-              endDateEl.textContent = endDate.toLocaleDateString('ru-RU', { 
-                day: '2-digit', 
-                month: '2-digit', 
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              });
-            }
-            if (contestsCountEl) {
-              contestsCountEl.textContent = subscription.contests_created || 0;
-            }
-          } else {
-            if (statusEl) statusEl.textContent = subscription.has_subscription ? 'Истекла' : 'Не активирована';
-            if (infoEl) infoEl.classList.add('hidden');
-            if (activateBtn) activateBtn.textContent = 'Активировать';
-          }
-          
-          // Сохраняем статус для использования в других функциях
-          window.proSubscriptionActive = subscription.active;
-        } catch (e) {
-          console.error('Ошибка загрузки статуса подписки:', e);
-        }
-      }
-
-      // Функция обновления цен конкурсов для пользователей
-      async function updateUserContestTypePrices() {
-        try {
-          const params = new URLSearchParams(window.location.search);
-          const tgId = params.get('tg_id');
-          
-          if (!tgId) return;
-          
-          // Проверяем активность Pro подписки
-          const subscription = await window.fetchJSON(`/api/profile/pro-subscription?tg_id=${tgId}`);
-          const isProActive = subscription.active || false;
-          
-          const balanceEl = document.getElementById('user-contest-type-selection-balance');
-          const balanceValueEl = document.getElementById('user-contest-type-selection-balance-value');
-          
-          if (isProActive) {
-            // Показываем баланс для Pro пользователей
-            if (balanceEl) balanceEl.classList.remove('hidden');
-            
-            // Загружаем баланс
-            try {
-              const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${tgId}`);
-              const balance = balanceResponse?.monkey_coins || 0;
-              if (balanceValueEl) {
-                balanceValueEl.innerHTML = `${balance} <img src="monkeyscoin.png" alt="Monkey Coin" class="w-4 h-4 object-contain inline">`;
-              }
-            } catch (error) {
-              console.error('Ошибка загрузки баланса для модалки:', error);
-            }
-          } else {
-            if (balanceEl) balanceEl.classList.add('hidden');
-          }
-        } catch (error) {
-          console.error('Ошибка обновления цен конкурсов:', error);
-        }
-      }
-
-      // Обработчик кнопки создания конкурса для пользователей
-      const userCreateContestBtn = document.getElementById('user-create-contest-btn');
-      if (userCreateContestBtn) {
-        userCreateContestBtn.addEventListener('click', () => {
-          // Показываем модалку выбора типа конкурса
-          const contestTypeModal = document.getElementById('user-contest-type-selection-modal');
-          if (contestTypeModal) {
-            contestTypeModal.classList.remove('hidden');
-            document.body.classList.add('modal-open');
-            // Обновляем цены для Pro пользователей
-            updateUserContestTypePrices();
-          }
-        });
-      }
-
-      // Обработчики для модалки выбора типа конкурса пользователей
-      const userContestTypeModal = document.getElementById('user-contest-type-selection-modal');
-      const closeUserContestTypeModal = document.getElementById('close-user-contest-type-selection-modal');
-      
-      if (closeUserContestTypeModal && userContestTypeModal) {
-        closeUserContestTypeModal.addEventListener('click', () => {
-          userContestTypeModal.classList.add('hidden');
-          document.body.classList.remove('modal-open');
-        });
-      }
-
-      // Обработчики выбора типа конкурса - открываем соответствующие модалки
-      // (Модалки для создания конкурсов нужно будет добавить из admin.html)
-      const userSelectRandomContest = document.getElementById('user-select-random-comment-contest');
-      const userSelectDrawingContest = document.getElementById('user-select-drawing-contest');
-      const userSelectCollectionContest = document.getElementById('user-select-collection-contest');
-      
-      if (userSelectRandomContest) {
-        userSelectRandomContest.addEventListener('click', () => {
-          // Закрываем модалку выбора типа
-          if (userContestTypeModal) {
-            userContestTypeModal.classList.add('hidden');
-          }
-          // TODO: Открыть модалку создания конкурса рандом комментариев
-          // (Нужно скопировать модалку contest-modal из admin.html)
-          alert('Модалка создания конкурса будет добавлена');
-        });
-      }
-      
-      if (userSelectDrawingContest) {
-        userSelectDrawingContest.addEventListener('click', () => {
-          // Закрываем модалку выбора типа
-          if (userContestTypeModal) {
-            userContestTypeModal.classList.add('hidden');
-          }
-          // TODO: Открыть модалку создания конкурса рисунков
-          // (Нужно скопировать модалку drawing-contest-modal из admin.html)
-          alert('Модалка создания конкурса будет добавлена');
-        });
-      }
-      
-      if (userSelectCollectionContest) {
-        userSelectCollectionContest.addEventListener('click', () => {
-          // Закрываем модалку выбора типа
-          if (userContestTypeModal) {
-            userContestTypeModal.classList.add('hidden');
-          }
-          // TODO: Открыть модалку создания конкурса коллекций
-          // (Нужно скопировать модалку collection-contest-modal из admin.html)
-          alert('Модалка создания конкурса будет добавлена');
-        });
-      }
-
-      // Обработчики для Pro подписки
-      const activateProBtn = document.getElementById('activate-pro-btn');
-      const proModal = document.getElementById('pro-subscription-modal');
-      const closeProModal = document.getElementById('close-pro-modal');
-      const confirmProActivation = document.getElementById('confirm-pro-activation');
-      
-      if (activateProBtn) {
-        activateProBtn.addEventListener('click', () => {
-          if (proModal) {
-            proModal.classList.remove('hidden');
-            document.body.classList.add('modal-open');
-          }
-        });
-      }
-      
-      if (closeProModal && proModal) {
-        closeProModal.addEventListener('click', () => {
-          proModal.classList.add('hidden');
-          document.body.classList.remove('modal-open');
-        });
-      }
-      
-      if (confirmProActivation) {
-        confirmProActivation.addEventListener('click', async () => {
-          const params = new URLSearchParams(window.location.search);
-          const tgId = params.get('tg_id');
-          
-          if (!tgId) {
-            alert('❌ Ошибка: не найден ID пользователя');
-            return;
-          }
-          
-          const channelLink = document.getElementById('pro-channel-link')?.value.trim();
-          const chatLink = document.getElementById('pro-chat-link')?.value.trim();
-          
-          if (!channelLink) {
-            alert('❌ Пожалуйста, укажите ссылку на канал');
-            return;
-          }
-          
-          try {
-            const response = await window.fetchJSON('/api/profile/activate-pro-subscription', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tg_id: parseInt(tgId),
-                channel_link: channelLink,
-                chat_link: chatLink || ''
-              })
-            });
-            
-            if (response.success) {
-              alert(response.message);
-              if (proModal) {
-                proModal.classList.add('hidden');
-                document.body.classList.remove('modal-open');
-              }
-              // Очищаем поля
-              document.getElementById('pro-channel-link').value = '';
-              document.getElementById('pro-chat-link').value = '';
-              // Обновляем статус
-              await loadProSubscriptionStatus();
-              await updateCoinsDisplay();
-              // Обновляем список конкурсов (чтобы показать кнопку создания)
-              if (typeof window.loadContests === 'function') {
-                await window.loadContests();
-              }
-            } else {
-              alert(response.message || '❌ Ошибка при активации подписки');
-            }
-          } catch (e) {
-            console.error('Ошибка активации подписки:', e);
-            alert('❌ Ошибка при активации подписки: ' + (e.message || 'Неизвестная ошибка'));
-          }
-        });
       }
 
       // Rating - загрузка рейтинга
@@ -4757,7 +4250,7 @@
           gridItem.style.overflow = 'hidden';
           
           // Нормализуем ссылку
-          const normalizedLink = nftLink.startsWith('http') ? nftLink : (nftLink ? 'https://' + nftLink : '');
+          const normalizedLink = normalizePrizeLink(nftLink);
           const previewUrl = `/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}`;
           
           gridItem.innerHTML = `
