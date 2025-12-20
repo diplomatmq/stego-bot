@@ -5027,10 +5027,14 @@ async def get_nft_preview(nft_link: str = Query(...)):
     from urllib.parse import urljoin
     
     try:
+        logger.info(f"🎨 NFT preview request for: {nft_link}")
+
         # Нормализуем ссылку
         if not nft_link.startswith('http'):
             nft_link = 'https://' + nft_link
-        
+
+        logger.info(f"🔗 Normalized NFT link: {nft_link}")
+
         # Сначала пытаемся получить изображение через парсинг HTML страницы
         # Это более надежный способ для Telegram NFT
         try:
@@ -5049,19 +5053,32 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             logger.info(f"✅ Найдено изображение через og:image: {image_url}")
 
                             # Вместо редиректа, скачиваем изображение и возвращаем его напрямую
+                            logger.info(f"🔄 Начинаем скачивание изображения: {image_url}")
                             try:
                                 async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    logger.info(f"📡 HTTP статус ответа: {img_resp.status}")
+                                    logger.info(f"📋 Заголовки ответа: {dict(img_resp.headers)}")
+
                                     if img_resp.status == 200:
                                         image_data = await img_resp.read()
                                         content_type = img_resp.headers.get('content-type', 'image/jpeg')
                                         logger.info(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
-                                        return Response(content=image_data, media_type=content_type)
+                                        logger.info(f"🔍 Первые 100 байт: {image_data[:100].hex()}")
+
+                                        # Добавляем CORS заголовки
+                                        response = Response(content=image_data, media_type=content_type)
+                                        response.headers["Access-Control-Allow-Origin"] = "*"
+                                        response.headers["Access-Control-Allow-Methods"] = "GET"
+                                        response.headers["Access-Control-Allow-Headers"] = "*"
+
+                                        return response
                                     else:
                                         logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
                             except Exception as download_error:
-                                logger.warning(f"Ошибка при скачивании изображения: {download_error}")
+                                logger.error(f"❌ Ошибка при скачивании изображения: {download_error}", exc_info=True)
 
                             # Если не удалось скачать, возвращаем редирект как fallback
+                            logger.info(f"🔄 Fallback: редирект на {image_url}")
                             return RedirectResponse(url=image_url, status_code=302)
                         
                         # Ищем обычный meta image
@@ -5071,19 +5088,27 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             logger.info(f"✅ Найдено изображение через meta image: {image_url}")
 
                             # Скачиваем изображение напрямую
+                            logger.info(f"🔄 Начинаем скачивание изображения (meta): {image_url}")
                             try:
                                 async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    logger.info(f"📡 HTTP статус ответа (meta): {img_resp.status}")
                                     if img_resp.status == 200:
                                         image_data = await img_resp.read()
                                         content_type = img_resp.headers.get('content-type', 'image/jpeg')
-                                        logger.info(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
-                                        return Response(content=image_data, media_type=content_type)
+                                        logger.info(f"✅ Скачано изображение (meta): {len(image_data)} байт, тип: {content_type}")
+
+                                        response = Response(content=image_data, media_type=content_type)
+                                        response.headers["Access-Control-Allow-Origin"] = "*"
+                                        response.headers["Access-Control-Allow-Methods"] = "GET"
+                                        response.headers["Access-Control-Allow-Headers"] = "*"
+                                        return response
                                     else:
-                                        logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
+                                        logger.warning(f"Не удалось скачать изображение (meta): HTTP {img_resp.status}")
                             except Exception as download_error:
-                                logger.warning(f"Ошибка при скачивании изображения: {download_error}")
+                                logger.error(f"❌ Ошибка при скачивании изображения (meta): {download_error}", exc_info=True)
 
                             # Fallback на редирект
+                            logger.info(f"🔄 Fallback (meta): редирект на {image_url}")
                             return RedirectResponse(url=image_url, status_code=302)
                         
                         # Ищем img теги с классом или id, связанными с NFT
@@ -5096,19 +5121,27 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             logger.info(f"✅ Найдено изображение через img тег: {image_url}")
 
                             # Скачиваем изображение напрямую
+                            logger.info(f"🔄 Начинаем скачивание изображения (img): {image_url}")
                             try:
                                 async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                    logger.info(f"📡 HTTP статус ответа (img): {img_resp.status}")
                                     if img_resp.status == 200:
                                         image_data = await img_resp.read()
                                         content_type = img_resp.headers.get('content-type', 'image/jpeg')
-                                        logger.info(f"✅ Скачано изображение: {len(image_data)} байт, тип: {content_type}")
-                                        return Response(content=image_data, media_type=content_type)
+                                        logger.info(f"✅ Скачано изображение (img): {len(image_data)} байт, тип: {content_type}")
+
+                                        response = Response(content=image_data, media_type=content_type)
+                                        response.headers["Access-Control-Allow-Origin"] = "*"
+                                        response.headers["Access-Control-Allow-Methods"] = "GET"
+                                        response.headers["Access-Control-Allow-Headers"] = "*"
+                                        return response
                                     else:
-                                        logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
+                                        logger.warning(f"Не удалось скачать изображение (img): HTTP {img_resp.status}")
                             except Exception as download_error:
-                                logger.warning(f"Ошибка при скачивании изображения: {download_error}")
+                                logger.error(f"❌ Ошибка при скачивании изображения (img): {download_error}", exc_info=True)
 
                             # Fallback на редирект
+                            logger.info(f"🔄 Fallback (img): редирект на {image_url}")
                             return RedirectResponse(url=image_url, status_code=302)
         except Exception as e:
             logger.debug(f"Не удалось получить изображение из HTML: {e}")
@@ -5143,7 +5176,12 @@ async def get_nft_preview(nft_link: str = Query(...)):
                                                 session = await bot.get_session()
                                                 if session:
                                                     await session.close()
-                                                return Response(content=file_data, media_type=content_type)
+
+                                                response = Response(content=file_data, media_type=content_type)
+                                                response.headers["Access-Control-Allow-Origin"] = "*"
+                                                response.headers["Access-Control-Allow-Methods"] = "GET"
+                                                response.headers["Access-Control-Allow-Headers"] = "*"
+                                                return response
                                             else:
                                                 logger.warning(f"Не удалось скачать файл: HTTP {file_resp.status}")
                                 except Exception as download_error:
