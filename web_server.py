@@ -5055,7 +5055,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             # Вместо редиректа, скачиваем изображение и возвращаем его напрямую
                             logger.info(f"🔄 Начинаем скачивание изображения: {image_url}")
                             try:
-                                async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                                async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as img_resp:
                                     logger.info(f"📡 HTTP статус ответа: {img_resp.status}")
                                     logger.info(f"📋 Заголовки ответа: {dict(img_resp.headers)}")
 
@@ -5066,12 +5066,15 @@ async def get_nft_preview(nft_link: str = Query(...)):
                                         logger.info(f"🔍 Первые 100 байт: {image_data[:100].hex()}")
 
                                         # Добавляем CORS заголовки
-                                        response = Response(content=image_data, media_type=content_type)
-                                        response.headers["Access-Control-Allow-Origin"] = "*"
-                                        response.headers["Access-Control-Allow-Methods"] = "GET"
-                                        response.headers["Access-Control-Allow-Headers"] = "*"
-
-                                        return response
+                                        return Response(
+                                            content=image_data,
+                                            media_type=content_type,
+                                            headers={
+                                                "Access-Control-Allow-Origin": "*",
+                                                "Access-Control-Allow-Methods": "GET",
+                                                "Access-Control-Allow-Headers": "*"
+                                            }
+                                        )
                                     else:
                                         logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
                             except Exception as download_error:
