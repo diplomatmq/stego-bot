@@ -1126,6 +1126,22 @@
   <!-- 🧠 Встроенная логика UI/загрузка -->
   <script>
     (function() {
+      // Функция для нормализации ссылок на NFT призы
+      function normalizePrizeLink(link) {
+        if (!link) return '';
+        link = link.trim();
+        // Если уже начинается с https:// или http://, возвращаем как есть
+        if (link.startsWith('http://') || link.startsWith('https://')) {
+          return link;
+        }
+        // Если начинается с t.me/, добавляем https://
+        if (link.startsWith('t.me/')) {
+          return 'https://' + link;
+        }
+        // Иначе добавляем https://
+        return 'https://' + link;
+      }
+
       let currentUserId = null; // ID текущего пользователя (creator)
       window.currentUserId = null; // Глобальная переменная для доступа из других функций
       let spinner, topNav, main, userView, contentSections, topNavButtons;
@@ -3120,18 +3136,6 @@
               // Показываем максимум 3 приза (за первые 3 места)
               const prizesToShow = c.prize_links.slice(0, Math.min(3, c.prize_links.length));
               
-              // Функция для нормализации ссылки на приз
-              function normalizePrizeLink(link) {
-                if (!link) return '';
-                link = link.trim();
-                if (link.startsWith('http://') || link.startsWith('https://')) {
-                  return link;
-                }
-                if (link.startsWith('t.me/')) {
-                  return 'https://' + link;
-                }
-                return 'https://' + link;
-              }
               
               // Функция для получения изображения NFT - используем img с загрузкой через API
               function getNFTImageHtml(link, idx) {
