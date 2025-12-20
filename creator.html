@@ -3120,7 +3120,9 @@
                     src="/api/nft-preview?nft_link=${encodeURIComponent(normalizedLink)}" 
                     alt="Приз ${idx + 1}"
                     class="w-full h-full object-cover rounded-lg prize-image"
-                    onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden');"
+                    style="background:#170017;min-height:120px;"
+                    onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden'); console.error('Ошибка загрузки NFT изображения', this.src);"
+                    onload="this.style.display='block'; this.nextElementSibling?.classList.add('hidden');"
                     loading="lazy"
                   />
                 `;
