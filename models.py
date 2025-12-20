@@ -22,10 +22,6 @@ class User(Base):
     ton_wallet = Column(String, nullable=True)  # TON кошелек пользователя
     monkey_coins = Column(Integer, default=0)  # Monkey Coins - внутренняя валюта
     purchased_items = Column(JSON, nullable=True)  # Купленные товары: {"themes": ["kitty", "mario"], "avatarStars": [], "nftGifts": []}
-    pro_subscription_start = Column(DateTime, nullable=True)  # Дата начала Pro подписки
-    pro_subscription_end = Column(DateTime, nullable=True)  # Дата окончания Pro подписки
-    pro_contests_created = Column(Integer, default=0)  # Количество созданных конкурсов за текущий период подписки
-    pro_last_topup_required = Column(Boolean, default=False)  # Требуется ли пополнение баланса на 50+ для следующей активации
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -57,7 +53,6 @@ class Giveaway(Base):
     contest_type = Column(String, default="random_comment")  # Тип конкурса: "random_comment" или "drawing"
     submission_end_date = Column(DateTime, nullable=True)  # Дата окончания приема работ (для конкурса рисунков, МСК)
     jury = Column(JSON, nullable=True)  # Данные жюри: {"enabled": true/false, "members": [{"user_id": 123, "channel_link": "t.me/..."}, ...]}
-    audience_voting = Column(JSON, nullable=True)  # Настройки зрительских симпатий: {"enabled": true/false, "participants_can_vote": true/false}
 
 class Winner(Base):
     __tablename__ = "winners"
@@ -70,6 +65,7 @@ class Winner(Base):
     user_username = Column(String, nullable=True)  # username победителя
     prize_link = Column(String, nullable=True)  # Ссылка на приз, который выиграл пользователь
     place = Column(Integer, nullable=True)  # Место победителя (1, 2, 3 и т.д.)
+    reroll_count = Column(Integer, default=0)  # Количество реролов для этого победителя
     created_at = Column(DateTime, default=utcnow_naive)
 
 class History(Base):
