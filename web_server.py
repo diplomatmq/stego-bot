@@ -5025,7 +5025,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
     import aiohttp
     import re
     from urllib.parse import urljoin
-    
+
     try:
         logger.info(f"🎨 NFT preview request for: {nft_link}")
 
@@ -5037,15 +5037,18 @@ async def get_nft_preview(nft_link: str = Query(...)):
 
         # Сначала пытаемся получить изображение через парсинг HTML страницы
         # Это более надежный способ для Telegram NFT
+        logger.info(f"🔍 Начинаем парсинг HTML страницы: {nft_link}")
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(follow_redirects=True) as session:
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                 }
                 async with session.get(nft_link, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    logger.info(f"📡 Статус ответа страницы NFT: {resp.status}")
                     if resp.status == 200:
                         html = await resp.text()
-                        
+                        logger.info(f"📄 Получен HTML контент, длина: {len(html)} символов")
+
                         # Ищем og:image в мета-тегах
                         og_image_match = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
                         if og_image_match:
@@ -5056,7 +5059,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             logger.info(f"🔄 Начинаем скачивание изображения: {image_url}")
                             try:
                                 async with session.get(image_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as img_resp:
-                                    logger.info(f"📡 HTTP статус ответа: {img_resp.status}")
+                                    logger.info(f"📡 HTTP статус ответа изображения: {img_resp.status}")
                                     logger.info(f"📋 Заголовки ответа: {dict(img_resp.headers)}")
 
                                     if img_resp.status == 200:
@@ -5066,6 +5069,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
                                         logger.info(f"🔍 Первые 100 байт: {image_data[:100].hex()}")
 
                                         # Добавляем CORS заголовки
+                                        logger.info("📤 Возвращаем изображение напрямую в ответе")
                                         return Response(
                                             content=image_data,
                                             media_type=content_type,
@@ -5075,6 +5079,14 @@ async def get_nft_preview(nft_link: str = Query(...)):
                                                 "Access-Control-Allow-Headers": "*"
                                             }
                                         )
+                                    elif img_resp.status in (301, 302, 303, 307, 308):
+                                        redirect_url = img_resp.headers.get('Location')
+                                        logger.info(f"🔄 Получен редирект {img_resp.status} на: {redirect_url}")
+                                        if redirect_url:
+                                            logger.info(f"🔄 Следуем редиректу на: {redirect_url}")
+                                            return RedirectResponse(url=redirect_url, status_code=302)
+                                        else:
+                                            logger.warning(f"Редирект без Location заголовка: {img_resp.status}")
                                     else:
                                         logger.warning(f"Не удалось скачать изображение: HTTP {img_resp.status}")
                             except Exception as download_error:
@@ -5084,6 +5096,9 @@ async def get_nft_preview(nft_link: str = Query(...)):
                             logger.info(f"🔄 Fallback: редирект на {image_url}")
                             return RedirectResponse(url=image_url, status_code=302)
                         
+                        else:
+                            logger.info("❌ og:image не найден в HTML")
+
                         # Ищем обычный meta image
                         image_match = re.search(r'<meta\s+name=["\']image["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
                         if image_match:
@@ -5150,14 +5165,17 @@ async def get_nft_preview(nft_link: str = Query(...)):
             logger.debug(f"Не удалось получить изображение из HTML: {e}")
         
         # Альтернативный способ: пытаемся получить превью через Telegram Bot API
+        logger.info("🤖 Пробуем получить превью через Telegram Bot API")
         try:
             from aiogram import Bot
             from config import BOT_TOKEN
-            
+
             bot = Bot(token=BOT_TOKEN)
             try:
+                logger.info(f"📡 Запрос превью через Bot API для: {nft_link}")
                 preview = await bot.get_web_page_preview(url=nft_link)
-                
+                logger.info(f"📋 Получен ответ от Bot API: {preview}")
+
                 if preview and hasattr(preview, 'photo') and preview.photo:
                     photo = preview.photo
                     if hasattr(photo, 'sizes') and photo.sizes:
@@ -5210,6 +5228,7 @@ async def get_nft_preview(nft_link: str = Query(...)):
         
         # Если ничего не получилось, возвращаем прозрачный пиксель
         logger.warning(f"⚠️ Не удалось получить изображение для NFT: {nft_link}")
+        logger.info("🖼️ Возвращаем прозрачный пиксель как fallback")
         transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
         return Response(content=transparent_pixel, media_type="image/png")
     except Exception as e:
