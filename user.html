@@ -2118,59 +2118,144 @@
       window.showDrawingResults = async function(contestId) {
         try {
           const response = await window.fetchJSON(`/api/contests/${contestId}/results`);
-          
+
           if (!response.results_calculated) {
             alert('Итоги еще не подсчитаны');
             return;
           }
-          
-          const results = response.results || [];
+
+          const juryResults = response.jury_results || [];
+          const audienceResults = response.audience_results || [];
+          const juryEnabled = response.jury_enabled || false;
+          const audienceVotingEnabled = response.audience_voting_enabled || false;
+
           const resultsModal = document.getElementById('drawing-results-modal');
           const resultsContent = document.getElementById('drawing-results-content');
-          
+
           if (!resultsModal || !resultsContent) {
             alert('Модальное окно не найдено');
             return;
           }
-          
-          // Формируем HTML с итогами
-          let resultsHtml = '<div class="space-y-4">';
-          
-          for (const result of results) {
-            const place = result.place;
-            const username = result.username || '';
-            const userId = result.participant_user_id;
-            const userDisplay = username ? `${username} (ID: ${userId})` : `ID: ${userId}`;
-            const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
-            const prizeLink = result.prize_link;
-            const averageScore = result.average_score || 0;
-            const votesCount = result.votes_count || 0;
-            
-            resultsHtml += `
-              <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
-                <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
-                <div class="text-sm text-gray-300 mb-3">
-                  ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
-                  <span class="text-gray-400">(ID: ${userId})</span>
-                </div>
-                <div class="mb-3">
-                  <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
-                </div>
-                <div class="text-sm text-gray-400 mb-3">
-                  Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
-                </div>
-                ${prizeLink ? `
-                  <div class="text-sm">
-                    <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
-                  </div>
-                ` : ''}
+
+          // Создаем HTML для кнопок переключения таблиц
+          let tableSwitcherHtml = '';
+          if (juryEnabled && audienceVotingEnabled) {
+            tableSwitcherHtml = `
+              <div class="flex justify-center gap-2 mb-4">
+                <button id="jury-table-btn" class="neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/60 border border-violet-500/40 active">
+                  📋 Таблица жюри
+                </button>
+                <button id="audience-table-btn" class="neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/40 border border-violet-500/20">
+                  👥 Таблица участников
+                </button>
               </div>
             `;
           }
-          
-          resultsHtml += '</div>';
+
+          // Функция для генерации HTML результатов
+          function generateResultsHtml(results) {
+            if (!results || results.length === 0) {
+              return '<div class="text-center text-gray-400 py-8">Нет результатов для отображения</div>';
+            }
+
+            let resultsHtml = '<div class="space-y-4">';
+
+            for (const result of results) {
+              const place = result.place;
+              const username = result.username || '';
+              const userId = result.participant_user_id;
+              const userDisplay = username ? `${username} (ID: ${userId})` : `ID: ${userId}`;
+              const imageUrl = `/api/drawing-contests/${contestId}/works/${result.work_number}/image`;
+              const prizeLink = result.prize_link;
+              const averageScore = result.average_score || 0;
+              const votesCount = result.votes_count || 0;
+
+              resultsHtml += `
+                <div class="rounded-lg border border-violet-400/30 p-4 bg-black/30">
+                  <div class="text-2xl font-bold text-violet-400 mb-2">${place} место</div>
+                  <div class="text-sm text-gray-300 mb-3">
+                    ${username ? `<span class="font-semibold text-violet-400">${username}</span> ` : ''}
+                    <span class="text-gray-400">(ID: ${userId})</span>
+                  </div>
+                  <div class="mb-3">
+                    <img src="${imageUrl}" alt="Работа ${result.work_number}" class="w-full rounded-lg max-h-64 object-contain" />
+                  </div>
+                  <div class="text-sm text-gray-400 mb-3">
+                    Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
+                  </div>
+                  ${prizeLink ? `
+                    <div class="text-sm">
+                      <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }
+
+            resultsHtml += '</div>';
+            return resultsHtml;
+          }
+
+          // Определяем, какие результаты показывать по умолчанию
+          let currentResults = juryResults;
+          let currentTableType = 'jury';
+
+          if (juryEnabled && audienceVotingEnabled) {
+            // Если есть обе таблицы, показываем жюри по умолчанию
+            currentResults = juryResults;
+            currentTableType = 'jury';
+          } else if (juryEnabled) {
+            // Только жюри
+            currentResults = juryResults;
+            currentTableType = 'jury';
+          } else if (audienceVotingEnabled) {
+            // Только участники
+            currentResults = audienceResults;
+            currentTableType = 'audience';
+          }
+
+          // Формируем HTML с итогами
+          let resultsHtml = tableSwitcherHtml + generateResultsHtml(currentResults);
           resultsContent.innerHTML = resultsHtml;
-          
+
+          // Добавляем обработчики для кнопок переключения таблиц
+          if (juryEnabled && audienceVotingEnabled) {
+            const juryTableBtn = document.getElementById('jury-table-btn');
+            const audienceTableBtn = document.getElementById('audience-table-btn');
+
+            if (juryTableBtn && audienceTableBtn) {
+              juryTableBtn.addEventListener('click', function() {
+                juryTableBtn.classList.add('active');
+                juryTableBtn.classList.add('bg-violet-500/60', 'border-violet-500/40');
+                juryTableBtn.classList.remove('bg-violet-500/40', 'border-violet-500/20');
+                audienceTableBtn.classList.remove('active');
+                audienceTableBtn.classList.remove('bg-violet-500/60', 'border-violet-500/40');
+                audienceTableBtn.classList.add('bg-violet-500/40', 'border-violet-500/20');
+
+                const resultsContainer = document.querySelector('#drawing-results-content .space-y-4') ||
+                                       document.querySelector('#drawing-results-content > div:last-child');
+                if (resultsContainer) {
+                  resultsContainer.innerHTML = generateResultsHtml(juryResults);
+                }
+              });
+
+              audienceTableBtn.addEventListener('click', function() {
+                audienceTableBtn.classList.add('active');
+                audienceTableBtn.classList.add('bg-violet-500/60', 'border-violet-500/40');
+                audienceTableBtn.classList.remove('bg-violet-500/40', 'border-violet-500/20');
+                juryTableBtn.classList.remove('active');
+                juryTableBtn.classList.remove('bg-violet-500/60', 'border-violet-500/40');
+                juryTableBtn.classList.add('bg-violet-500/40', 'border-violet-500/20');
+
+                const resultsContainer = document.querySelector('#drawing-results-content .space-y-4') ||
+                                       document.querySelector('#drawing-results-content > div:last-child');
+                if (resultsContainer) {
+                  resultsContainer.innerHTML = generateResultsHtml(audienceResults);
+                }
+              });
+            }
+          }
+
           // Открываем модальное окно
           resultsModal.classList.remove('hidden');
         } catch (e) {
