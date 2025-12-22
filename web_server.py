@@ -5520,65 +5520,79 @@ async def get_nft_info(nft_link: str) -> dict:
         if not nft_link or not SEE_TG_API_KEY:
             return {"error": "Invalid NFT link or API key not configured"}
 
-        # Извлекаем ID NFT из ссылки
-        # Ссылки могут быть в формате: https://fragment.com/nft/{id} или https://getgems.io/nft/{id} или другие
+        # Нормализуем ссылку - добавляем https если отсутствует
+        if not nft_link.startswith('http'):
+            nft_link = 'https://' + nft_link
+
+        # Извлекаем параметры из ссылки для поиска в API see.tg
         import re
+        from urllib.parse import urlparse
 
-        # Попробуем извлечь ID из различных форматов ссылок
-        nft_id = None
+        parsed_url = urlparse(nft_link)
+        path_parts = parsed_url.path.strip('/').split('/')
 
-        # Для Fragment: https://fragment.com/nft/{id}
-        match = re.search(r'fragment\.com/nft/([A-Za-z0-9]+)', nft_link)
-        if match:
-            nft_id = match.group(1)
-        else:
-            # Для GetGems: https://getgems.io/nft/{id}
-            match = re.search(r'getgems\.io/nft/([A-Za-z0-9]+)', nft_link)
-            if match:
-                nft_id = match.group(1)
-            else:
-                # Для других форматов пробуем извлечь последний сегмент URL
-                from urllib.parse import urlparse
-                parsed_url = urlparse(nft_link)
-                path_parts = parsed_url.path.strip('/').split('/')
-                if path_parts and len(path_parts[-1]) > 10:  # Предполагаем что ID достаточно длинный
-                    nft_id = path_parts[-1]
-
-        if not nft_id:
-            return {"error": "Could not extract NFT ID from link", "link": nft_link}
-
-        # Делаем запрос к API see.tg
-        api_url = f"https://api.see.tg/nft/{nft_id}"
-        headers = {
-            "Authorization": f"Bearer {SEE_TG_API_KEY}",
-            "Content-Type": "application/json"
+        # Параметры для поиска в API
+        search_params = {
+            'app_token': SEE_TG_API_KEY,
+            'limit': 1
         }
 
-        response = requests.get(api_url, headers=headers, timeout=10)
+        # Попробуем извлечь slug или другие идентификаторы
+        slug = None
+        num = None
+
+        # Для Telegram NFT ссылок: https://t.me/nft/{slug}-{num}
+        if 't.me' in nft_link and '/nft/' in nft_link:
+            # Извлекаем slug и номер
+            match = re.search(r'/nft/([^-]+)-(\d+)', nft_link)
+            if match:
+                slug = match.group(1)
+                num = match.group(2)
+                search_params['slug'] = slug
+                search_params['num'] = num
+
+        # Если не нашли slug/num, используем URL
+        if not slug:
+            search_params['url'] = nft_link
+
+        # Делаем запрос к API see.tg
+        api_url = "https://api.see.tg/gifts"
+
+        response = requests.get(api_url, params=search_params, timeout=10)
 
         if response.status_code == 200:
-            nft_data = response.json()
-            return {
-                "success": True,
-                "nft_id": nft_id,
-                "name": nft_data.get("name", "Unknown NFT"),
-                "description": nft_data.get("description", ""),
-                "image": nft_data.get("image", ""),
-                "collection": nft_data.get("collection", {}).get("name", "") if nft_data.get("collection") else "",
-                "owner": nft_data.get("owner", {}).get("username", "") if nft_data.get("owner") else "",
-                "price": nft_data.get("price", ""),
-                "attributes": nft_data.get("attributes", []),
-                "link": nft_link
-            }
+            api_data = response.json()
+
+            if api_data.get('gifts') and len(api_data['gifts']) > 0:
+                gift = api_data['gifts'][0]  # Берем первый результат
+
+                return {
+                    "success": True,
+                    "id": gift.get("id"),
+                    "gift_id": gift.get("gift_id"),
+                    "name": gift.get("title", "Unknown NFT"),
+                    "slug": gift.get("slug"),
+                    "num": gift.get("num"),
+                    "model_name": gift.get("model_name"),
+                    "pattern_name": gift.get("pattern_name"),
+                    "backdrop_name": gift.get("backdrop_name"),
+                    "current_owner_id": gift.get("current_owner_id"),
+                    "url": gift.get("url"),
+                    "updated_at": gift.get("updated_at"),
+                    "link": nft_link
+                }
+            else:
+                return {
+                    "error": "No NFT found for this link",
+                    "link": nft_link
+                }
         else:
             return {
                 "error": f"API request failed with status {response.status_code}",
-                "link": nft_link,
-                "nft_id": nft_id
+                "link": nft_link
             }
 
     except Exception as e:
-        logger.error(f"Error fetching NFT info for {nft_link}: {e}")
         return {
             "error": str(e),
             "link": nft_link
@@ -5589,7 +5603,6 @@ async def get_nft_info(nft_link: str) -> dict:
 async def get_nft_info_endpoint(nft_link: str = Query(...)):
     """Получить информацию о NFT через API see.tg"""
     try:
-        logger.info(f"🔍 Запрос информации о NFT: {nft_link}")
         nft_info = await get_nft_info(nft_link)
 
         return {
@@ -5597,7 +5610,6 @@ async def get_nft_info_endpoint(nft_link: str = Query(...)):
             "nft_info": nft_info
         }
     except Exception as e:
-        logger.error(f"❌ Ошибка при получении информации о NFT {nft_link}: {e}")
         return {
             "success": False,
             "error": str(e),
@@ -5606,6 +5618,8 @@ async def get_nft_info_endpoint(nft_link: str = Query(...)):
                 "link": nft_link
             }
         }
+
+
 
 
 def save_collection_data(data: dict) -> None:
