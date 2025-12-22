@@ -3821,7 +3821,6 @@
           }
           return null;
         } catch (e) {
-          console.error('Ошибка загрузки NFT информации:', e);
           return null;
         }
       }
@@ -3980,6 +3979,7 @@
 
           // Загружаем информацию о NFT для призов
           const allResults = [...juryResults, ...audienceResults];
+
           for (const result of allResults) {
             if (result.prize_link) {
               const prizeElement = document.getElementById(`prize-link-${result.place}`);
@@ -3995,12 +3995,20 @@
                       nftHtml += `<div class="font-semibold text-violet-400">${nftInfo.name}</div>`;
                     }
 
-                    if (nftInfo.collection) {
-                      nftHtml += `<div class="text-gray-400">Коллекция: ${nftInfo.collection}</div>`;
+                    if (nftInfo.model_name) {
+                      nftHtml += `<div class="text-gray-400">Модель: ${nftInfo.model_name}</div>`;
                     }
 
-                    if (nftInfo.owner) {
-                      nftHtml += `<div class="text-gray-400">Владелец: ${nftInfo.owner}</div>`;
+                    if (nftInfo.pattern_name) {
+                      nftHtml += `<div class="text-gray-400">Паттерн: ${nftInfo.pattern_name}</div>`;
+                    }
+
+                    if (nftInfo.backdrop_name) {
+                      nftHtml += `<div class="text-gray-400">Фон: ${nftInfo.backdrop_name}</div>`;
+                    }
+
+                    if (nftInfo.num) {
+                      nftHtml += `<div class="text-gray-400">Номер: #${nftInfo.num}</div>`;
                     }
 
                     nftHtml += '</div>';
