@@ -12,7 +12,7 @@ import hashlib
 from sqlalchemy.future import select
 from db import async_session, init_db, IS_SQLITE
 from models import User
-from config import CREATOR_ID, BOT_TOKEN, TON_WALLET, CRYPTOBOT_API_TOKEN, CRYPTOBOT_API_URL
+from config import CREATOR_ID, BOT_TOKEN, TON_WALLET, CRYPTOBOT_API_TOKEN, CRYPTOBOT_API_URL, SEE_TG_API_KEY
 import cryptobot
 import pytz
 import os
@@ -20,6 +20,7 @@ import json
 import asyncio
 import time
 import mimetypes
+import requests
 from aiogram import Bot
 from giveaway import select_winners_from_contest, reroll_single_winner, confirm_winners, send_congratulations_messages
 import re
@@ -5511,6 +5512,100 @@ def load_collection_data() -> dict:
     except Exception as e:
         logger.error(f"Не удалось прочитать файл данных конкурсов коллекций: {e}")
         return {}
+
+
+async def get_nft_info(nft_link: str) -> dict:
+    """Получить информацию о NFT через API see.tg"""
+    try:
+        if not nft_link or not SEE_TG_API_KEY:
+            return {"error": "Invalid NFT link or API key not configured"}
+
+        # Извлекаем ID NFT из ссылки
+        # Ссылки могут быть в формате: https://fragment.com/nft/{id} или https://getgems.io/nft/{id} или другие
+        import re
+
+        # Попробуем извлечь ID из различных форматов ссылок
+        nft_id = None
+
+        # Для Fragment: https://fragment.com/nft/{id}
+        match = re.search(r'fragment\.com/nft/([A-Za-z0-9]+)', nft_link)
+        if match:
+            nft_id = match.group(1)
+        else:
+            # Для GetGems: https://getgems.io/nft/{id}
+            match = re.search(r'getgems\.io/nft/([A-Za-z0-9]+)', nft_link)
+            if match:
+                nft_id = match.group(1)
+            else:
+                # Для других форматов пробуем извлечь последний сегмент URL
+                from urllib.parse import urlparse
+                parsed_url = urlparse(nft_link)
+                path_parts = parsed_url.path.strip('/').split('/')
+                if path_parts and len(path_parts[-1]) > 10:  # Предполагаем что ID достаточно длинный
+                    nft_id = path_parts[-1]
+
+        if not nft_id:
+            return {"error": "Could not extract NFT ID from link", "link": nft_link}
+
+        # Делаем запрос к API see.tg
+        api_url = f"https://api.see.tg/nft/{nft_id}"
+        headers = {
+            "Authorization": f"Bearer {SEE_TG_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(api_url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            nft_data = response.json()
+            return {
+                "success": True,
+                "nft_id": nft_id,
+                "name": nft_data.get("name", "Unknown NFT"),
+                "description": nft_data.get("description", ""),
+                "image": nft_data.get("image", ""),
+                "collection": nft_data.get("collection", {}).get("name", "") if nft_data.get("collection") else "",
+                "owner": nft_data.get("owner", {}).get("username", "") if nft_data.get("owner") else "",
+                "price": nft_data.get("price", ""),
+                "attributes": nft_data.get("attributes", []),
+                "link": nft_link
+            }
+        else:
+            return {
+                "error": f"API request failed with status {response.status_code}",
+                "link": nft_link,
+                "nft_id": nft_id
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching NFT info for {nft_link}: {e}")
+        return {
+            "error": str(e),
+            "link": nft_link
+        }
+
+
+@app.get("/api/nft-info")
+async def get_nft_info_endpoint(nft_link: str = Query(...)):
+    """Получить информацию о NFT через API see.tg"""
+    try:
+        logger.info(f"🔍 Запрос информации о NFT: {nft_link}")
+        nft_info = await get_nft_info(nft_link)
+
+        return {
+            "success": True,
+            "nft_info": nft_info
+        }
+    except Exception as e:
+        logger.error(f"❌ Ошибка при получении информации о NFT {nft_link}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "nft_info": {
+                "error": str(e),
+                "link": nft_link
+            }
+        }
 
 
 def save_collection_data(data: dict) -> None:
