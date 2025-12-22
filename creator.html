@@ -3827,6 +3827,7 @@
           const juryEnabled = response.jury_enabled || false;
           const audienceVotingEnabled = response.audience_voting_enabled || false;
 
+
           const resultsModal = document.getElementById('drawing-results-modal');
           const resultsContent = document.getElementById('drawing-results-content');
 
@@ -3837,7 +3838,11 @@
 
           // Создаем HTML для кнопок переключения таблиц
           let tableSwitcherHtml = '';
-          if (juryEnabled && audienceVotingEnabled) {
+          const hasJuryResults = juryResults && juryResults.length > 0;
+          const hasAudienceResults = audienceResults && audienceResults.length > 0;
+
+
+          if (hasJuryResults && hasAudienceResults) {
             tableSwitcherHtml = `
               <div class="flex justify-center gap-2 mb-4">
                 <button id="jury-table-btn" class="neon-button px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500/60 border border-violet-500/40 active">
@@ -3898,15 +3903,15 @@
           let currentResults = juryResults;
           let currentTableType = 'jury';
 
-          if (juryEnabled && audienceVotingEnabled) {
+          if (hasJuryResults && hasAudienceResults) {
             // Если есть обе таблицы, показываем жюри по умолчанию
             currentResults = juryResults;
             currentTableType = 'jury';
-          } else if (juryEnabled) {
+          } else if (hasJuryResults) {
             // Только жюри
             currentResults = juryResults;
             currentTableType = 'jury';
-          } else if (audienceVotingEnabled) {
+          } else if (hasAudienceResults) {
             // Только участники
             currentResults = audienceResults;
             currentTableType = 'audience';
@@ -3917,7 +3922,7 @@
           resultsContent.innerHTML = resultsHtml;
 
           // Добавляем обработчики для кнопок переключения таблиц
-          if (juryEnabled && audienceVotingEnabled) {
+          if (hasJuryResults && hasAudienceResults) {
             const juryTableBtn = document.getElementById('jury-table-btn');
             const audienceTableBtn = document.getElementById('audience-table-btn');
 
