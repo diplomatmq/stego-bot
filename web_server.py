@@ -5524,6 +5524,8 @@ async def get_nft_info(nft_link: str) -> dict:
         if not nft_link.startswith('http'):
             nft_link = 'https://' + nft_link
 
+        logger.info(f"🔍 Fetching NFT info for link: {nft_link}")
+
         # Извлекаем параметры из ссылки для поиска в API see.tg
         import re
         from urllib.parse import urlparse
@@ -5550,21 +5552,27 @@ async def get_nft_info(nft_link: str) -> dict:
                 num = match.group(2)
                 search_params['slug'] = slug
                 search_params['num'] = num
+                logger.info(f"📝 Extracted from Telegram URL: slug={slug}, num={num}")
 
         # Если не нашли slug/num, используем URL
         if not slug:
             search_params['url'] = nft_link
+            logger.info(f"📝 Using URL for search: {nft_link}")
 
         # Делаем запрос к API see.tg
         api_url = "https://api.see.tg/gifts"
+        logger.info(f"🌐 Making API request to {api_url} with params: {search_params}")
 
         response = requests.get(api_url, params=search_params, timeout=10)
+        logger.info(f"📡 API response status: {response.status_code}")
 
         if response.status_code == 200:
             api_data = response.json()
+            logger.info(f"📦 API response data: {api_data}")
 
             if api_data.get('gifts') and len(api_data['gifts']) > 0:
                 gift = api_data['gifts'][0]  # Берем первый результат
+                logger.info(f"✅ Found NFT: {gift.get('title')}")
 
                 return {
                     "success": True,
@@ -5582,17 +5590,20 @@ async def get_nft_info(nft_link: str) -> dict:
                     "link": nft_link
                 }
             else:
+                logger.warning(f"⚠️ No gifts found in API response for link: {nft_link}")
                 return {
                     "error": "No NFT found for this link",
                     "link": nft_link
                 }
         else:
+            logger.error(f"❌ API request failed with status {response.status_code}: {response.text}")
             return {
                 "error": f"API request failed with status {response.status_code}",
                 "link": nft_link
             }
 
     except Exception as e:
+        logger.error(f"💥 Error fetching NFT info for {nft_link}: {e}", exc_info=True)
         return {
             "error": str(e),
             "link": nft_link
@@ -5603,6 +5614,7 @@ async def get_nft_info(nft_link: str) -> dict:
 async def get_nft_info_endpoint(nft_link: str = Query(...)):
     """Получить информацию о NFT через API see.tg"""
     try:
+        logger.info(f"🔍 Запрос информации о NFT: {nft_link}")
         nft_info = await get_nft_info(nft_link)
 
         return {
@@ -5610,6 +5622,7 @@ async def get_nft_info_endpoint(nft_link: str = Query(...)):
             "nft_info": nft_info
         }
     except Exception as e:
+        logger.error(f"❌ Ошибка при получении информации о NFT {nft_link}: {e}")
         return {
             "success": False,
             "error": str(e),
