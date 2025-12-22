@@ -21,3 +21,6 @@ CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
 # Используйте IP адрес вашего сервера с HTTPS (например: https://90.156.211.211)
 # Или домен, если есть (например: https://yourdomain.com)
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://90.156.211.211")
+
+# See.tg API конфигурация для получения информации о NFT
+SEE_TG_API_KEY = os.getenv("SEE_TG_API_KEY", "e9920398-1667-4f87-8b10-87f8ffda7d01:873a587224a276e557a0ee8871088a6748134807d7dd08e817ab89b21cd36e98")
