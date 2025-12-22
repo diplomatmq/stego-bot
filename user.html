@@ -2117,10 +2117,14 @@
       // Функция для загрузки информации о NFT через API see.tg
       async function loadNFTInfo(nftLink) {
         try {
+          console.log('🎨 loadNFTInfo called with link:', nftLink);
           const response = await window.fetchJSON(`/api/nft-info?nft_link=${encodeURIComponent(nftLink)}`);
+          console.log('🎨 loadNFTInfo response:', response);
           if (response.success && response.nft_info && !response.nft_info.error) {
+            console.log('🎨 loadNFTInfo returning:', response.nft_info);
             return response.nft_info;
           }
+          console.log('🎨 loadNFTInfo returning null');
           return null;
         } catch (e) {
           console.error('Ошибка загрузки NFT информации:', e);
@@ -2131,7 +2135,9 @@
       // Функция для отображения итогов конкурса рисунков
       window.showDrawingResults = async function(contestId) {
         try {
+          console.log('🎯 showDrawingResults called with contestId:', contestId);
           const response = await window.fetchJSON(`/api/contests/${contestId}/results`);
+          console.log('🎯 showDrawingResults response:', response);
 
           if (!response.results_calculated) {
             alert('Итоги еще не подсчитаны');
@@ -2281,15 +2287,23 @@
           }
 
           // Загружаем информацию о NFT для призов
+          console.log('🎁 Loading NFT info for prizes...');
           const allResults = [...juryResults, ...audienceResults];
+          console.log('🎁 All results:', allResults);
           for (const result of allResults) {
+            console.log('🎁 Processing result:', result);
             if (result.prize_link) {
+              console.log('🎁 Found prize_link:', result.prize_link);
               const prizeElement = document.getElementById(`prize-link-${result.place}`);
               const nftInfoElement = document.getElementById(`nft-info-${result.place}`);
 
+              console.log('🎁 Elements found:', !!prizeElement, !!nftInfoElement);
+
               if (prizeElement && nftInfoElement) {
                 try {
+                  console.log('🎁 Calling loadNFTInfo for:', result.prize_link);
                   const nftInfo = await loadNFTInfo(result.prize_link);
+                  console.log('🎁 NFT info result:', nftInfo);
                   if (nftInfo) {
                     let nftHtml = '<div class="mt-2 p-2 rounded bg-black/20 border border-violet-400/20 text-xs">';
 
