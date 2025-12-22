@@ -2114,6 +2114,20 @@
         }
       };
       
+      // Функция для загрузки информации о NFT через API see.tg
+      async function loadNFTInfo(nftLink) {
+        try {
+          const response = await window.fetchJSON(`/api/nft-info?nft_link=${encodeURIComponent(nftLink)}`);
+          if (response.success && response.nft_info && !response.nft_info.error) {
+            return response.nft_info;
+          }
+          return null;
+        } catch (e) {
+          console.error('Ошибка загрузки NFT информации:', e);
+          return null;
+        }
+      }
+
       // Функция для отображения итогов конкурса рисунков
       window.showDrawingResults = async function(contestId) {
         try {
@@ -2188,11 +2202,16 @@
                   <div class="text-sm text-gray-400 mb-3">
                     Средняя оценка: <span class="text-violet-400 font-semibold">${averageScore.toFixed(2)}</span> (${votesCount} ${votesCount === 1 ? 'оценка' : votesCount < 5 ? 'оценки' : 'оценок'})
                   </div>
-                  ${prizeLink ? `
-                    <div class="text-sm">
-                      <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold">🎁 Приз</a>
+                ${prizeLink ? `
+                  <div class="text-sm">
+                    <a href="${prizeLink.startsWith('http') ? prizeLink : 'https://' + prizeLink}" target="_blank" class="text-pink-400 hover:underline font-semibold" id="prize-link-${result.place}">
+                      🎁 Приз
+                    </a>
+                    <div id="nft-info-${result.place}" class="mt-1 hidden">
+                      <!-- Информация о NFT будет загружена сюда -->
                     </div>
-                  ` : ''}
+                  </div>
+                ` : ''}
                 </div>
               `;
             }
@@ -2258,6 +2277,47 @@
                   resultsContainer.innerHTML = generateResultsHtml(audienceResults);
                 }
               });
+            }
+          }
+
+          // Загружаем информацию о NFT для призов
+          const allResults = [...juryResults, ...audienceResults];
+          for (const result of allResults) {
+            if (result.prize_link) {
+              const prizeElement = document.getElementById(`prize-link-${result.place}`);
+              const nftInfoElement = document.getElementById(`nft-info-${result.place}`);
+
+              if (prizeElement && nftInfoElement) {
+                try {
+                  const nftInfo = await loadNFTInfo(result.prize_link);
+                  if (nftInfo) {
+                    let nftHtml = '<div class="mt-2 p-2 rounded bg-black/20 border border-violet-400/20 text-xs">';
+
+                    if (nftInfo.name) {
+                      nftHtml += `<div class="font-semibold text-violet-400">${nftInfo.name}</div>`;
+                    }
+
+                    if (nftInfo.collection) {
+                      nftHtml += `<div class="text-gray-400">Коллекция: ${nftInfo.collection}</div>`;
+                    }
+
+                    if (nftInfo.owner) {
+                      nftHtml += `<div class="text-gray-400">Владелец: ${nftInfo.owner}</div>`;
+                    }
+
+                    nftHtml += '</div>';
+                    nftInfoElement.innerHTML = nftHtml;
+                    nftInfoElement.classList.remove('hidden');
+
+                    // Меняем текст ссылки на более информативный
+                    if (nftInfo.name) {
+                      prizeElement.textContent = `🎁 ${nftInfo.name}`;
+                    }
+                  }
+                } catch (e) {
+                  console.error('Ошибка загрузки NFT информации для приза:', result.prize_link, e);
+                }
+              }
             }
           }
 
