@@ -3856,31 +3856,42 @@
         }
       }
 
-      // Загрузка баланса Monkey Coins для пользователя
+      // Загрузка опыта для пользователя из базы данных
       async function loadUserExperience(userId) {
         try {
-          // Получаем баланс Monkey Coins из API
-          const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${userId}`);
-          const balance = balanceResponse?.monkey_coins || 0;
+          // Получаем профиль с опытом из API
+          const profile = await window.fetchJSON(`/api/profile?tg_id=${userId}`);
 
-          updateCoinsDisplay(balance);
+          const experience = profile.experience || 0;
+          const contestsParticipated = profile.contests_participated || 0;
+          const contestsWon = profile.contests_won || 0;
+
+          updateUserExperienceUI(experience, contestsParticipated, contestsWon);
+
+          // Также загружаем баланс Monkey Coins
+          await updateCoinsDisplay(userId);
         } catch (e) {
-          console.error('Ошибка загрузки баланса пользователя:', e);
-          updateCoinsDisplay(0);
+          console.error('Ошибка загрузки опыта пользователя:', e);
+          updateUserExperienceUI(0, 0, 0);
         }
       }
 
-      // Функция обновления отображения баланса Monkey Coins
-      function updateCoinsDisplay(balance) {
-        const currentExpEl = document.getElementById('current-experience');
-        if (currentExpEl) {
-          currentExpEl.textContent = balance.toLocaleString();
-        }
+      // Функция обновления отображения баланса Monkey Coins в правом верхнем углу
+      async function updateCoinsDisplay(userId) {
+        try {
+          const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${userId}`);
+          const balance = balanceResponse?.monkey_coins || 0;
 
-        // Меняем текст "опыта" на "Monkey Coins"
-        const expLabel = currentExpEl?.nextElementSibling;
-        if (expLabel) {
-          expLabel.textContent = 'Monkey Coins';
+          const coinsCountEl = document.getElementById('coins-count');
+          if (coinsCountEl) {
+            coinsCountEl.textContent = balance.toLocaleString();
+          }
+        } catch (e) {
+          console.error('Ошибка загрузки баланса Monkey Coins:', e);
+          const coinsCountEl = document.getElementById('coins-count');
+          if (coinsCountEl) {
+            coinsCountEl.textContent = '0';
+          }
         }
       }
 
@@ -3912,7 +3923,7 @@
           }
           
           // Загружаем баланс Monkey Coins
-          await updateCoinsDisplay();
+          await updateCoinsDisplay(tgId ? parseInt(tgId) : currentUserId);
         } catch (e) {
           const params = new URLSearchParams(window.location.search);
           const pid = params.get('tg_id');
@@ -5662,7 +5673,7 @@
               // Обновляем отображение
               renderShop();
               // Обновляем баланс монеток
-              updateCoinsDisplay();
+              await updateCoinsDisplay(currentUserId);
               alert(`✅ Тема "${item.name}" успешно куплена!\n\nСписано: ${price} Monkey Coins`);
             } else {
               const errorMsg = purchaseResponse?.detail || purchaseResponse?.message || 'Ошибка при покупке';
@@ -6317,8 +6328,8 @@
             if (response?.success) {
               closeTopupModal();
               // Обновляем баланс через некоторое время (после оплаты)
-              setTimeout(() => {
-                updateCoinsDisplay();
+              setTimeout(async () => {
+                await updateCoinsDisplay(currentUserId);
               }, 5000);
               alert(`✅ Счет на ${amount} ⭐ отправлен в бота!\n\nПерейдите в чат с ботом, чтобы оплатить. После оплаты баланс будет пополнен автоматически.`);
             } else {
@@ -6343,8 +6354,8 @@
             if (response?.success) {
               closeTopupModal();
               // Обновляем баланс через некоторое время (после оплаты)
-              setTimeout(() => {
-                updateCoinsDisplay();
+              setTimeout(async () => {
+                await updateCoinsDisplay(currentUserId);
               }, 5000);
               if (response.invoice_url) {
                 // Открываем ссылку на оплату
