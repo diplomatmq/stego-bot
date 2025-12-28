@@ -3856,20 +3856,31 @@
         }
       }
 
-      // Загрузка опыта для пользователя из базы данных
+      // Загрузка баланса Monkey Coins для пользователя
       async function loadUserExperience(userId) {
         try {
-          // Получаем профиль с опытом из API
-          const profile = await window.fetchJSON(`/api/profile?tg_id=${userId}`);
-          
-          const experience = profile.experience || 0;
-          const contestsParticipated = profile.contests_participated || 0;
-          const contestsWon = profile.contests_won || 0;
-          
-          updateUserExperienceUI(experience, contestsParticipated, contestsWon);
+          // Получаем баланс Monkey Coins из API
+          const balanceResponse = await window.fetchJSON(`/api/profile/monkey-coins?tg_id=${userId}`);
+          const balance = balanceResponse?.monkey_coins || 0;
+
+          updateCoinsDisplay(balance);
         } catch (e) {
-          console.error('Ошибка загрузки опыта пользователя:', e);
-          updateUserExperienceUI(0, 0, 0);
+          console.error('Ошибка загрузки баланса пользователя:', e);
+          updateCoinsDisplay(0);
+        }
+      }
+
+      // Функция обновления отображения баланса Monkey Coins
+      function updateCoinsDisplay(balance) {
+        const currentExpEl = document.getElementById('current-experience');
+        if (currentExpEl) {
+          currentExpEl.textContent = balance.toLocaleString();
+        }
+
+        // Меняем текст "опыта" на "Monkey Coins"
+        const expLabel = currentExpEl?.nextElementSibling;
+        if (expLabel) {
+          expLabel.textContent = 'Monkey Coins';
         }
       }
 
