@@ -1669,29 +1669,142 @@
     </div>
   </div>
 
-  <!-- 🖼️ Модальное окно для ввода ссылок на NFT (шаг 1) -->
+  <!-- 🖼️ Модальное окно конструктора коллекций NFT -->
   <div id="collection-links-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="relative w-full max-w-2xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+    <div class="relative w-full max-w-4xl bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
       <button id="collection-links-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
-      <h2 class="text-2xl font-bold text-white mb-4">🖼️ Введите ссылки на NFT</h2>
-      <p class="text-gray-300 text-sm mb-4">Введите 9 ссылок на NFT в формате <code class="bg-black/40 px-2 py-1 rounded">t.me/nft/название-номер</code></p>
-      
-      <div id="collection-links-inputs" class="space-y-3 mb-4">
-        <!-- Поля ввода будут добавлены динамически -->
+      <h2 class="text-2xl font-bold text-white mb-4">🖼️ Создайте коллекцию NFT</h2>
+      <p class="text-gray-300 text-sm mb-6">Нажмите на квадратик чтобы настроить NFT</p>
+
+      <!-- Сетка 3x3 для коллекции -->
+      <div class="grid grid-cols-3 gap-4 mb-6">
+        <div id="nft-slot-0" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="0">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-1" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="1">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-2" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="2">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-3" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="3">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-4" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="4">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-5" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="5">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-6" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="6">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-7" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="7">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
+        <div id="nft-slot-8" class="nft-slot aspect-square bg-black/60 border-2 border-dashed border-violet-400/50 rounded-xl cursor-pointer hover:border-violet-400/70 transition-all flex items-center justify-center group" data-index="8">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+            <div class="text-xs text-gray-400">Нажмите для настройки</div>
+          </div>
+        </div>
       </div>
-      
+
       <div class="flex items-center justify-between mb-4">
-        <div id="collection-links-count" class="text-sm text-gray-400">
-          Введено: <span id="collection-links-entered">0</span> / 9
+        <div id="collection-configured-count" class="text-sm text-gray-400">
+          Настроено: <span id="collection-configured">0</span> / 9
         </div>
         <div id="collection-links-error" class="text-sm text-red-400 hidden"></div>
       </div>
-      
+
       <div class="flex gap-3">
         <button id="collection-links-continue" class="neon-button px-6 py-3 rounded-lg font-semibold text-white flex-1 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
           Продолжить
         </button>
         <button id="collection-links-cancel" class="px-6 py-3 rounded-lg font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700">
+          Отмена
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🖼️ Модальное окно конфигурации NFT -->
+  <div id="nft-config-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="relative w-full max-w-md bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 border border-violet-400/40 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <button id="nft-config-modal-close" class="absolute -top-3 -right-3 bg-black text-white border border-violet-400/50 rounded-full w-9 h-9 neon-button flex items-center justify-center" aria-label="Закрыть">✕</button>
+      <h2 class="text-xl font-bold text-white mb-4">⚙️ Настройка NFT</h2>
+
+      <!-- Предпросмотр NFT -->
+      <div class="mb-4">
+        <div id="nft-preview" class="aspect-square bg-black/60 border border-violet-400/30 rounded-xl flex items-center justify-center">
+          <div class="text-center">
+            <div class="text-4xl mb-2 opacity-50">🖼️</div>
+            <div class="text-xs text-gray-400">Предпросмотр</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Выбор коллекции -->
+      <div class="mb-4">
+        <label class="block text-sm text-gray-300 mb-2">Коллекция</label>
+        <select id="collection-select" class="w-full bg-black/40 border border-violet-400/30 rounded-lg px-4 py-2 text-white focus:border-violet-400 focus:outline-none">
+          <option value="">Загрузка...</option>
+        </select>
+      </div>
+
+      <!-- Выбор модели -->
+      <div class="mb-4">
+        <label class="block text-sm text-gray-300 mb-2">Модель</label>
+        <select id="model-select" class="w-full bg-black/40 border border-violet-400/30 rounded-lg px-4 py-2 text-white focus:border-violet-400 focus:outline-none" disabled>
+          <option value="">Сначала выберите коллекцию</option>
+        </select>
+      </div>
+
+      <!-- Выбор фона -->
+      <div class="mb-4">
+        <label class="block text-sm text-gray-300 mb-2">Фон</label>
+        <select id="backdrop-select" class="w-full bg-black/40 border border-violet-400/30 rounded-lg px-4 py-2 text-white focus:border-violet-400 focus:outline-none" disabled>
+          <option value="">Сначала выберите модель</option>
+        </select>
+      </div>
+
+      <!-- Выбор паттерна -->
+      <div class="mb-6">
+        <label class="block text-sm text-gray-300 mb-2">Узор</label>
+        <select id="pattern-select" class="w-full bg-black/40 border border-violet-400/30 rounded-lg px-4 py-2 text-white focus:border-violet-400 focus:outline-none" disabled>
+          <option value="">Сначала выберите фон</option>
+        </select>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="nft-config-save" class="neon-button px-6 py-3 rounded-lg font-semibold text-white flex-1">
+          Сохранить
+        </button>
+        <button id="nft-config-cancel" class="px-6 py-3 rounded-lg font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700">
           Отмена
         </button>
       </div>
@@ -4275,6 +4388,20 @@
       let collectionNftOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8]; // Порядок NFT в сетке
       let draggedElement = null;
       let draggedIndex = null;
+
+      // Данные для конструктора NFT
+      let nftCollections = [];
+      let nftModels = [];
+      let nftBackdrops = [];
+      let nftPatterns = [];
+      let currentNftSlot = null;
+      let nftSlotConfigs = Array(9).fill(null).map(() => ({
+        collection: null,
+        model: null,
+        backdrop: null,
+        pattern: null,
+        url: null
+      }));
       
       // Переменные для touch событий (мобильные устройства)
       let touchStartElement = null;
@@ -4284,63 +4411,487 @@
       let touchCurrentElement = null;
       let touchGhostElement = null;
 
+      // Функции для работы с SEE TG API
+      async function loadNftCollections() {
+        try {
+          const response = await fetch('https://api.see.tg/gifts?app_token=' + encodeURIComponent('e9920398-1667-4f87-8b10-87f8ffda7d01:873a587224a276e557a0ee8871088a6748134807d7dd08e817ab89b21cd36e98') + '&limit=100');
+          const data = await response.json();
+
+          if (data.gifts) {
+            // Извлекаем уникальные коллекции
+            const collections = {};
+            data.gifts.forEach(gift => {
+              if (gift.collection_name) {
+                collections[gift.collection_name] = gift.collection_name;
+              }
+            });
+            nftCollections = Object.keys(collections).sort();
+          }
+
+          return nftCollections;
+        } catch (e) {
+          console.error('Ошибка загрузки коллекций:', e);
+          return [];
+        }
+      }
+
+      async function loadNftModels(collectionName) {
+        try {
+          const response = await fetch('https://api.see.tg/gifts?app_token=' + encodeURIComponent('e9920398-1667-4f87-8b10-87f8ffda7d01:873a587224a276e557a0ee8871088a6748134807d7dd08e817ab89b21cd36e98') + '&limit=100');
+          const data = await response.json();
+
+          if (data.gifts) {
+            // Фильтруем модели по выбранной коллекции
+            const models = {};
+            data.gifts.forEach(gift => {
+              if (gift.collection_name === collectionName && gift.model_name) {
+                models[gift.model_name] = gift.model_name;
+              }
+            });
+            nftModels = Object.keys(models).sort();
+          }
+
+          return nftModels;
+        } catch (e) {
+          console.error('Ошибка загрузки моделей:', e);
+          return [];
+        }
+      }
+
+      async function loadNftBackdrops(collectionName, modelName) {
+        try {
+          const response = await fetch('https://api.see.tg/gifts?app_token=' + encodeURIComponent('e9920398-1667-4f87-8b10-87f8ffda7d01:873a587224a276e557a0ee8871088a6748134807d7dd08e817ab89b21cd36e98') + '&limit=100');
+          const data = await response.json();
+
+          if (data.gifts) {
+            // Фильтруем фоны по коллекции и модели
+            const backdrops = {};
+            data.gifts.forEach(gift => {
+              if (gift.collection_name === collectionName && gift.model_name === modelName && gift.backdrop_name) {
+                backdrops[gift.backdrop_name] = gift.backdrop_name;
+              }
+            });
+            nftBackdrops = Object.keys(backdrops).sort();
+          }
+
+          return nftBackdrops;
+        } catch (e) {
+          console.error('Ошибка загрузки фонов:', e);
+          return [];
+        }
+      }
+
+      async function loadNftPatterns(collectionName, modelName, backdropName) {
+        try {
+          const response = await fetch('https://api.see.tg/gifts?app_token=' + encodeURIComponent('e9920398-1667-4f87-8b10-87f8ffda7d01:873a587224a276e557a0ee8871088a6748134807d7dd08e817ab89b21cd36e98') + '&limit=100');
+          const data = await response.json();
+
+          if (data.gifts) {
+            // Фильтруем паттерны по коллекции, модели и фону
+            const patterns = {};
+            data.gifts.forEach(gift => {
+              if (gift.collection_name === collectionName && gift.model_name === modelName && gift.backdrop_name === backdropName && gift.pattern_name) {
+                patterns[gift.pattern_name] = gift.pattern_name;
+              }
+            });
+            nftPatterns = Object.keys(patterns).sort();
+          }
+
+          return nftPatterns;
+        } catch (e) {
+          console.error('Ошибка загрузки паттернов:', e);
+          return [];
+        }
+      }
+
+      function updateNftSlot(slotIndex, config) {
+        const slot = document.getElementById(`nft-slot-${slotIndex}`);
+        if (!slot) return;
+
+        if (config && config.collection && config.model) {
+          // Отображаем настроенный NFT
+          slot.innerHTML = `
+            <div class="w-full h-full bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-violet-400/50 rounded-xl flex items-center justify-center relative">
+              <div class="text-center">
+                <div class="text-lg font-bold text-violet-400 mb-1">${config.collection}</div>
+                <div class="text-sm text-gray-300">${config.model}</div>
+                ${config.backdrop ? `<div class="text-xs text-gray-400 mt-1">${config.backdrop}</div>` : ''}
+                ${config.pattern ? `<div class="text-xs text-gray-400">${config.pattern}</div>` : ''}
+              </div>
+              <div class="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full" title="Настроено"></div>
+            </div>
+          `;
+          slot.classList.remove('bg-black/60', 'border-dashed');
+          slot.classList.add('bg-gradient-to-br', 'from-purple-600/20', 'to-pink-600/20', 'border-solid');
+        } else {
+          // Возвращаем к начальному состоянию
+          slot.innerHTML = `
+            <div class="text-center">
+              <div class="text-4xl mb-2 opacity-50 group-hover:opacity-70 transition-opacity">🖼️</div>
+              <div class="text-xs text-gray-400">Нажмите для настройки</div>
+            </div>
+          `;
+          slot.classList.add('bg-black/60', 'border-dashed');
+          slot.classList.remove('bg-gradient-to-br', 'from-purple-600/20', 'to-pink-600/20', 'border-solid');
+        }
+      }
+
+      function updateConfiguredCount() {
+        const configured = nftSlotConfigs.filter(config => config && config.collection && config.model).length;
+        const countEl = document.getElementById('collection-configured');
+        const continueBtn = document.getElementById('collection-links-continue');
+
+        if (countEl) {
+          countEl.textContent = configured;
+        }
+
+        if (continueBtn) {
+          continueBtn.disabled = configured !== 9;
+        }
+      }
+
       // Функция для открытия модалки ввода ссылок на NFT
+      // Функция для открытия модалки конструктора коллекций
       window.openCollectionSubmissionModal = function(contestId) {
         currentCollectionContestId = contestId;
         collectionNftLinks = [];
         collectionNftOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-        
+
+        // Сбрасываем конфигурации слотов
+        nftSlotConfigs = Array(9).fill(null).map(() => ({
+          collection: null,
+          model: null,
+          backdrop: null,
+          pattern: null,
+          url: null
+        }));
+
         const linksModal = document.getElementById('collection-links-modal');
-        const inputsContainer = document.getElementById('collection-links-inputs');
         const continueBtn = document.getElementById('collection-links-continue');
-        const enteredCount = document.getElementById('collection-links-entered');
         const errorEl = document.getElementById('collection-links-error');
-        
-        if (!linksModal || !inputsContainer) {
-          console.error('Модалка ввода ссылок не найдена');
+
+        if (!linksModal) {
+          console.error('Модалка конструктора не найдена');
           return;
         }
-        
-        // Очищаем предыдущие поля ввода
-        inputsContainer.innerHTML = '';
+
+        // Очищаем предыдущие состояния
         errorEl.classList.add('hidden');
         errorEl.textContent = '';
-        
-        // Создаем 9 полей ввода
+
+        // Сбрасываем все слоты к начальному состоянию
         for (let i = 0; i < 9; i++) {
-          const inputWrapper = document.createElement('div');
-          inputWrapper.className = 'flex items-center gap-2';
-          inputWrapper.innerHTML = `
-            <label class="text-sm text-gray-400 w-8 flex-shrink-0">${i + 1}.</label>
-            <input 
-              type="text" 
-              id="nft-link-${i}" 
-              class="flex-1 bg-black/40 border border-violet-400/30 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:border-violet-400 focus:outline-none"
-              placeholder="t.me/nft/название-номер"
-              data-index="${i}"
-            />
-            <div id="nft-link-status-${i}" class="w-6 h-6 flex items-center justify-center"></div>
-          `;
-          inputsContainer.appendChild(inputWrapper);
-          
-          // Добавляем обработчик изменения для валидации
-          const input = inputWrapper.querySelector(`#nft-link-${i}`);
-          const statusEl = inputWrapper.querySelector(`#nft-link-status-${i}`);
-          
-          input.addEventListener('input', function() {
-            validateNftLink(i);
-            updateContinueButton();
-          });
+          updateNftSlot(i, null);
         }
-        
-        // Обновляем счетчик
-        enteredCount.textContent = '0';
-        continueBtn.disabled = true;
-        
-        // Показываем модалку
+
+        updateConfiguredCount();
+
+        // Загружаем коллекции для селекторов
+        loadNftCollections().then(collections => {
+          // Коллекции будут загружены при открытии модалки конфигурации
+        });
+
+        // Обработчик кнопки "Продолжить"
+        if (continueBtn) {
+          continueBtn.onclick = function() {
+            // Преобразуем конфигурации в ссылки
+            collectionNftLinks = [];
+            for (let i = 0; i < 9; i++) {
+              const config = nftSlotConfigs[i];
+              if (config && config.collection && config.model) {
+                // Генерируем ссылку на основе конфигурации
+                const url = `https://t.me/nft/${config.collection.toLowerCase().replace(/\s+/g, '')}-${i + 1}`;
+                collectionNftLinks.push(url);
+              }
+            }
+
+            if (collectionNftLinks.length === 9) {
+              linksModal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+              openCollectionArrangeModal();
+            }
+          };
+        }
+
+        // Обработчик кнопки "Отмена"
+        const cancelBtn = document.getElementById('collection-links-cancel');
+        if (cancelBtn) {
+          cancelBtn.onclick = function() {
+            linksModal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          };
+        }
+
+        // Обработчики для квадратиков NFT
+        for (let i = 0; i < 9; i++) {
+          const slot = document.getElementById(`nft-slot-${i}`);
+          if (slot) {
+            slot.onclick = function() {
+              openNftConfigModal(i);
+            };
+          }
+        }
+
+        // Открываем модалку
         linksModal.classList.remove('hidden');
         document.body.classList.add('modal-open');
       };
+
+      // Функция для открытия модалки конфигурации NFT
+      function openNftConfigModal(slotIndex) {
+        currentNftSlot = slotIndex;
+        const config = nftSlotConfigs[slotIndex] || {
+          collection: null,
+          model: null,
+          backdrop: null,
+          pattern: null,
+          url: null
+        };
+
+        const modal = document.getElementById('nft-config-modal');
+        const collectionSelect = document.getElementById('collection-select');
+        const modelSelect = document.getElementById('model-select');
+        const backdropSelect = document.getElementById('backdrop-select');
+        const patternSelect = document.getElementById('pattern-select');
+        const preview = document.getElementById('nft-preview');
+
+        if (!modal) return;
+
+        // Очищаем селекторы
+        collectionSelect.innerHTML = '<option value="">Загрузка...</option>';
+        modelSelect.innerHTML = '<option value="">Сначала выберите коллекцию</option>';
+        modelSelect.disabled = true;
+        backdropSelect.innerHTML = '<option value="">Сначала выберите модель</option>';
+        backdropSelect.disabled = true;
+        patternSelect.innerHTML = '<option value="">Сначала выберите фон</option>';
+        patternSelect.disabled = true;
+
+        // Загружаем коллекции
+        loadNftCollections().then(collections => {
+          collectionSelect.innerHTML = '<option value="">Выберите коллекцию</option>';
+          collections.forEach(collection => {
+            const option = document.createElement('option');
+            option.value = collection;
+            option.textContent = collection;
+            if (config.collection === collection) {
+              option.selected = true;
+            }
+            collectionSelect.appendChild(option);
+          });
+
+          // Если коллекция уже выбрана, загружаем модели
+          if (config.collection) {
+            loadNftModels(config.collection).then(models => {
+              modelSelect.innerHTML = '<option value="">Выберите модель</option>';
+              modelSelect.disabled = false;
+              models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                if (config.model === model) {
+                  option.selected = true;
+                }
+                modelSelect.appendChild(option);
+              });
+
+              // Если модель уже выбрана, загружаем фоны
+              if (config.model) {
+                loadNftBackdrops(config.collection, config.model).then(backdrops => {
+                  backdropSelect.innerHTML = '<option value="">Выберите фон</option>';
+                  backdropSelect.disabled = false;
+                  backdrops.forEach(backdrop => {
+                    const option = document.createElement('option');
+                    option.value = backdrop;
+                    option.textContent = backdrop;
+                    if (config.backdrop === backdrop) {
+                      option.selected = true;
+                    }
+                    backdropSelect.appendChild(option);
+                  });
+
+                  // Если фон уже выбран, загружаем паттерны
+                  if (config.backdrop) {
+                    loadNftPatterns(config.collection, config.model, config.backdrop).then(patterns => {
+                      patternSelect.innerHTML = '<option value="">Выберите узор</option>';
+                      patternSelect.disabled = false;
+                      patterns.forEach(pattern => {
+                        const option = document.createElement('option');
+                        option.value = pattern;
+                        option.textContent = pattern;
+                        if (config.pattern === pattern) {
+                          option.selected = true;
+                        }
+                        patternSelect.appendChild(option);
+                      });
+                    });
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        // Обработчики изменения селекторов
+        collectionSelect.onchange = function() {
+          const selectedCollection = this.value;
+          if (selectedCollection) {
+            loadNftModels(selectedCollection).then(models => {
+              modelSelect.innerHTML = '<option value="">Выберите модель</option>';
+              modelSelect.disabled = false;
+              models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                modelSelect.appendChild(option);
+              });
+              backdropSelect.innerHTML = '<option value="">Сначала выберите модель</option>';
+              backdropSelect.disabled = true;
+              patternSelect.innerHTML = '<option value="">Сначала выберите фон</option>';
+              patternSelect.disabled = true;
+            });
+          } else {
+            modelSelect.innerHTML = '<option value="">Сначала выберите коллекцию</option>';
+            modelSelect.disabled = true;
+            backdropSelect.innerHTML = '<option value="">Сначала выберите модель</option>';
+            backdropSelect.disabled = true;
+            patternSelect.innerHTML = '<option value="">Сначала выберите фон</option>';
+            patternSelect.disabled = true;
+          }
+          updateNftPreview();
+        };
+
+        modelSelect.onchange = function() {
+          const selectedCollection = collectionSelect.value;
+          const selectedModel = this.value;
+          if (selectedCollection && selectedModel) {
+            loadNftBackdrops(selectedCollection, selectedModel).then(backdrops => {
+              backdropSelect.innerHTML = '<option value="">Выберите фон</option>';
+              backdropSelect.disabled = false;
+              backdrops.forEach(backdrop => {
+                const option = document.createElement('option');
+                option.value = backdrop;
+                option.textContent = backdrop;
+                backdropSelect.appendChild(option);
+              });
+              patternSelect.innerHTML = '<option value="">Сначала выберите фон</option>';
+              patternSelect.disabled = true;
+            });
+          } else {
+            backdropSelect.innerHTML = '<option value="">Сначала выберите модель</option>';
+            backdropSelect.disabled = true;
+            patternSelect.innerHTML = '<option value="">Сначала выберите фон</option>';
+            patternSelect.disabled = true;
+          }
+          updateNftPreview();
+        };
+
+        backdropSelect.onchange = function() {
+          const selectedCollection = collectionSelect.value;
+          const selectedModel = modelSelect.value;
+          const selectedBackdrop = this.value;
+          if (selectedCollection && selectedModel && selectedBackdrop) {
+            loadNftPatterns(selectedCollection, selectedModel, selectedBackdrop).then(patterns => {
+              patternSelect.innerHTML = '<option value="">Выберите узор</option>';
+              patternSelect.disabled = false;
+              patterns.forEach(pattern => {
+                const option = document.createElement('option');
+                option.value = pattern;
+                option.textContent = pattern;
+                patternSelect.appendChild(option);
+              });
+            });
+          } else {
+            patternSelect.innerHTML = '<option value="">Сначала выберите фон</option>';
+            patternSelect.disabled = true;
+          }
+          updateNftPreview();
+        };
+
+        patternSelect.onchange = function() {
+          updateNftPreview();
+        };
+
+        // Функция обновления превью
+        function updateNftPreview() {
+          const collection = collectionSelect.value;
+          const model = modelSelect.value;
+          const backdrop = backdropSelect.value;
+          const pattern = patternSelect.value;
+
+          if (collection && model) {
+            preview.innerHTML = `
+              <div class="w-full h-full bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-violet-400/50 rounded-xl flex items-center justify-center">
+                <div class="text-center">
+                  <div class="text-lg font-bold text-violet-400 mb-1">${collection}</div>
+                  <div class="text-sm text-gray-300">${model}</div>
+                  ${backdrop ? `<div class="text-xs text-gray-400 mt-1">${backdrop}</div>` : ''}
+                  ${pattern ? `<div class="text-xs text-gray-400">${pattern}</div>` : ''}
+                </div>
+              </div>
+            `;
+          } else {
+            preview.innerHTML = `
+              <div class="text-center">
+                <div class="text-4xl mb-2 opacity-50">🖼️</div>
+                <div class="text-xs text-gray-400">Предпросмотр</div>
+              </div>
+            `;
+          }
+        }
+
+        // Обработчик сохранения
+        const saveBtn = document.getElementById('nft-config-save');
+        if (saveBtn) {
+          saveBtn.onclick = function() {
+            const collection = collectionSelect.value;
+            const model = modelSelect.value;
+            const backdrop = backdropSelect.value;
+            const pattern = patternSelect.value;
+
+            if (collection && model) {
+              nftSlotConfigs[slotIndex] = {
+                collection,
+                model,
+                backdrop,
+                pattern,
+                url: `https://t.me/nft/${collection.toLowerCase().replace(/\s+/g, '')}-${slotIndex + 1}`
+              };
+
+              updateNftSlot(slotIndex, nftSlotConfigs[slotIndex]);
+              updateConfiguredCount();
+
+              modal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+            } else {
+              alert('Пожалуйста, выберите хотя бы коллекцию и модель');
+            }
+          };
+        }
+
+        // Обработчик отмены
+        const cancelBtn = document.getElementById('nft-config-cancel');
+        if (cancelBtn) {
+          cancelBtn.onclick = function() {
+            modal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          };
+        }
+
+        // Обработчик закрытия
+        const closeBtn = document.getElementById('nft-config-modal-close');
+        if (closeBtn) {
+          closeBtn.onclick = function() {
+            modal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          };
+        }
+
+        // Открываем модалку
+        modal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+
+        updateNftPreview();
+      }
 
       // Валидация ссылки на NFT
       function validateNftLink(index) {
@@ -5214,6 +5765,26 @@
           arrangeModal.addEventListener('click', function(e) {
             if (e.target === arrangeModal) {
               arrangeModal.classList.add('hidden');
+              document.body.classList.remove('modal-open');
+            }
+          });
+        }
+
+        // Модалка конфигурации NFT
+        const nftConfigModal = document.getElementById('nft-config-modal');
+        const nftConfigModalClose = document.getElementById('nft-config-modal-close');
+
+        if (nftConfigModalClose) {
+          nftConfigModalClose.addEventListener('click', function() {
+            if (nftConfigModal) nftConfigModal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+          });
+        }
+
+        if (nftConfigModal) {
+          nftConfigModal.addEventListener('click', function(e) {
+            if (e.target === nftConfigModal) {
+              nftConfigModal.classList.add('hidden');
               document.body.classList.remove('modal-open');
             }
           });
